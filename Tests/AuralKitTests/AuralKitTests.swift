@@ -1,4 +1,5 @@
 import Testing
+import Foundation
 @testable import AuralKit
 
 @Suite("AuralKit Tests")
@@ -16,14 +17,12 @@ struct AuralKitTests {
         #expect(kit != nil)
     }
     
-    @Test("Configuration fluent API")
+    @Test("Configuration with locale")
     @MainActor
     func testConfiguration() async {
-        let kit = AuralKit()
-            .locale(.init(identifier: "es-ES"))
-            .includePartialResults(false)
-            .includeTimestamps(true)
-        
+        let spanishLocale = Locale(identifier: "es-ES")
+        let kit = AuralKit(locale: spanishLocale)
+
         #expect(kit != nil)
     }
     
@@ -31,27 +30,19 @@ struct AuralKitTests {
     @MainActor
     func testTranscribeAPI() async {
         let kit = createTestKit()
-        
-        // Test instance method
-        let stream1 = kit.transcribe()
-        #expect(stream1 != nil)
-        
-        // Test static method
-        let stream2 = AuralKit.transcribe()
-        #expect(stream2 != nil)
-        
-        // Test computed property
-        let stream3 = kit.transcriptions
-        #expect(stream3 != nil)
+
+        // Test startTranscribing method
+        let stream = kit.startTranscribing()
+        #expect(stream != nil)
     }
     
-    @Test("Stop is safe to call")
+    @Test("Stop transcribing is safe to call")
     @MainActor
     func testStop() async {
         let kit = createTestKit()
-        
+
         // Should not crash when called without transcribing
-        kit.stop()
+        await kit.stopTranscribing()
         #expect(true) // If we get here, it didn't crash
     }
 }
