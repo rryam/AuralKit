@@ -11,11 +11,20 @@ let package = Package(
         .library(
             name: "AuralKit",
             targets: ["AuralKit"]
+        ),
+        .executable(
+            name: "Aural",
+            targets: ["Aural"]
         )
     ],
     targets: [
         .target(
             name: "AuralKit"
+        ),
+        .executableTarget(
+            name: "Aural",
+            dependencies: ["AuralKit"],
+            path: "Aural"
         ),
         .testTarget(
             name: "AuralKitTests",

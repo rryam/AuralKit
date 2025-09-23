@@ -4,6 +4,7 @@ import CoreMedia
 
 @available(iOS 26.0, macOS 26.0, *)
 @Observable
+@MainActor
 class TranscriptionManager {
     var isTranscribing = false
     var currentTranscript = ""
