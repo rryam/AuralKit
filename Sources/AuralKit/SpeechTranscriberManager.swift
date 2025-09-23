@@ -21,7 +21,7 @@ final class SpeechTranscriberManager {
                                         attributeOptions: [.audioTimeRange])
 
         guard let transcriber else {
-            throw NSError(domain: "AuralKit", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to setup recognition stream"])
+            throw AuralKitError.recognitionStreamSetupFailed
         }
 
         analyzer = SpeechAnalyzer(modules: [transcriber])
@@ -45,7 +45,7 @@ final class SpeechTranscriberManager {
     /// Stream audio buffer to the transcriber
     func streamAudioToTranscriber(_ buffer: AVAudioPCMBuffer, converter: BufferConverter) async throws {
         guard let inputBuilder, let analyzerFormat else {
-            throw NSError(domain: "AuralKit", code: -3, userInfo: [NSLocalizedDescriptionKey: "Invalid audio data type"])
+            throw AuralKitError.invalidAudioDataType
         }
 
         let converted = try converter.convertBuffer(buffer, to: analyzerFormat)

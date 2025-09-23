@@ -8,7 +8,7 @@ class ModelManager: @unchecked Sendable {
     /// Ensure the speech model for the given locale is available
     func ensureModel(transcriber: SpeechTranscriber, locale: Locale) async throws {
         guard await supported(locale: locale) else {
-            throw NSError(domain: "AuralKit", code: -2, userInfo: [NSLocalizedDescriptionKey: "This locale is not yet supported by SpeechAnalyzer"])
+            throw AuralKitError.unsupportedLocale(locale)
         }
 
         if await installed(locale: locale) {

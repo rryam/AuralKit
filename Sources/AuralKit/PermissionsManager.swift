@@ -8,13 +8,13 @@ import Speech
 class PermissionsManager: @unchecked Sendable {
 
     /// Check if all required permissions are granted
-    func isAuthorized() async -> Bool {
+    func ensurePermissions() async throws {
         // Check microphone permission
 #if os(iOS)
         if AVCaptureDevice.authorizationStatus(for: .audio) != .authorized {
             let granted = await AVCaptureDevice.requestAccess(for: .audio)
             if !granted {
-                return false
+                throw AuralKitError.microphonePermissionDenied
             }
         }
 #endif
@@ -22,15 +22,18 @@ class PermissionsManager: @unchecked Sendable {
         // Check speech recognition permission
         switch SFSpeechRecognizer.authorizationStatus() {
         case .authorized:
-            return true
+            return
         case .notDetermined:
-            return await withCheckedContinuation { continuation in
+            let granted = await withCheckedContinuation { continuation in
                 SFSpeechRecognizer.requestAuthorization { status in
                     continuation.resume(returning: status == .authorized)
                 }
             }
+            if !granted {
+                throw AuralKitError.speechRecognitionPermissionDenied
+            }
         default:
-            return false
+            throw AuralKitError.speechRecognitionPermissionDenied
         }
     }
 }

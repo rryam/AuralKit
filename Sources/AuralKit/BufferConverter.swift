@@ -3,12 +3,6 @@
 // MARK: - Buffer Converter (from Apple's sample)
 
 class BufferConverter: @unchecked Sendable {
-    enum Error: Swift.Error {
-        case failedToCreateConverter
-        case failedToCreateConversionBuffer
-        case conversionFailed(NSError?)
-    }
-
     private var converter: AVAudioConverter?
 
     func convertBuffer(_ buffer: AVAudioPCMBuffer, to format: AVAudioFormat) throws -> AVAudioPCMBuffer {
@@ -23,14 +17,14 @@ class BufferConverter: @unchecked Sendable {
         }
 
         guard let converter else {
-            throw Error.failedToCreateConverter
+            throw AuralKitError.bufferConverterCreationFailed
         }
 
         let sampleRateRatio = converter.outputFormat.sampleRate / converter.inputFormat.sampleRate
         let scaledInputFrameLength = Double(buffer.frameLength) * sampleRateRatio
         let frameCapacity = AVAudioFrameCount(scaledInputFrameLength.rounded(.up))
         guard let conversionBuffer = AVAudioPCMBuffer(pcmFormat: converter.outputFormat, frameCapacity: frameCapacity) else {
-            throw Error.failedToCreateConversionBuffer
+            throw AuralKitError.conversionBufferCreationFailed
         }
 
         var nsError: NSError?
@@ -47,7 +41,7 @@ class BufferConverter: @unchecked Sendable {
         }
 
         guard status != .error else {
-            throw Error.conversionFailed(nsError)
+            throw AuralKitError.audioConversionFailed(nsError)
         }
 
         return conversionBuffer

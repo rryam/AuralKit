@@ -3,7 +3,7 @@ import Foundation
 // MARK: - AuralKit
 
 @available(iOS 26.0, macOS 26.0, *)
-public final class AuralKit {
+public final class AuralKit: @unchecked Sendable {
 
     // MARK: - Properties
 
@@ -33,9 +33,7 @@ public final class AuralKit {
             Task {
                 do {
                     // Request permissions
-                    guard await permissionsManager.isAuthorized() else {
-                        throw NSError(domain: "AuralKit", code: -10, userInfo: [NSLocalizedDescriptionKey: "Microphone permission denied"])
-                    }
+                    try await permissionsManager.ensurePermissions()
 
 #if os(iOS)
                     try audioSessionManager.setUpAudioSession()

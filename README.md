@@ -1,6 +1,6 @@
 # AuralKit
 
-![Swift](https://img.shields.io/badge/Swift-6.0-orange.svg)
+![Swift](https://img.shields.io/badge/Swift-6.2+-orange.svg)
 ![Platforms](https://img.shields.io/badge/Platforms-iOS%2026%2B%20|%20macOS%2026%2B-blue.svg)
 ![License](https://img.shields.io/badge/License-MIT-green.svg)
 [![GitHub release](https://img.shields.io/github/release/rryam/AuralKit.svg)](https://github.com/rryam/AuralKit/releases)
@@ -13,7 +13,6 @@ A simple, lightweight Swift wrapper for speech-to-text transcription using Apple
 - **AttributedString output** with audio timing metadata
 - **Multi-language support** with automatic model downloading
 - **Native Apple types** - no custom wrappers
-- **Minimal footprint** - single file implementation
 - **Privacy-focused** - on-device processing
 
 ## Overview
@@ -159,13 +158,13 @@ struct ContentView: View {
 
 ```swift
 @available(iOS 26.0, macOS 26.0, *)
-public final class AuralKit {
+public final class AuralKit: @unchecked Sendable {
     // Initialize with a locale
     public init(locale: Locale = .current)
-    
+
     // Start transcribing
     public func startTranscribing() -> AsyncThrowingStream<AttributedString, Error>
-    
+
     // Stop transcribing
     public func stopTranscribing() async
 }
@@ -220,10 +219,12 @@ Add to your `Info.plist`:
 ## Requirements
 
 - iOS 26.0+ / macOS 26.0+
-- Swift 6.0+
+- Swift 6.2+
 - Microphone and speech recognition permissions
 
 ## Error Handling
+
+AuralKit provides detailed, localized error messages for all error conditions:
 
 ```swift
 do {
@@ -231,23 +232,31 @@ do {
         print(text)
     }
 } catch {
-    switch error {
-    case let nsError as NSError:
-        switch nsError.code {
-        case -10: // Microphone permission denied
-            print("Please grant microphone permission in Settings")
-        case -11: // Speech recognition permission denied
-            print("Please grant speech recognition permission in Settings")
-        case -2: // Unsupported locale
-            print("Selected locale is not supported on this device")
-        default:
-            print("Error: \(error.localizedDescription)")
+    // AuralKitError provides localized descriptions, failure reasons, and recovery suggestions
+    if let auralKitError = error as? AuralKitError {
+        print("Error: \(auralKitError.localizedDescription)")
+        if let failureReason = auralKitError.failureReason {
+            print("Reason: \(failureReason)")
         }
-    default:
+        if let recoverySuggestion = auralKitError.recoverySuggestion {
+            print("Suggestion: \(recoverySuggestion)")
+        }
+    } else {
         print("Unexpected error: \(error)")
     }
 }
 ```
+
+### Error Types
+
+- `microphonePermissionDenied` - Microphone access not granted
+- `speechRecognitionPermissionDenied` - Speech recognition access not granted
+- `unsupportedLocale(Locale)` - Selected language not supported
+- `recognitionStreamSetupFailed` - Failed to initialize speech recognition
+- `invalidAudioDataType` - Audio format incompatible
+- `bufferConverterCreationFailed` - Audio processing setup failed
+- `conversionBufferCreationFailed` - Audio buffer allocation failed
+- `audioConversionFailed(NSError?)` - Audio format conversion failed
 
 ## Contributing
 
@@ -256,7 +265,3 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 ## License
 
 AuralKit is available under the MIT License. See the [LICENSE](LICENSE) file for more info.
-
----
-
-**Made by [Rudrank Riyam](https://github.com/rryam)**
