@@ -10,9 +10,6 @@ import Speech.SFSpeechRecognizer
 import Speech.SFTranscription
 import Speech.SFTranscriptionSegment
 import Speech.SFVoiceAnalytics
-import _Concurrency
-import _StringProcessing
-import _SwiftConcurrencyShims
 
 /**
  Contextual information that may be shared among analyzers.
@@ -187,6 +184,13 @@ public struct AnalyzerInput : @unchecked Sendable {
     public let bufferStartTime: CMTime?
 }
 
+/**
+ An object that describes, downloads, and installs a selection of assets.
+ 
+ You do not create instances of this type directly; obtain them from ``AssetInventory/assetInstallationRequest(supporting:)``.
+ 
+ The system consolidates download and installation requests; you may obtain several of these instances and call ``downloadAndInstall()`` several times without causing redundant downloads.
+ */
 @available(macOS 26.0, iOS 26.0, *)
 @available(tvOS, unavailable)
 @available(watchOS, unavailable)
@@ -198,6 +202,8 @@ public struct AnalyzerInput : @unchecked Sendable {
      Downloads and installs assets not already on the device.
      
      If the system is unable to immediately download assets because of a connectivity issue or other error, the system will automatically attempt to download the assets later. This method will return when the initial download and installation attempt has succeeded or failed; use ``AssetInventory/status(forModules:)`` or another installation request to monitor the success or progress of later attempts.
+     
+     The system consolidates download and installation requests; you may call this method several times without causing redundant downloads.
      */
     final public func downloadAndInstall() async throws
 
@@ -205,54 +211,68 @@ public struct AnalyzerInput : @unchecked Sendable {
 }
 
 /**
-    Before using `SpeechAnalyzer`, you must install the assets required by the modules you use. These assets are
-    machine-learning models downloaded from Apple's servers.
+ Manages the assets that are necessary for transcription or other analyses.
+ 
+ Before using the ``SpeechAnalyzer`` class, you must install assets required by the modules you plan to use. These assets are machine-learning models downloaded from Apple's servers and managed by the system. Once you download, install, or use an asset, the system retains and updates it automatically, and shares it with other apps. The system makes a certain number of locale-specific asset reservations available to your app to limit storage space and network usage.
+ 
+ Your app does not work with assets directly. Instead, your app configures module objects. The system uses the modules' configuration to determine what assets are relevant.
+  
+ ### Install assets
+ 
+ Installing an asset is a four-step process:
+ 
+ 1. Create analyzer modules in the configurations that you wish to use. These modules can be discarded when no longer needed; the system installs assets using the modules' configuration, not their object identity.
 
-    Once you have created the modules you wish to use, installation is a three-step process:
-    * Allocate the locales used by the modules. You may only allocate a limited number of locales at one time.
-    This is done to limit the storage space and network usage. This is not required for modules whose assets are the
-    same for all locales.
-    * Start the download of the required assets. You don't have to download again when you create new modules; the
-    assets only depend on the configuration of each module, but not the module's object identity.
-    * Wait for the downloads to finish. Note that downloading may have already happened, because:
-        * The assets were preinstalled on the system.
-        * Another app already downloaded the assets.
-        * A different configuration of modules you previously used happen to use the same assets.
-
-    All of these actions persist across launches of your app. Assets are shared between apps, so duplicates aren't
-    downloaded multiple times, and don't take up storage space.
-
-    Note that your app is never told about what assets are required, it only deals with the module objects and how they
-    are configured.
-
-    If you revise your app to use fewer `SpeechAnalyzer` features, your app should unsubscribe from any assets you no
-    longer use. Otherwise, the system will have no way of knowing that you don't intend to use them again.
+ 2. Assign your app's asset reservations to those locales. The class does this automatically if needed, but you can also call ``reserve(locale:)`` to do this manually. This step is only necessary for modules with locale-specific assets; that is, modules conforming to ``LocaleDependentSpeechModule``. You can skip this step for other modules.
+ 
+ 3. Start downloading the required assets for the modules' configuration. Call ``assetInstallationRequest(supporting:)`` to obtain an instance of ``AssetInstallationRequest`` and call its ``AssetInstallationRequest/downloadAndInstall()`` method.
+ 
+ 4. Wait for the download to finish. Note that the download may finish immediately; the assets may have already been downloaded if the assets were preinstalled on the system, another app already downloaded them, or a previous module configuration used the same assets.
+ 
+ Once assets are downloaded, they persist between app launches and are shared between apps. The system may unsubscribe your app from assets that haven’t been used in a while.
+ 
+ ### Manage assets
+ 
+ When your app no longer needs assets for a particular locale, call ``release(reservedLocale:)`` to free up that reservation. The system will remove the assets at a later time.
  */
 @available(macOS 26.0, iOS 26.0, *)
 @available(tvOS, unavailable)
 @available(watchOS, unavailable)
 final public class AssetInventory {
 
-    /// The largest allowed count for `allocatedLocales`.
-    public static var maximumAllocatedLocales: Int { get }
-
     /**
-    Before you can subscribe to assets supporting a module, you must allocate the locale used by that module.
+     The number of locale reservations permitted to an app.
+     
+     This value is the largest allowed count of ``reservedLocales``. The value may vary between devices according to storage space.
      */
-    public static var allocatedLocales: [Locale] { get async }
+    public static var maximumReservedLocales: Int { get }
 
     /**
-    Adds the locale to `allocatedLocales`. Throws if the number of locales would exceed `maximumAllocatedLocales`.
-    Returns false if the locale is already in the set.
+     The app's current asset locale reservations.
+     
+     Before you can subscribe to assets supporting a module, you must reserve those assets' locales. Please note, the locales returned by this method may be variants of the locales provided to ``AssetInventory/reserve(locale:)``.
+     */
+    public static var reservedLocales: [Locale] { get async }
+
+    /**
+     Add an asset locale to the app's current reservations.
+     
+     If an asset that supports the input locale exists, adds that asset's locale to ``reservedLocales``.
+     
+     - Throws: An error if the number of locales would exceed ``maximumReservedLocales`` or if there is no asset that can support the locale.
+     
+     - Returns: `false` if the locale was already reserved.
      */
     @discardableResult
-    public static func allocate(locale: Locale) async throws -> Bool
+    public static func reserve(locale: Locale) async throws -> Bool
 
     /**
-    Removes the locale from `allocatedLocales`. Returns false if the locale is not in the set.
+     Removes an asset locale reservation.
+    
+     - Returns: `false` if the locale was not reserved.
      */
     @discardableResult
-    public static func deallocate(locale: Locale) async -> Bool
+    public static func release(reservedLocale: Locale) async -> Bool
 
     public enum Status : Comparable {
 
@@ -319,27 +339,22 @@ final public class AssetInventory {
     }
 
     /**
-    Returns the status for the list of modules. If the status differs between modules, it returns the lowest status.
+     Returns the status for the list of modules.
+     
+     If the status differs between modules, it returns the lowest status in order from `unsupported`, `supported`, `downloading`, `installed`.
      */
     public static func status(forModules modules: [any SpeechModule]) async -> AssetInventory.Status
 
     /**
-        Returns an ``AssetsInstallationRequest`` object, which is used to initiate the asset download and monitor the progress.
-    
-        If the current status is `.installed`, returns nil, indicating that nothing further needs to be done.
-    
-        If some of the assets require locales that aren't allocated, it automatically allocates those locales. If that
-        would exceed ``maximumAllocatedLocales``, then it throws an error.
-    
-        If the assets are not supported, the request object will throw an error.
-         */
-    public static func assetInstallationRequest(supporting modules: [any SpeechModule]) async throws -> AssetInstallationRequest?
-
-    /**
-    Removes the assets, except for the ones required by the specified modules.
-    It will also deallocate unused locales. Does not remove assets still in use by other apps.
+     Returns an installation request object, which is used to initiate the asset download and monitor its progress.
+     
+     If the current status is `.installed`, returns nil, indicating that nothing further needs to be done.
+     
+     If some of the assets require locales that aren't reserved, it automatically reserves those locales. If that would exceed ``maximumReservedLocales``, then it throws an error.
+     
+     - Throws: An error if the assets are not supported or no reservations are available.
      */
-    public static func uninstallAssets(exceptFor modules: [any SpeechModule]) async
+    public static func assetInstallationRequest(supporting modules: [any SpeechModule]) async throws -> AssetInstallationRequest?
 
     @objc deinit
 }
@@ -360,10 +375,22 @@ public protocol DataInsertable {
 }
 
 /**
- A module that transcribes speech to text. This transcriber is used by ``SFSpeechRecognizer`` and system dictation features.
+ A speech-to-text transcription module that's similar to system dictation features and compatible with older devices.
+ 
+ This transcriber uses the same speech-to-text machine learning models as system dictation features do, or as ``SFSpeechRecognizer`` does when it is configured for on-device operation. This transcriber does not support languages or locales that `SFSpeechRecognizer` only supports via network access.
  
  Several transcriber instances can share the same backing engine instances and models, so long as the transcribers are configured similarly in certain respects.
- */
+ 
+ ### Improve accuracy
+ 
+ You can bias recognition towards certain words, supply custom vocabulary, or adjust the transcriber's algorithm to improve the transcriber's accuracy.
+ 
+ To bias recognition towards certain words, create an ``AnalysisContext`` object and add those words to its ``AnalysisContext/contextualStrings`` property. Create a ``SpeechAnalyzer`` instance with that context object or set the analyzer's ``SpeechAnalyzer/context`` property.
+ 
+ To supply custom vocabulary, create an ``SFSpeechLanguageModel`` object and configure the transcriber with a corresponding ``ContentHint/customizedLanguage(modelConfiguration:)`` option.
+ 
+ To adjust the transcriber's algorithm, configure the transcriber with relevant ``ContentHint`` parameter. For example, you may use ``ContentHint/farField`` hint to improve accuracy of distant speech.
+*/
 @available(macOS 26.0, iOS 26.0, *)
 @available(tvOS, unavailable)
 @available(watchOS, unavailable)
@@ -412,7 +439,7 @@ final public class DictationTranscriber : LocaleDependentSpeechModule {
     
          This table lists the presets and their configurations:
          
-         Preset | ``DictationTranscriber/ContentHint/shortForm`` | ``DictationTranscriber/ReportingOption/volatileResults`` | ``DictationTranscriber/ReportingOption/frequentFinalization`` | ``DictationTranscriber/ResultAttributeOption/audioTimeRange`` | ``DictationTranscriber/TranscriptionOption/punctuation``
+         Preset | [shortForm](doc:ContentHint/shortForm) | [volatileResults](doc:ReportingOption/volatileResults) | [frequentFinalization](doc:ReportingOption/frequentFinalization) | [audioTimeRange](doc:ResultAttributeOption/audioTimeRange) | [punctuation](doc:TranscriptionOption/punctuation)
          --- | --- | --- | --- | --- | ---
          `phrase` | **Yes** | No | No | No | No
          `shortDictation` | **Yes** | No | No | No | **Yes**
@@ -423,16 +450,22 @@ final public class DictationTranscriber : LocaleDependentSpeechModule {
          */
     public struct Preset : Sendable, Equatable, Hashable {
 
+        /// Configuration for a short phrase without punctuation.
         public static let phrase: DictationTranscriber.Preset
 
+        /// Configuration for about a minute of audio.
         public static let shortDictation: DictationTranscriber.Preset
 
+        /// Configuration for immediate transcription of about a minute of live audio.
         public static let progressiveShortDictation: DictationTranscriber.Preset
 
+        /// Configuration for more than a minute of audio.
         public static let longDictation: DictationTranscriber.Preset
 
+        /// Configuration for immediate transcription of lengthy audio.
         public static let progressiveLongDictation: DictationTranscriber.Preset
 
+        /// Configure for lengthy audio, cross-referencing words to time-codes.
         public static let timeIndexedLongDictation: DictationTranscriber.Preset
 
         /**
@@ -583,7 +616,7 @@ final public class DictationTranscriber : LocaleDependentSpeechModule {
         /**
          Replaces certain words and phrases with a redacted form.
          
-         If included, the spoken phrase "fuck" would be transcribed as "\*\*\*\*".
+         If included, a phrase recognized as an expletive would be transcribed with asterisks.
          */
         case etiquetteReplacements
 
@@ -775,9 +808,28 @@ final public class DictationTranscriber : LocaleDependentSpeechModule {
     public static var supportedLocales: [Locale] { get async }
 
     /**
+     A locale from the module's supported locales equivalent to the given locale.
+     
+     Use this method to determine which of this module's supported locales is equivalent to an arbitrary locale such as `Locale.current`.
+     
+     If there is no exact equivalent, this method will return a near-equivalent: a supported (and by preference already-installed) locale that shares the same `Locale.LanguageCode` value but has a different `Locale.Region` value. This may result in an unexpected transcription, such as between "color" and "colour".
+     
+     - Tip: If you use this method, your application should ideally still provide a way for the user to correct the locale by selecting from the supported locales list.
+     
+     - Parameter locale: An arbitrary locale.
+     - Returns: A locale in the supported locales list, or `nil` if there is no equivalent locale in that list.
+     */
+    public static func supportedLocale(equivalentTo locale: Locale) async -> Locale?
+
+    /**
      The locales that the transcriber can transcribe into, considering only locales that are installed on the device.
      */
     public static var installedLocales: [Locale] { get async }
+
+    /**
+     The set of asset locales specified by the module's configuration.
+     */
+    final public var selectedLocales: [Locale] { get }
 
     /**
          The audio formats that this module is able to analyze, given its configuration.
@@ -827,9 +879,11 @@ final public class DictationTranscriber : LocaleDependentSpeechModule {
         public let resultsFinalizationTime: CMTime
 
         /**
-                 The most likely interpretation of the audio in this range. Always equal to the first element of ``alternatives``.
+                 The most likely interpretation of the audio in this range.
         
                  An empty string indicates that the audio contains no recognizable speech and, for results in the volatile range, that previous results for this range are revoked.
+                 
+                 This value is the first (most likely) element of ``alternatives``.
                  */
         public var text: AttributedString { get }
 
@@ -837,6 +891,8 @@ final public class DictationTranscriber : LocaleDependentSpeechModule {
          All the alternative interpretations of the audio in this range. The interpretations are in descending order of likelihood.
          
          The array will not be empty, but may contain an empty string, indicating an alternative where the audio has no transcription.
+         
+         To receive alternatives, set the ``DictationTranscriber/ReportingOption/alternativeTranscriptions`` option.
          */
         public let alternatives: [AttributedString]
 
@@ -912,7 +968,7 @@ final public class DictationTranscriber : LocaleDependentSpeechModule {
 }
 
 /**
-If a module conforms to this protocol, then its assets depend on the locale setting.
+ A module that requires locale-specific assets.
  */
 @available(macOS 26.0, iOS 26.0, *)
 @available(tvOS, unavailable)
@@ -920,13 +976,23 @@ If a module conforms to this protocol, then its assets depend on the locale sett
 public protocol LocaleDependentSpeechModule : SpeechModule {
 
     /**
-    A set of all possible locales that can be used by the module class.
-    */
+     The set of all possible asset locales that the module supports.
+     */
     static var supportedLocales: [Locale] { get async }
 
     /**
-    A set of locales that are used by the module.
-    */
+     A locale from the module's supported locales equivalent to the given locale.
+     
+     Use this method to determine which of this module's supported locales is equivalent to an arbitrary locale such as `Locale.current`. Use this method instead of `supportedLocales.contains(_:)`; two locales may be equivalent but not equal, and `contains(_:)` uses equality rather than equivalence.
+     
+     - Parameter locale: An arbitrary locale.
+     - Returns: A locale in the supported locales list, or `nil` if there is no equivalent locale in that list.
+     */
+    static func supportedLocale(equivalentTo locale: Locale) async -> Locale?
+
+    /**
+     The set of asset locales specified by the module's configuration.
+     */
     var selectedLocales: [Locale] { get }
 }
 
@@ -1134,7 +1200,7 @@ public class SFCustomLanguageModelData : Hashable, Codable {
 
     /// A custom parameter attribute that constructs custom language model data from closures.
     ///
-    /// The `CustomLanguageModelData` class provides two methods for accumulating data: manually
+    /// The `SFCustomLanguageModelData` class provides two methods for accumulating data: manually
     /// constructing `PhraseCount` and `CustomPronunciation` objects and providing them using the `insert`
     /// methods defined below, or by using the result builder DSL upon initialization. This type supports the latter.
     @resultBuilder public struct DataInsertableBuilder {
@@ -1404,7 +1470,7 @@ public class SFCustomLanguageModelData : Hashable, Codable {
     }
 
     /// A type that can be used to construct custom language model data by specifying a set of template classes and using the
-    /// resuilt builder DSL to specify templates.
+    /// result builder DSL to specify templates.
     public struct PhraseCountsFromTemplates : DataInsertable {
 
         public init(classes: [String : [String]], @SFCustomLanguageModelData.TemplateInsertableBuilder builder: () -> any TemplateInsertable)
@@ -1434,7 +1500,7 @@ public class SFCustomLanguageModelData : Hashable, Codable {
 
     /// Constructs an empty data container.
     ///
-    /// The `CustomLanguageModelData` class accumulates language model training
+    /// The `SFCustomLanguageModelData` class accumulates language model training
     /// and custom vocabulary data, both associated with a specified locale. This initializer
     /// creates an object that initially holds no data.
     ///
@@ -1446,7 +1512,7 @@ public class SFCustomLanguageModelData : Hashable, Codable {
 
     /// Constructs a data container using a builder
     ///
-    /// The `CustomLanguageModelData` class accumulates language model training
+    /// The `SFCustomLanguageModelData` class accumulates language model training
     /// and custom vocabulary data, both associated with a specified locale. This initializer
     /// creates an object that is initially populated using the provided builder.
     ///
@@ -1558,27 +1624,147 @@ public class SFCustomLanguageModelData : Hashable, Codable {
 /**
  Analyzes spoken audio content in various ways and manages the analysis session.
  
- Analysis is asynchronous. Input, output, and session control are decoupled and may (and typically will) occur over several different tasks created by you or by the session.
+ The Speech framework provides several modules that can be added to an analyzer to provide specific types of analysis and transcription. Many use cases only need a ``SpeechTranscriber`` module, which performs speech-to-text transcriptions.
+
+ The `SpeechAnalyzer` class is responsible for:
+ - Holding associated modules
+ - Accepting audio speech input
+ - Controlling the overall analysis
+
+ Each module is responsible for:
+ - Providing guidance on acceptable input
+ - Providing its analysis or transcription output
+
+ Analysis is asynchronous. Input, output, and session control are decoupled and typically occur over several different tasks created by you or by the session. In particular, where an Objective-C API might use a delegate to provide results to you, the Swift API's modules provides their results via an `AsyncSequence`. Similarly, you provide speech input to this API via an `AsyncSequence` you create and populate.
  
  The analyzer can only analyze one input sequence at a time.
  
- ### Autonomous analysis
+ ### Perform analysis
+
+ To perform analysis on audio files and streams, follow these general steps:
+
+ 1. Create and configure the necessary modules.
+ 2. Ensure the relevant assets are installed or already present. See ``AssetInventory``.
+ 3. Create an input sequence you can use to provide the spoken audio.
+ 4. Create and configure the analyzer with the modules and input sequence.
+ 5. Supply audio.
+ 6. Start analysis.
+ 7. Act on results.
+ 8. Finish analysis when desired.
+
+ This example shows how you could perform an analysis that transcribes audio using the `SpeechTranscriber` module:
+
+ ```swift
+ import Speech
+
+ // Step 1: Modules
+ guard let locale = SpeechTranscriber.supportedLocale(equivalentTo: Locale.current) else {
+     /* Note unsupported language */
+ }
+ let transcriber = SpeechTranscriber(locale: locale, preset: .offlineTranscription)
+
+ // Step 2: Assets
+ if let installationRequest = try await AssetInventory.assetInstallationRequest(supporting: [transcriber]) {
+     try await installationRequest.downloadAndInstall()
+ }
  
- You can and usually should perform analysis using the ``analyzeSequence(_:)`` or ``analyzeSequence(from:)`` methods; those methods work well with Swift structured concurrency techniques.
+ // Step 3: Input sequence
+ let (inputSequence, inputBuilder) = AsyncStream.makeStream(of: AnalyzerInput.self)
+
+ // Step 4: Analyzer
+ let audioFormat = await SpeechAnalyzer.bestAvailableAudioFormat(compatibleWith: [transcriber])
+ let analyzer = SpeechAnalyzer(modules: [transcriber])
+
+ // Step 5: Supply audio
+ Task {
+     while /* audio remains */ {
+         /* Get some audio */
+         /* Convert to audioFormat */
+         let pcmBuffer = /* an AVAudioPCMBuffer containing some converted audio */
+         let input = AnalyzerInput(buffer: pcmBuffer)
+         inputBuilder.yield(input)
+     }
+     inputBuilder.finish()
+ }
+
+ // Step 7: Act on results
+ Task {
+     do {
+         for try await result in transcriber.results {
+             let bestTranscription = result.text // an AttributedString
+             let plainTextBestTranscription = String(bestTranscription.characters) // a String
+             print(plainTextBestTranscription)
+         }
+     } catch {
+         /* Handle error */
+     }
+ }
+
+ // Step 6: Perform analysis
+ let lastSampleTime = try await analyzer.analyzeSequence(inputSequence)
+
+ // Step 8: Finish analysis
+ if let lastSampleTime {
+     try await analyzer.finalizeAndFinish(through: lastSampleTime)
+ } else {
+     try analyzer.cancelAndFinishNow()
+ }
+ ```
+
+ ### Analyze audio files
  
- However, you may prefer that the analyzer proceed independently of those methods and perform its analysis autonomously as audio input becomes available in a task managed by the analyzer itself.
+ To analyze one or more audio files represented by an `AVAudioFile` object, call methods such as ``analyzeSequence(from:)`` or ``start(inputAudioFile:finishAfterFile:)``, or create the analyzer with one of the initializers that has a file parameter. These methods automatically convert the file to a supported audio format and process the file in its entirety.
  
- To use this capability, create the analyzer with one of the initializers that has an input sequence or file parameter, or call ``start(inputSequence:)`` or ``start(inputAudioFile:finishAfterFile:)``. To end the analysis when the input ends, call ``finalizeAndFinishThroughEndOfInput()``. To end the analysis of that input and start analysis of different input, call one of the `start` methods.
+ To end the analysis session after one file, pass `true` for the `finishAfterFile` parameter or call one of the `finish` methods.
  
- ### Analyzer states
+ Otherwise, by default, the analyzer won't terminate its result streams and will wait for additional audio files or buffers. The analysis session doesn't reset the audio timeline after each file; the next audio is assumed to come immediately after the completed file.
  
- Several methods cause the analysis session to _finish_. When an analysis session is finished, the analyzer will not take any additional input from the input sequence and will not accept a different input sequence or accept module changes. Most methods will do nothing. Modules' results streams terminate; a module will not publish additional results to its result stream, but the application can continue to iterate over already-published results.
+ ### Analyze audio buffers
  
- You may terminate the input sequence with a method such as `AsyncStream.Continuation.finish()`. This "finish" does not cause the analysis session to become finished, as you may continue the session with a different input sequence. Therefore, do not expect the analysis to end when the input sequence does. You can call one of this class's `finish` methods to achieve that expectation.
+ To analyze audio buffers directly, convert them to a supported audio format, either on the fly or in advance. You can use ``bestAvailableAudioFormat(compatibleWith:)-([SpeechModule])`` or individual modules' ``SpeechModule/availableCompatibleAudioFormats`` methods to select a format to convert to.
  
- ### Responding to errors
+ Create an ``AnalyzerInput`` object for each audio buffer and add the object to an input sequence you create. Supply that input sequence to ``analyzeSequence(_:)``, ``start(inputSequence:)``, or a similar parameter of the analyzer's initializer.
  
- When the analyzer or its modules' result streams throw an error, the analysis session becomes _finished_ as described above and the same error (or a `CancellationError`) is thrown from all waiting methods and result streams.
+ To skip past part of an audio stream, omit the buffers you want to skip from the input sequence. When you resume analysis with a later buffer, you can ensure the time-code of each module’s result accounts for the skipped audio. To do this, pass the later buffer’s time-code within the audio stream as the `bufferStartTime` parameter of the later `AnalyzerInput` object.
+ 
+ ### Analyze autonomously
+ 
+ You can and usually should perform analysis using the ``analyzeSequence(_:)`` or ``analyzeSequence(from:)`` methods; those methods work well with Swift structured concurrency techniques. However, you may prefer that the analyzer proceed independently and perform its analysis autonomously as audio input becomes available in a task managed by the analyzer itself.
+ 
+ To use this capability, create the analyzer with one of the initializers that has an input sequence or file parameter, or call ``start(inputSequence:)`` or ``start(inputAudioFile:finishAfterFile:)``. To end the analysis when the input ends, call ``finalizeAndFinishThroughEndOfInput()``. To end the analysis of that input and start analysis of different input, call one of the `start` methods again.
+ 
+ ### Control processing and timing of results
+ 
+ Modules deliver results periodically, but you can manually synchronize their processing and delivery to outside cues.
+ 
+ To deliver a result for a particular time-code, call ``finalize(through:)``. To cancel processing of results that are no longer of interest, call ``cancelAnalysis(before:)``.
+
+ ### Improve responsiveness
+ 
+ By default, the analyzer and modules load the system resources that they require lazily, and unload those resources when they're deallocated.
+ 
+ To proactively load system resources and "preheat" the analyzer, call ``prepareToAnalyze(in:)`` after setting its modules. This may improve how quickly the modules return their first results.
+ 
+ To delay or prevent unloading an analyzer's resources — caching them for later use by a different analyzer instance — you can select a ``SpeechAnalyzer/Options/ModelRetention`` option and create the analyzer with an appropriate ``SpeechAnalyzer/Options`` object.
+ 
+ To set the priority of analysis work, create the analyzer with a ``SpeechAnalyzer/Options`` object given a `priority` value.
+ 
+ Specific modules may also offer options that improve responsiveness.
+ 
+ ### Finish analysis
+ 
+ To end an analysis session, you must use one of the analyzer's `finish` methods or parameters, or deallocate the analyzer.
+ 
+ When the analysis session transitions to the _finished_ state:
+ - The analyzer won't take additional input from the input sequence
+ - Most methods won't do anything; in particular, the analyzer won't accept different input sequences or modules
+ - Module result streams terminate and modules won't publish additional results, though the app can continue to iterate over already-published results
+ 
+ > Note: While you can terminate the input sequence you created with a method such as `AsyncStream.Continuation.finish()`, finishing the input sequence does _not_ cause the analysis session to become finished, and you can continue the session with a different input sequence.
+ 
+ ### Respond to errors
+ 
+ When the analyzer or its modules' result streams throw an error, the analysis session becomes finished as described above, and the same error (or a `CancellationError`) is thrown from all waiting methods and result streams.
  */
 @available(macOS 26.0, iOS 26.0, *)
 @available(tvOS, unavailable)
@@ -2006,7 +2192,7 @@ extension SpeechAnalyzer {
 
  > Important: This module only functions in conjunction with a ``SpeechTranscriber`` or ``DictationTranscriber`` module.
 
- > Note: For certain use cases, such as those that include a lot of silence, it might be tempting to always enable VAD gating. In theory, this would preserve power by only running ASR's speech transcription models when it is highly likely for there to be speech to transcribe. However, this introduces the potential for degraded accuracy if the VAD model is too aggressive and drops audio that does contain speech. This is an area of future exploration with ongoing experiments.
+ > Note: For certain use cases, such as those with a lot of silence, it might be tempting to always enable voice activated transcription. But if the model drops audio that does contain speech, there could be a tradeoff between the power being saved by always having VAD enabled and potentially lower accuracy transcriptions. You can set the aggressiveness of the VAD model with ``SpeechDetector/SensitivityLevel``. While ``SpeechDetector/SensitivityLevel/medium`` is recommended for most use cases, the value of these tradeoffs will be context-specific.
  */
 @available(macOS 26.0, iOS 26.0, *)
 @available(tvOS, unavailable)
@@ -2017,7 +2203,7 @@ final public class SpeechDetector {
      Creates a speech detector.
      - Parameters:
         - detectionOptions: Instance of ``SpeechDetector/DetectionOptions`` that allows clients to customize the behavior of ``SpeechDetector`` beyond its default settings.
-        - reportResults: Enables the ``SpeechDetector/results`` sequence to report the VAD model's results (and any relevant errors) back to clients. The default behavior is that ``SpeechDetector`` does not report results or errors back to the client.
+        - reportResults: Enables the ``SpeechDetector/results`` sequence to report the VAD model's results (and any relevant errors) back to clients. The default behavior is that ``SpeechDetector`` does not report results or errors back to the client and merely enables VAD as a power optimization.
      */
     public init(detectionOptions: SpeechDetector.DetectionOptions, reportResults: Bool)
 
@@ -2150,7 +2336,7 @@ final public class SpeechDetector {
     final public var results: some Sendable & AsyncSequence<SpeechDetector.Result, any Error> { get }
 
     /**
-     A result from the speech detector.
+     A result from the speech detector. Please note, these must be enabled via ``SpeechDetector/init(detectionOptions:reportResults:)`` and currently only support error handling from the VAD model.
      */
     public struct Result : SpeechModuleResult, Sendable, CustomStringConvertible {
 
@@ -2265,6 +2451,9 @@ public protocol SpeechModule : AnyObject, Sendable {
     var availableCompatibleAudioFormats: [AVAudioFormat] { get async }
 }
 
+/**
+ Protocol that all module results conform to.
+ */
 @available(macOS 26.0, iOS 26.0, *)
 @available(tvOS, unavailable)
 @available(watchOS, unavailable)
@@ -2308,9 +2497,13 @@ extension SpeechModuleResult {
 }
 
 /**
- A module that transcribes speech to text. This transcriber is appropriate for normal conversation and general purposes.
+ A speech-to-text transcription module that's appropriate for normal conversation and general purposes.
  
  Several transcriber instances can share the same backing engine instances and models, so long as the transcribers are configured similarly in certain respects.
+ 
+ ### Check device support
+ 
+ Use the ``isAvailable`` or ``supportedLocales`` properties to see if the current device supports the speech-to-text models used by `SpeechTranscriber`. If it does not, consider disabling the feature or using ``DictationTranscriber`` instead.
  */
 @available(macOS 26.0, iOS 26.0, *)
 @available(tvOS, unavailable)
@@ -2344,10 +2537,10 @@ final public class SpeechTranscriber : LocaleDependentSpeechModule {
          
          It is not necessary to use a preset at all; you can also use the transcriber's designated initializer to completely customize its configuration.
     
-         This example configures a transcriber according to the `timeIndexedOfflineTranscriptionWithAlternatives` preset, but adds etiquette filtering and removes alternative transcriptions:
+         This example configures a transcriber according to the `timeIndexedTranscriptionWithAlternatives` preset, but adds etiquette filtering and removes alternative transcriptions:
          
          ```swift
-         let preset = SpeechTranscriber.Preset.timeIndexedOfflineTranscriptionWithAlternatives
+         let preset = SpeechTranscriber.Preset.timeIndexedTranscriptionWithAlternatives
          let transcriber = SpeechTranscriber(
              locale: Locale.current,
              transcriptionOptions: preset.transcriptionOptions.union([.etiquetteReplacements])
@@ -2358,25 +2551,30 @@ final public class SpeechTranscriber : LocaleDependentSpeechModule {
          
          This table lists the presets and their configurations:
          
-         Preset | ``SpeechTranscriber/ReportingOption/volatileResults`` | ``SpeechTranscriber/ReportingOption/frequentFinalization`` | ``SpeechTranscriber/ReportingOption/alternativeTranscriptions`` | ``SpeechTranscriber/ResultAttributeOption/audioTimeRange``
+         Preset | [volatileResults](doc:ReportingOption/volatileResults) | [fastResults](doc:ReportingOption/fastResults) | [alternativeTranscriptions](doc:ReportingOption/alternativeTranscriptions) | [audioTimeRange](doc:ResultAttributeOption/audioTimeRange)
          --- | --- | --- | --- | ---
-         `progressiveLiveTranscription` | **Yes** | **Yes** | No | No
-         `offlineTranscription` | No | No | No | No
-         `offlineTranscriptionWithAlternatives` | No | No | **Yes** | No
-         `timeIndexedOfflineTranscriptionWithAlternatives` | No | No | **Yes** | **Yes**
-         `timeIndexedLiveCaptioning` | No | **Yes** | No | **Yes**
+         `transcription` | No | No | No | No
+         `transcriptionWithAlternatives` | No | No | **Yes** | No
+         `timeIndexedTranscriptionWithAlternatives` | No | No | **Yes** | **Yes**
+         `progressiveTranscription` | **Yes** | **Yes** | No | No
+         `timeIndexedProgressiveTranscription` | **Yes** | **Yes** | No | **Yes**
          */
     public struct Preset : Sendable, Equatable, Hashable {
 
-        public static let progressiveLiveTranscription: SpeechTranscriber.Preset
+        /// Configuration for basic, accurate transcription.
+        public static let transcription: SpeechTranscriber.Preset
 
-        public static let offlineTranscription: SpeechTranscriber.Preset
+        /// Configuration for transcription with editing suggestions.
+        public static let transcriptionWithAlternatives: SpeechTranscriber.Preset
 
-        public static let offlineTranscriptionWithAlternatives: SpeechTranscriber.Preset
+        /// Configuration for transcription with editing suggestions, cross-referenced to source audio.
+        public static let timeIndexedTranscriptionWithAlternatives: SpeechTranscriber.Preset
 
-        public static let timeIndexedOfflineTranscriptionWithAlternatives: SpeechTranscriber.Preset
+        /// Configuration for immediate transcription of live audio.
+        public static let progressiveTranscription: SpeechTranscriber.Preset
 
-        public static let timeIndexedLiveCaptioning: SpeechTranscriber.Preset
+        /// Configuration for immediate transcription of live audio, cross-referenced to stream time-codes.
+        public static let timeIndexedProgressiveTranscription: SpeechTranscriber.Preset
 
         /**
          Creates a preset.
@@ -2443,7 +2641,7 @@ final public class SpeechTranscriber : LocaleDependentSpeechModule {
         /**
          Replaces certain words and phrases with a redacted form.
          
-         If included, the spoken phrase "fuck" would be transcribed as "\*\*\*\*".
+         If included, a phrase recognized as an expletive would be transcribed with asterisks.
          */
         case etiquetteReplacements
 
@@ -2512,9 +2710,11 @@ final public class SpeechTranscriber : LocaleDependentSpeechModule {
         case alternativeTranscriptions
 
         /**
-         Biases the transcriber towards responsiveness, resulting in more frequent but also less accurate finalized results.
+         Biases the transcriber towards responsiveness, yielding faster but also less accurate results.
+         
+         If included, the transcriber reduces per-result latency by examining less previous context, using a smaller "window" or "chunk size" than its default.
          */
-        case frequentFinalization
+        case fastResults
 
         /// Returns a Boolean value indicating whether two values are equal.
         ///
@@ -2630,14 +2830,40 @@ final public class SpeechTranscriber : LocaleDependentSpeechModule {
     }
 
     /**
+     A Boolean value that indicates whether this module is available given the device's hardware and capabilities.
+     */
+    public static var isAvailable: Bool { get }
+
+    /**
      The locales that the transcriber can transcribe into, including locales that may not be installed but are downloadable.
+     
+     This array is empty if the device does not support the transcriber.
      */
     public static var supportedLocales: [Locale] { get async }
+
+    /**
+     A locale from the module's supported locales equivalent to the given locale.
+     
+     Use this method to determine which of this module's supported locales is equivalent to an arbitrary locale such as `Locale.current`.
+     
+     If there is no exact equivalent, this method will return a near-equivalent: a supported (and by preference already-installed) locale that shares the same `Locale.LanguageCode` value but has a different `Locale.Region` value. This may result in an unexpected transcription, such as between "color" and "colour".
+     
+     - Tip: If you use this method, your application should ideally still provide a way for the user to correct the locale by selecting from the supported locales list.
+     
+     - Parameter locale: An arbitrary locale.
+     - Returns: A locale in the supported locales list, or `nil` if there is no equivalent locale in that list.
+     */
+    public static func supportedLocale(equivalentTo locale: Locale) async -> Locale?
 
     /**
      The locales that the transcriber can transcribe into, considering only locales that are installed on the device.
      */
     public static var installedLocales: [Locale] { get async }
+
+    /**
+     The set of asset locales specified by the module's configuration.
+     */
+    final public var selectedLocales: [Locale] { get }
 
     /**
          The audio formats that this module is able to analyze, given its configuration.
@@ -2687,9 +2913,11 @@ final public class SpeechTranscriber : LocaleDependentSpeechModule {
         public let resultsFinalizationTime: CMTime
 
         /**
-                 The most likely interpretation of the audio in this range. Always equal to the first element of ``alternatives``.
+                 The most likely interpretation of the audio in this range.
         
                  An empty string indicates that the audio contains no recognizable speech and, for results in the volatile range, that previous results for this range are revoked.
+                 
+                 This value is the first (most likely) element of ``alternatives``.
                  */
         public var text: AttributedString { get }
 
@@ -2697,6 +2925,8 @@ final public class SpeechTranscriber : LocaleDependentSpeechModule {
          All the alternative interpretations of the audio in this range. The interpretations are in descending order of likelihood.
          
          The array will not be empty, but may contain an empty string, indicating an alternative where the audio has no transcription.
+         
+         To receive alternatives, set the ``SpeechTranscriber/ReportingOption/alternativeTranscriptions`` option.
          */
         public let alternatives: [AttributedString]
 
@@ -2799,7 +3029,11 @@ extension AttributeScopes {
             public typealias Value = Double
         }
 
-        /// The time range in the source audio corresponding to the associated transcription text.
+        /**
+         The time range in the source audio corresponding to the associated transcription text.
+         
+         > Tip: Use ``Foundation/AttributedString/rangeOfAudioTimeRangeAttributes(intersecting:)`` to locate text corresponding to a source audio time range.
+         */
         public struct TimeRangeAttribute : CodableAttributedStringKey {
 
             public static let name: String
@@ -2838,7 +3072,7 @@ extension AttributedString {
      
      The method compares the given time range against the ``AttributeScopes/SpeechAttributes/TimeRangeAttribute`` attributes of the receiver.
      
-     You can use this method to help update an attributed string tracking the volatile or finalized results of a ``Transcriber`` module.
+     You can use this method to help update an attributed string that tracks the volatile or finalized results of a ``SpeechTranscriber`` or ``DictationTranscriber`` module.
      */
     @available(macOS 26.0, iOS 26.0, *)
     @available(tvOS, unavailable)
@@ -2846,7 +3080,7 @@ extension AttributedString {
     public func rangeOfAudioTimeRangeAttributes(intersecting timeRange: CMTimeRange) -> Range<AttributedString.Index>?
 }
 
-@available(macOS 10.15, iOS 13.0, *)
+@available(macOS 14.0, iOS 17.0, *)
 extension SFAcousticFeature {
 
     /**
@@ -2880,4 +3114,10 @@ extension SFSpeechError.Code {
 
     /// The module's result task failed.
     public static var moduleOutputFailed: SFSpeechError.Code { get }
+
+    /// The asset locale being requested is not supported by SpeechFramework.
+    public static var cannotAllocateUnsupportedLocale: SFSpeechError.Code { get }
+
+    /// There are not sufficient resources available on-device to process the incoming transcription request.
+    public static var insufficientResources: SFSpeechError.Code { get }
 }
