@@ -5,19 +5,7 @@
 ![License](https://img.shields.io/badge/License-MIT-green.svg)
 [![GitHub release](https://img.shields.io/github/release/rryam/AuralKit.svg)](https://github.com/rryam/AuralKit/releases)
 
-A simple, lightweight Swift wrapper for speech-to-text transcription using Apple's Speech APIs.
-
-## Features
-
-- **Simple async/await API** for speech transcription
-- **AttributedString output** with audio timing metadata
-- **Multi-language support** with automatic model downloading
-- **Native Apple types** - no custom wrappers
-- **Privacy-focused** - on-device processing
-
-## Overview
-
-AuralKit provides a clean, minimal API for adding speech transcription to your app using iOS 26's `SpeechTranscriber` and `SpeechAnalyzer` APIs.
+AuralKit is a simple, lightweight Swift wrapper for speech-to-text transcription using iOS 26's `SpeechTranscriber` and `SpeechAnalyzer` APIs while handling microphone capture, buffer conversion, model downloads, and cancellation on your behalf.
 
 ## Quick Start
 
@@ -27,9 +15,21 @@ import AuralKit
 // Create an instance with your preferred locale
 let auralKit = AuralKit(locale: .current)
 
-// Start transcribing
-for try await text in auralKit.startTranscribing() {
-    print(text)  // AttributedString with timing metadata
+let streamTask = Task {
+    do {
+        // Start the async stream
+        for try await text in auralKit.startTranscribing() {
+            print(text)  // AttributedString with timing metadata
+        }
+    } catch {
+        print("Transcription failed: \(error)")
+    }
+}
+
+// Later, when you want to stop capturing audio
+Task {
+    await auralKit.stopTranscribing()
+    await streamTask.value
 }
 ```
 
@@ -46,7 +46,7 @@ Or add it to your `Package.swift`:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/rryam/AuralKit", from: "0.1.0")
+    .package(url: "https://github.com/rryam/AuralKit", from: "1.0.0")
 ]
 ```
 
@@ -63,22 +63,31 @@ let auralKit = AuralKit()
 // Or specify a locale
 let auralKit = AuralKit(locale: Locale(identifier: "es-ES"))
 
-// Start transcribing
-for try await attributedText in auralKit.startTranscribing() {
-    // Access the plain text
-    let plainText = String(attributedText.characters)
-    print(plainText)
-    
-    // Access timing metadata for each word/phrase
-    for run in attributedText.runs {
-        if let timeRange = run.audioTimeRange {
-            print("Text: \(run.text), Start: \(timeRange.start.seconds)s")
+let streamTask = Task {
+    do {
+        // Start transcribing
+        for try await attributedText in auralKit.startTranscribing() {
+            // Access the plain text
+            let plainText = String(attributedText.characters)
+            print(plainText)
+
+            // Access timing metadata for each word/phrase
+            for run in attributedText.runs {
+                if let timeRange = run.audioTimeRange {
+                    print("Text: \(run.text), Start: \(timeRange.start.seconds)s")
+                }
+            }
         }
+    } catch {
+        print("Transcription failed: \(error.localizedDescription)")
     }
 }
 
 // Stop when needed
-await auralKit.stopTranscribing()
+Task {
+    await auralKit.stopTranscribing()
+    await streamTask.value
+}
 ```
 
 ## Demo App
@@ -116,7 +125,7 @@ struct ContentView: View {
                 .frame(maxWidth: .infinity, minHeight: 100)
                 .background(Color.gray.opacity(0.1))
                 .cornerRadius(10)
-            
+
             Button(action: toggleTranscription) {
                 Label(isTranscribing ? "Stop" : "Start", 
                       systemImage: isTranscribing ? "stop.circle.fill" : "mic.circle.fill")
@@ -150,6 +159,44 @@ struct ContentView: View {
         }
     }
 }
+
+```
+
+### Monitoring Model Downloads
+
+When a locale has not been installed yet, AuralKit automatically downloads the appropriate speech model. You can observe download progress through the `modelDownloadProgress` property:
+
+```swift
+let kit = AuralKit(locale: Locale(identifier: "ja-JP"))
+
+if let progress = kit.modelDownloadProgress {
+    print("Downloading model: \(progress.fractionCompleted * 100)%")
+}
+```
+
+You can use this progress to a `ProgressView` for visual feedback.
+
+### Error Handling
+
+AuralKit surfaces detailed `AuralKitError` values so you can present actionable messaging:
+
+```swift
+do {
+    for try await segment in kit.startTranscribing() {
+        // Use the transcription
+    }
+} catch let error as AuralKitError {
+    switch error {
+    case .modelDownloadNoInternet:
+        // Prompt the user to reconnect before retrying
+    case .modelDownloadFailed(let underlying):
+        // Inspect `underlying` for more detail
+    default:
+        break
+    }
+} catch {
+    // Handle unexpected errors
+}
 ```
 
 ## API Reference
@@ -162,10 +209,13 @@ public final class AuralKit: @unchecked Sendable {
     // Initialize with a locale
     public init(locale: Locale = .current)
 
-    // Start transcribing
+    /// Current speech model download progress, if any
+    public var modelDownloadProgress: Progress? { get }
+
+    /// Start transcribing
     public func startTranscribing() -> AsyncThrowingStream<AttributedString, Error>
 
-    // Stop transcribing
+    /// Stop transcribing
     public func stopTranscribing() async
 }
 ```
@@ -190,20 +240,6 @@ for try await attributedText in auralKit.startTranscribing() {
 }
 ```
 
-### Supported Locales
-
-AuralKit supports all locales available through `SpeechTranscriber.supportedLocales`. Common examples:
-
-- `Locale(identifier: "en-US")` - English (United States)
-- `Locale(identifier: "es-ES")` - Spanish (Spain)
-- `Locale(identifier: "fr-FR")` - French (France)
-- `Locale(identifier: "de-DE")` - German (Germany)
-- `Locale(identifier: "it-IT")` - Italian (Italy)
-- `Locale(identifier: "pt-BR")` - Portuguese (Brazil)
-- `Locale(identifier: "zh-CN")` - Chinese (Simplified)
-- `Locale(identifier: "ja-JP")` - Japanese (Japan)
-- `Locale(identifier: "ko-KR")` - Korean (Korea)
-
 ## Permissions
 
 Add to your `Info.plist`:
@@ -221,42 +257,6 @@ Add to your `Info.plist`:
 - iOS 26.0+ / macOS 26.0+
 - Swift 6.2+
 - Microphone and speech recognition permissions
-
-## Error Handling
-
-AuralKit provides detailed, localized error messages for all error conditions:
-
-```swift
-do {
-    for try await text in auralKit.startTranscribing() {
-        print(text)
-    }
-} catch {
-    // AuralKitError provides localized descriptions, failure reasons, and recovery suggestions
-    if let auralKitError = error as? AuralKitError {
-        print("Error: \(auralKitError.localizedDescription)")
-        if let failureReason = auralKitError.failureReason {
-            print("Reason: \(failureReason)")
-        }
-        if let recoverySuggestion = auralKitError.recoverySuggestion {
-            print("Suggestion: \(recoverySuggestion)")
-        }
-    } else {
-        print("Unexpected error: \(error)")
-    }
-}
-```
-
-### Error Types
-
-- `microphonePermissionDenied` - Microphone access not granted
-- `speechRecognitionPermissionDenied` - Speech recognition access not granted
-- `unsupportedLocale(Locale)` - Selected language not supported
-- `recognitionStreamSetupFailed` - Failed to initialize speech recognition
-- `invalidAudioDataType` - Audio format incompatible
-- `bufferConverterCreationFailed` - Audio processing setup failed
-- `conversionBufferCreationFailed` - Audio buffer allocation failed
-- `audioConversionFailed(NSError?)` - Audio format conversion failed
 
 ## Contributing
 

@@ -3,6 +3,28 @@ import Foundation
 // MARK: - AuralKit
 
 @available(iOS 26.0, macOS 26.0, *)
+/// Wrapper for streaming live speech-to-text using the SpeechTranscriber/SpeechAnalyzer stack.
+///
+/// `AuralKit` hides the details of microphone capture, buffer conversion, model installation,
+/// and result streaming. The API is designed around Swift Concurrency and integrates cleanly with
+/// `for try await` loops.
+///
+/// ```swift
+/// let kit = AuralKit(locale: .current)
+///
+/// Task {
+///     do {
+///         for try await transcript in kit.startTranscribing() {
+///             print(String(transcript.characters))
+///         }
+///     } catch {
+///         // Handle `AuralKitError`
+///     }
+/// }
+/// ```
+///
+/// Call `stopTranscribing()` to end capture and unwind the stream. The same instance may be reused
+/// for subsequent transcription sessions.
 public final class AuralKit: @unchecked Sendable {
 
     // MARK: - Properties
@@ -20,13 +42,36 @@ public final class AuralKit: @unchecked Sendable {
 
     // MARK: - Init
 
+    /// Create a new transcriber instance.
+    ///
+    /// - Parameter locale: Desired transcription locale. Defaults to the device locale and is
+    ///   validated against `SpeechTranscriber.supportedLocales`. If the locale is not yet installed,
+    ///   `AuralKit` automatically downloads the corresponding on-device model.
     public init(locale: Locale = .current) {
         self.locale = locale
     }
 
+    /// Progress of the ongoing model download, if any.
+    ///
+    /// Poll or observe this property to drive UI such as `ProgressView`. The value is non-nil only
+    /// while a locale model is downloading.
+    public var modelDownloadProgress: Progress? {
+        transcriberManager.downloadProgress
+    }
+
     // MARK: - Public API
 
-    /// Start transcribing
+    /// Start streaming live microphone audio to the speech analyzer.
+    ///
+    /// The returned `AsyncThrowingStream` yields `AttributedString` chunks containing both text and
+    /// timing metadata (`.audioTimeRange`). Consume the stream with `for try await` and call
+    /// `stopTranscribing()` to finish early.
+    ///
+    /// ```swift
+    /// for try await segment in kit.startTranscribing() {
+    ///     // `segment` is an `AttributedString`
+    /// }
+    /// ```
     public func startTranscribing() -> AsyncThrowingStream<AttributedString, Error> {
         let (stream, continuation) = AsyncThrowingStream<AttributedString, Error>.makeStream()
 
@@ -49,7 +94,10 @@ public final class AuralKit: @unchecked Sendable {
         return stream
     }
 
-    /// Stop transcribing
+    /// Stop capturing audio and finish the current transcription stream.
+    ///
+    /// Safe to call even if `startTranscribing()` has not been invoked or the stream has already
+    /// completed; the method simply waits for cleanup and returns.
     public func stopTranscribing() async {
         await cleanup(cancelRecognizer: true)
         await finishStream(error: nil)
