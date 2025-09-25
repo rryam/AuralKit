@@ -4,7 +4,7 @@ import AVFoundation
 
 // MARK: - Speech Transcriber Manager
 
-final class SpeechTranscriberManager {
+final class SpeechTranscriberManager: @unchecked Sendable {
 
     private var transcriber: SpeechTranscriber?
     private var analyzer: SpeechAnalyzer?
@@ -13,6 +13,10 @@ final class SpeechTranscriberManager {
     private var analyzerFormat: AVAudioFormat?
 
     private let modelManager = ModelManager()
+
+    var downloadProgress: Progress? {
+        modelManager.currentDownloadProgress
+    }
 
     /// Set up the transcriber with the given locale
     func setUpTranscriber(locale: Locale) async throws -> SpeechTranscriber {
@@ -27,11 +31,7 @@ final class SpeechTranscriberManager {
 
         analyzer = SpeechAnalyzer(modules: [transcriber])
 
-        do {
-            try await modelManager.ensureModel(transcriber: transcriber, locale: locale)
-        } catch {
-            throw error
-        }
+        try await modelManager.ensureModel(transcriber: transcriber, locale: locale)
 
         analyzerFormat = await SpeechAnalyzer.bestAvailableAudioFormat(compatibleWith: [transcriber])
         (inputSequence, inputBuilder) = AsyncStream<AnalyzerInput>.makeStream()
@@ -70,6 +70,8 @@ final class SpeechTranscriberManager {
     func stop() async {
         inputBuilder?.finish()
         try? await analyzer?.finalizeAndFinishThroughEndOfInput()
+
+        await modelManager.releaseLocales()
 
         inputBuilder = nil
         inputSequence = nil

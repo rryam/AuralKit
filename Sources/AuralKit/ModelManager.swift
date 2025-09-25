@@ -5,6 +5,8 @@ import Speech
 
 class ModelManager: @unchecked Sendable {
 
+    private(set) var currentDownloadProgress: Progress?
+
     /// Ensure the speech model for the given locale is available
     func ensureModel(transcriber: SpeechTranscriber, locale: Locale) async throws {
         guard await supported(locale: locale) else {
@@ -12,6 +14,7 @@ class ModelManager: @unchecked Sendable {
         }
 
         if await installed(locale: locale) {
+            currentDownloadProgress = nil
             return
         } else {
             try await downloadIfNeeded(for: transcriber)
@@ -33,7 +36,34 @@ class ModelManager: @unchecked Sendable {
     /// Download the model if needed
     private func downloadIfNeeded(for module: SpeechTranscriber) async throws {
         if let downloader = try await AssetInventory.assetInstallationRequest(supporting: [module]) {
-            try await downloader.downloadAndInstall()
+            currentDownloadProgress = downloader.progress
+            do {
+                try await downloader.downloadAndInstall()
+            } catch {
+                currentDownloadProgress = nil
+                if let urlError = error as? URLError, urlError.code == .notConnectedToInternet {
+                    throw AuralKitError.modelDownloadNoInternet
+                }
+
+                let nsError = error as NSError
+                if nsError.domain == NSURLErrorDomain,
+                   nsError.code == URLError.notConnectedToInternet.rawValue {
+                    throw AuralKitError.modelDownloadNoInternet
+                }
+
+                throw AuralKitError.modelDownloadFailed(nsError)
+            }
+        } else {
+            currentDownloadProgress = nil
         }
+    }
+
+    /// Release reserved locales so other clients can access them
+    func releaseLocales() async {
+        let reserved = await AssetInventory.reservedLocales
+        for locale in reserved {
+            await AssetInventory.release(reservedLocale: locale)
+        }
+        currentDownloadProgress = nil
     }
 }

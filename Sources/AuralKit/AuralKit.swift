@@ -86,10 +86,8 @@ public final class AuralKit: @unchecked Sendable {
 
             await streamState.setRecognizerTask(recognizerTask)
 
-            let streamingStream = try await MainActor.run {
-                try audioStreamer.startStreaming(with: transcriberManager,
-                                                 converter: converter)
-            }
+            let streamingStream = try await audioStreamer.startStreaming(with: transcriberManager,
+                                                                          converter: converter)
 
             let streamingTask = Task<Void, Never> { [weak self] in
                 guard let self else { return }
@@ -135,9 +133,7 @@ public final class AuralKit: @unchecked Sendable {
 
         await streamState.markStreaming(false)
 
-        await MainActor.run {
-            audioStreamer.stop()
-        }
+        await audioStreamer.stop()
 
         await transcriberManager.stop()
     }

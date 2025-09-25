@@ -26,6 +26,12 @@ public enum AuralKitError: LocalizedError {
     /// Audio buffer conversion failed
     case audioConversionFailed(NSError?)
 
+    /// Model download failed due to lack of connectivity
+    case modelDownloadNoInternet
+
+    /// Model download failed for other reasons
+    case modelDownloadFailed(NSError?)
+
     public var errorDescription: String? {
         switch self {
         case .microphonePermissionDenied:
@@ -66,6 +72,19 @@ public enum AuralKitError: LocalizedError {
                 return NSLocalizedString("Audio conversion failed.",
                                        comment: "Error when audio conversion fails")
             }
+        case .modelDownloadNoInternet:
+            return NSLocalizedString("Speech model download failed. No internet connection detected.",
+                                   comment: "Error when device is offline during model download")
+
+        case .modelDownloadFailed(let underlyingError):
+            if let underlyingError {
+                return String(format: NSLocalizedString("Speech model download failed: %@",
+                                                       comment: "Error when speech model download fails with underlying error"),
+                             underlyingError.localizedDescription)
+            } else {
+                return NSLocalizedString("Speech model download failed.",
+                                       comment: "Generic model download failure")
+            }
         }
     }
 
@@ -94,6 +113,14 @@ public enum AuralKitError: LocalizedError {
         case .bufferConverterCreationFailed, .conversionBufferCreationFailed, .audioConversionFailed:
             return NSLocalizedString("Unable to process the audio data for speech recognition.",
                                    comment: "Failure reason for audio processing errors")
+
+        case .modelDownloadNoInternet:
+            return NSLocalizedString("The device is offline, so the required speech model could not be downloaded.",
+                                   comment: "Failure reason when model download lacks internet")
+
+        case .modelDownloadFailed:
+            return NSLocalizedString("The speech model could not be downloaded.",
+                                   comment: "Failure reason when model download fails")
         }
     }
 
@@ -118,6 +145,14 @@ public enum AuralKitError: LocalizedError {
         case .invalidAudioDataType, .bufferConverterCreationFailed, .conversionBufferCreationFailed, .audioConversionFailed:
             return NSLocalizedString("Try recording audio again or check your device's microphone.",
                                    comment: "Recovery suggestion for audio processing errors")
+
+        case .modelDownloadNoInternet:
+            return NSLocalizedString("Connect to the internet and try downloading the speech model again.",
+                                   comment: "Recovery suggestion when offline during model download")
+
+        case .modelDownloadFailed:
+            return NSLocalizedString("Try again later or verify your network connection.",
+                                   comment: "Recovery suggestion when model download fails")
         }
     }
 }
