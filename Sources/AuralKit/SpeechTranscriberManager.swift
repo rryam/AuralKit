@@ -1,5 +1,6 @@
 import Foundation
 import Speech
+import AVFoundation
 
 // MARK: - Speech Transcriber Manager
 
@@ -32,7 +33,7 @@ final class SpeechTranscriberManager {
             throw error
         }
 
-        self.analyzerFormat = await SpeechAnalyzer.bestAvailableAudioFormat(compatibleWith: [transcriber])
+        analyzerFormat = await SpeechAnalyzer.bestAvailableAudioFormat(compatibleWith: [transcriber])
         (inputSequence, inputBuilder) = AsyncStream<AnalyzerInput>.makeStream()
 
         guard let inputSequence else { return transcriber }
@@ -55,22 +56,25 @@ final class SpeechTranscriberManager {
     }
 
     /// Process audio buffer synchronously (for use in callbacks)
-    func processAudioBuffer(_ buffer: AVAudioPCMBuffer, converter: BufferConverter) {
-        guard let inputBuilder, let analyzerFormat else { return }
-
-        do {
-            let converted = try converter.convertBuffer(buffer, to: analyzerFormat)
-            let input = AnalyzerInput(buffer: converted)
-            inputBuilder.yield(input)
-        } catch {
-            // Handle error silently in callback context
-            print("Error processing audio buffer: \(error)")
+    func processAudioBuffer(_ buffer: AVAudioPCMBuffer, converter: BufferConverter) throws {
+        guard let inputBuilder, let analyzerFormat else {
+            throw AuralKitError.invalidAudioDataType
         }
+
+        let converted = try converter.convertBuffer(buffer, to: analyzerFormat)
+        let input = AnalyzerInput(buffer: converted)
+        inputBuilder.yield(input)
     }
 
     /// Stop transcribing and clean up
     func stop() async {
         inputBuilder?.finish()
         try? await analyzer?.finalizeAndFinishThroughEndOfInput()
+
+        inputBuilder = nil
+        inputSequence = nil
+        analyzerFormat = nil
+        analyzer = nil
+        transcriber = nil
     }
 }

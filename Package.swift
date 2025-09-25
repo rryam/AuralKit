@@ -24,7 +24,10 @@ let package = Package(
         .executableTarget(
             name: "Aural",
             dependencies: ["AuralKit"],
-            path: "Aural"
+            path: "Aural",
+            resources: [
+                .process("Assets.xcassets")
+            ]
         ),
         .testTarget(
             name: "AuralKitTests",

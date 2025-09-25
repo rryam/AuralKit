@@ -1,6 +1,4 @@
-#if os(iOS)
 import AVFoundation
-#endif
 import Speech
 
 // MARK: - Permissions Manager
@@ -9,15 +7,18 @@ class PermissionsManager: @unchecked Sendable {
 
     /// Check if all required permissions are granted
     func ensurePermissions() async throws {
-        // Check microphone permission
-#if os(iOS)
-        if AVCaptureDevice.authorizationStatus(for: .audio) != .authorized {
+        // Check microphone permission (iOS & macOS)
+        switch AVCaptureDevice.authorizationStatus(for: .audio) {
+        case .authorized:
+            break
+        case .notDetermined:
             let granted = await AVCaptureDevice.requestAccess(for: .audio)
             if !granted {
                 throw AuralKitError.microphonePermissionDenied
             }
+        default:
+            throw AuralKitError.microphonePermissionDenied
         }
-#endif
 
         // Check speech recognition permission
         switch SFSpeechRecognizer.authorizationStatus() {
