@@ -24,4 +24,4 @@ jobs:
 
     - name: Xcode build Aural
       run: |
-        xcodebuild -scheme Aural -configuration Debug build
+        xcodebuild -scheme Aural -configuration Debug -destination "platform=macOS" build
