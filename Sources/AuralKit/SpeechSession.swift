@@ -16,31 +16,35 @@ public struct TranscriptionResult {
     }
 }
 
-// MARK: - AuralKit
+// MARK: - SpeechSession
 
-/// Wrapper for streaming live speech-to-text using the SpeechTranscriber/SpeechAnalyzer stack.
+/// A session for streaming live speech-to-text using the SpeechTranscriber/SpeechAnalyzer stack.
 ///
-/// `AuralKit` hides the details of microphone capture, buffer conversion, model installation,
+/// `SpeechSession` hides the details of microphone capture, buffer conversion, model installation,
 /// and result streaming. The API is designed around Swift Concurrency and integrates cleanly with
 /// `for try await` loops.
 ///
 /// ```swift
-/// let kit = AuralKit(locale: .current)
+/// let session = SpeechSession(locale: .current)
 ///
 /// Task {
 ///     do {
-///         for try await transcript in kit.startTranscribing() {
-///             print(String(transcript.characters))
+///         for try await result in session.startTranscribing() {
+///             if result.isFinal {
+///                 print("Final: \(String(result.text.characters))")
+///             } else {
+///                 print("Partial: \(String(result.text.characters))")
+///             }
 ///         }
 ///     } catch {
-///         // Handle `AuralKitError`
+///         // Handle `SpeechSessionError`
 ///     }
 /// }
 /// ```
 ///
 /// Call `stopTranscribing()` to end capture and unwind the stream. The same instance may be reused
 /// for subsequent transcription sessions.
-public final class AuralKit: @unchecked Sendable {
+public final class SpeechSession: @unchecked Sendable {
 
     // MARK: - Properties
 
@@ -72,6 +76,13 @@ public final class AuralKit: @unchecked Sendable {
     ///
     /// Poll or observe this property to drive UI such as `ProgressView`. The value is non-nil only
     /// while a locale model is downloading.
+    ///
+    /// ```swift
+    /// let session = SpeechSession()
+    /// if let progress = session.modelDownloadProgress {
+    ///     print("Downloading: \(progress.fractionCompleted * 100)%")
+    /// }
+    /// ```
     public var modelDownloadProgress: Progress? {
         transcriberManager.downloadProgress
     }
@@ -85,7 +96,7 @@ public final class AuralKit: @unchecked Sendable {
     /// Consume the stream with `for try await` and call `stopTranscribing()` to finish early.
     ///
     /// ```swift
-    /// for try await result in kit.startTranscribing() {
+    /// for try await result in session.startTranscribing() {
     ///     if result.isFinal {
     ///         // Final result - accumulate this
     ///     } else {
@@ -94,38 +105,38 @@ public final class AuralKit: @unchecked Sendable {
     /// }
     /// ```
     public func startTranscribing() -> AsyncThrowingStream<TranscriptionResult, Error> {
-        print("🎤 AuralKit: startTranscribing() called")
+        print("🎤 SpeechSession: startTranscribing() called")
         let (stream, continuation) = AsyncThrowingStream<TranscriptionResult, Error>.makeStream()
 
         continuation.onTermination = { [weak self] termination in
-            print("🎤 AuralKit: Stream terminated with reason: \(termination)")
-            print("🎤 AuralKit: About to call cleanup from onTermination")
+            print("🎤 SpeechSession: Stream terminated with reason: \(termination)")
+            print("🎤 SpeechSession: About to call cleanup from onTermination")
             Task {
-                print("🎤 AuralKit: Inside termination cleanup task")
+                print("🎤 SpeechSession: Inside termination cleanup task")
                 await self?.cleanup(cancelRecognizer: true)
-                print("🎤 AuralKit: Termination cleanup task complete")
+                print("🎤 SpeechSession: Termination cleanup task complete")
             }
         }
 
         Task { [weak self] in
             guard let self else {
-                print("🔴 AuralKit: Self is nil in startTranscribing task")
+                print("🔴 SpeechSession: Self is nil in startTranscribing task")
                 return
             }
 
-            print("🎤 AuralKit: Checking for active stream")
+            print("🎤 SpeechSession: Checking for active stream")
             if await self.streamState.hasActiveStream() {
-                print("🔴 AuralKit: Already has active stream")
-                continuation.finish(throwing: AuralKitError.recognitionStreamSetupFailed)
+                print("🔴 SpeechSession: Already has active stream")
+                continuation.finish(throwing: SpeechSessionError.recognitionStreamSetupFailed)
                 return
             }
 
-            print("🎤 AuralKit: Setting continuation and starting pipeline")
+            print("🎤 SpeechSession: Setting continuation and starting pipeline")
             await self.streamState.setContinuation(continuation)
             await self.startPipeline(with: continuation)
         }
 
-        print("🎤 AuralKit: Returning stream")
+        print("🎤 SpeechSession: Returning stream")
         return stream
     }
 
@@ -134,49 +145,49 @@ public final class AuralKit: @unchecked Sendable {
     /// Safe to call even if `startTranscribing()` has not been invoked or the stream has already
     /// completed; the method simply waits for cleanup and returns.
     public func stopTranscribing() async {
-        print("🛑 AuralKit: stopTranscribing() called")
+        print("🛑 SpeechSession: stopTranscribing() called")
         await cleanup(cancelRecognizer: true)
         await finishStream(error: nil)
-        print("🛑 AuralKit: stopTranscribing() completed")
+        print("🛑 SpeechSession: stopTranscribing() completed")
     }
 
     // MARK: - Private helpers
 
     private func startPipeline(with continuation: AsyncThrowingStream<TranscriptionResult, Error>.Continuation) async {
-        print("🔧 AuralKit: Starting pipeline")
+        print("🔧 SpeechSession: Starting pipeline")
         do {
-            print("🔧 AuralKit: Ensuring permissions")
+            print("🔧 SpeechSession: Ensuring permissions")
             try await permissionsManager.ensurePermissions()
-            print("🔧 AuralKit: Permissions ensured")
+            print("🔧 SpeechSession: Permissions ensured")
 
 #if os(iOS)
-            print("🔧 AuralKit: Setting up audio session on iOS")
+            print("🔧 SpeechSession: Setting up audio session on iOS")
             try await MainActor.run {
                 try audioSessionManager.setUpAudioSession()
             }
-            print("🔧 AuralKit: Audio session setup complete")
+            print("🔧 SpeechSession: Audio session setup complete")
 #endif
 
-            print("🔧 AuralKit: Setting up transcriber for locale \(locale.identifier)")
+            print("🔧 SpeechSession: Setting up transcriber for locale \(locale.identifier)")
             let transcriber = try await transcriberManager.setUpTranscriber(locale: locale)
-            print("🔧 AuralKit: Transcriber setup complete")
+            print("🔧 SpeechSession: Transcriber setup complete")
 
-            print("🔧 AuralKit: Creating recognizer task")
+            print("🔧 SpeechSession: Creating recognizer task")
             let recognizerTask = Task<Void, Never> { [weak self] in
                 guard let self else {
-                    print("🔴 AuralKit: Recognizer task - self is nil")
+                    print("🔴 SpeechSession: Recognizer task - self is nil")
                     return
                 }
-                print("🔧 AuralKit: Recognizer task started")
+                print("🔧 SpeechSession: Recognizer task started")
 
                 do {
-                    print("🔧 AuralKit: Starting to iterate over transcriber results")
-                    print("🔧 AuralKit: transcriber.results type: \(type(of: transcriber.results))")
+                    print("🔧 SpeechSession: Starting to iterate over transcriber results")
+                    print("🔧 SpeechSession: transcriber.results type: \(type(of: transcriber.results))")
 
                     var resultCount = 0
                     for try await result in transcriber.results {
                         resultCount += 1
-                        print("🔧 AuralKit: Got transcriber result #\(resultCount): isFinal=\(result.isFinal), text=\(String(result.text.characters))")
+                        print("🔧 SpeechSession: Got transcriber result #\(resultCount): isFinal=\(result.isFinal), text=\(String(result.text.characters))")
 
                         let transcriptionResult = TranscriptionResult(
                             text: result.text,
@@ -184,34 +195,34 @@ public final class AuralKit: @unchecked Sendable {
                         )
                         continuation.yield(transcriptionResult)
                     }
-                    print("🔧 AuralKit: Recognizer task completed normally after \(resultCount) results")
+                    print("🔧 SpeechSession: Recognizer task completed normally after \(resultCount) results")
                     await self.finishFromRecognizerTask(error: nil)
                 } catch is CancellationError {
-                    print("🔧 AuralKit: Recognizer task cancelled")
+                    print("🔧 SpeechSession: Recognizer task cancelled")
                     // Cancellation handled by cleanup logic
                 } catch {
-                    print("🔴 AuralKit: Recognizer task error: \(error)")
-                    print("🔴 AuralKit: Error type: \(type(of: error))")
+                    print("🔴 SpeechSession: Recognizer task error: \(error)")
+                    print("🔴 SpeechSession: Error type: \(type(of: error))")
                     await self.finishFromRecognizerTask(error: error)
                 }
-                print("🔧 AuralKit: Recognizer task is exiting")
+                print("🔧 SpeechSession: Recognizer task is exiting")
             }
 
             await streamState.setRecognizerTask(recognizerTask)
-            print("🔧 AuralKit: Recognizer task set")
+            print("🔧 SpeechSession: Recognizer task set")
 
-            print("🔧 AuralKit: Starting audio streamer")
+            print("🔧 SpeechSession: Starting audio streamer")
             // Audio processing happens in the tap callback in AudioStreamer
             // The tap callback directly calls transcriberManager.processAudioBuffer
             _ = try await MainActor.run { [self] in
                 try audioStreamer.startStreaming(with: transcriberManager, converter: converter)
             }
-            print("🔧 AuralKit: Audio streamer started")
+            print("🔧 SpeechSession: Audio streamer started")
 
             await streamState.markStreaming(true)
-            print("🔧 AuralKit: Pipeline setup complete")
+            print("🔧 SpeechSession: Pipeline setup complete")
         } catch {
-            print("🔴 AuralKit: Pipeline startup error: \(error)")
+            print("🔴 SpeechSession: Pipeline startup error: \(error)")
             await finishWithStartupError(error)
         }
     }
@@ -222,31 +233,31 @@ public final class AuralKit: @unchecked Sendable {
     }
 
     private func finishFromRecognizerTask(error: Error?) async {
-        print("🔧 AuralKit: finishFromRecognizerTask called with error: \(String(describing: error))")
+        print("🔧 SpeechSession: finishFromRecognizerTask called with error: \(String(describing: error))")
         await cleanup(cancelRecognizer: false)
         await finishStream(error: error)
     }
 
     private func cleanup(cancelRecognizer: Bool) async {
-        print("🧹 AuralKit: cleanup called with cancelRecognizer: \(cancelRecognizer)")
+        print("🧹 SpeechSession: cleanup called with cancelRecognizer: \(cancelRecognizer)")
         let recognizerTask = await streamState.takeRecognizerTask()
         if cancelRecognizer {
-            print("🧹 AuralKit: Cancelling recognizer task")
+            print("🧹 SpeechSession: Cancelling recognizer task")
             recognizerTask?.cancel()
         }
 
         await streamState.markStreaming(false)
-        print("🧹 AuralKit: Marked streaming as false")
+        print("🧹 SpeechSession: Marked streaming as false")
 
-        print("🧹 AuralKit: Stopping audio streamer")
+        print("🧹 SpeechSession: Stopping audio streamer")
         await MainActor.run { [self] in
             audioStreamer.stop()
         }
-        print("🧹 AuralKit: Audio streamer stopped")
+        print("🧹 SpeechSession: Audio streamer stopped")
 
-        print("🧹 AuralKit: Stopping transcriber manager")
+        print("🧹 SpeechSession: Stopping transcriber manager")
         await transcriberManager.stop()
-        print("🧹 AuralKit: Cleanup complete")
+        print("🧹 SpeechSession: Cleanup complete")
     }
 
     private func finishStream(error: Error?) async {

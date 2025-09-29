@@ -17,7 +17,7 @@ final class AudioStreamer {
 
         guard continuation == nil else {
             print("🔴 AudioStreamer: Already has continuation")
-            throw AuralKitError.recognitionStreamSetupFailed
+            throw SpeechSessionError.recognitionStreamSetupFailed
         }
 
         print("🎵 AudioStreamer: Creating stream")

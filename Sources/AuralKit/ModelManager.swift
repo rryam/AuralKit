@@ -10,7 +10,7 @@ class ModelManager: @unchecked Sendable {
     /// Ensure the speech model for the given locale is available
     func ensureModel(transcriber: SpeechTranscriber, locale: Locale) async throws {
         guard await supported(locale: locale) else {
-            throw AuralKitError.unsupportedLocale(locale)
+            throw SpeechSessionError.unsupportedLocale(locale)
         }
 
         if await installed(locale: locale) {
@@ -42,16 +42,16 @@ class ModelManager: @unchecked Sendable {
             } catch {
                 currentDownloadProgress = nil
                 if let urlError = error as? URLError, urlError.code == .notConnectedToInternet {
-                    throw AuralKitError.modelDownloadNoInternet
+                    throw SpeechSessionError.modelDownloadNoInternet
                 }
 
                 let nsError = error as NSError
                 if nsError.domain == NSURLErrorDomain,
                    nsError.code == URLError.notConnectedToInternet.rawValue {
-                    throw AuralKitError.modelDownloadNoInternet
+                    throw SpeechSessionError.modelDownloadNoInternet
                 }
 
-                throw AuralKitError.modelDownloadFailed(nsError)
+                throw SpeechSessionError.modelDownloadFailed(nsError)
             }
         } else {
             currentDownloadProgress = nil

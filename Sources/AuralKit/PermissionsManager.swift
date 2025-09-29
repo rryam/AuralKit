@@ -14,10 +14,10 @@ class PermissionsManager: @unchecked Sendable {
         case .notDetermined:
             let granted = await AVCaptureDevice.requestAccess(for: .audio)
             if !granted {
-                throw AuralKitError.microphonePermissionDenied
+                throw SpeechSessionError.microphonePermissionDenied
             }
         default:
-            throw AuralKitError.microphonePermissionDenied
+            throw SpeechSessionError.microphonePermissionDenied
         }
 
         // Check speech recognition permission
@@ -31,10 +31,10 @@ class PermissionsManager: @unchecked Sendable {
                 }
             }
             if !granted {
-                throw AuralKitError.speechRecognitionPermissionDenied
+                throw SpeechSessionError.speechRecognitionPermissionDenied
             }
         default:
-            throw AuralKitError.speechRecognitionPermissionDenied
+            throw SpeechSessionError.speechRecognitionPermissionDenied
         }
     }
 }

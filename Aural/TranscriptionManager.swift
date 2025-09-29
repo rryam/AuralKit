@@ -15,7 +15,7 @@ class TranscriptionManager {
     var currentTimeRange = ""
     
     private var transcriptionTask: Task<Void, Never>?
-    private var auralKit: AuralKit?
+    private var speechSession: SpeechSession?
     
     init() {}
     
@@ -33,14 +33,14 @@ class TranscriptionManager {
         finalizedText = ""
         currentTimeRange = ""
         
-        // Create configured AuralKit instance
-        auralKit = AuralKit(locale: selectedLocale)
-        
+        // Create configured SpeechSession instance
+        speechSession = SpeechSession(locale: selectedLocale)
+
         transcriptionTask = Task {
             do {
-                guard let auralKit = auralKit else { return }
+                guard let speechSession = speechSession else { return }
 
-                for try await result in auralKit.startTranscribing() {
+                for try await result in speechSession.startTranscribing() {
                     await MainActor.run {
                         handleTranscriptionResult(result)
                     }
@@ -100,7 +100,7 @@ class TranscriptionManager {
         
         transcriptionTask?.cancel()
         Task {
-            await auralKit?.stopTranscribing()
+            await speechSession?.stopTranscribing()
         }
         isTranscribing = false
         

@@ -7,19 +7,25 @@
 
 AuralKit is a simple, lightweight Swift wrapper for speech-to-text transcription using iOS 26's `SpeechTranscriber` and `SpeechAnalyzer` APIs while handling microphone capture, buffer conversion, model downloads, and cancellation on your behalf.
 
+**Public API**: `SpeechSession` - A clean, session-based interface for speech transcription.
+
 ## Quick Start
 
 ```swift
 import AuralKit
 
-// Create an instance with your preferred locale
-let auralKit = AuralKit(locale: .current)
+// Create a speech session with your preferred locale
+let session = SpeechSession(locale: .current)
 
 let streamTask = Task {
     do {
         // Start the async stream
-        for try await text in auralKit.startTranscribing() {
-            print(text)  // AttributedString with timing metadata
+        for try await result in session.startTranscribing() {
+            if result.isFinal {
+                print("Final: \(String(result.text.characters))")
+            } else {
+                print("Partial: \(String(result.text.characters))")
+            }
         }
     } catch {
         print("Transcription failed: \(error)")
@@ -28,7 +34,7 @@ let streamTask = Task {
 
 // Later, when you want to stop capturing audio
 Task {
-    await auralKit.stopTranscribing()
+    await session.stopTranscribing()
     await streamTask.value
 }
 ```
@@ -58,15 +64,15 @@ dependencies: [
 import AuralKit
 
 // Create with default locale
-let auralKit = AuralKit()
+let session = SpeechSession()
 
 // Or specify a locale
-let auralKit = AuralKit(locale: Locale(identifier: "es-ES"))
+let session = SpeechSession(locale: Locale(identifier: "es-ES"))
 
 let streamTask = Task {
     do {
         // Start transcribing
-        for try await attributedText in auralKit.startTranscribing() {
+        for try await attributedText in session.startTranscribing() {
             // Access the plain text
             let plainText = String(attributedText.characters)
             print(plainText)
@@ -85,7 +91,7 @@ let streamTask = Task {
 
 // Stop when needed
 Task {
-    await auralKit.stopTranscribing()
+    await session.stopTranscribing()
     await streamTask.value
 }
 ```
@@ -141,14 +147,14 @@ struct ContentView: View {
     func toggleTranscription() {
         if isTranscribing {
             Task {
-                await auralKit.stopTranscribing()
+                await session.stopTranscribing()
                 isTranscribing = false
             }
         } else {
             isTranscribing = true
             Task {
                 do {
-                    for try await attributedText in auralKit.startTranscribing() {
+                    for try await attributedText in session.startTranscribing() {
                         transcribedText = String(attributedText.characters)
                     }
                 } catch {
@@ -178,14 +184,14 @@ You can use this progress to a `ProgressView` for visual feedback.
 
 ### Error Handling
 
-AuralKit surfaces detailed `AuralKitError` values so you can present actionable messaging:
+AuralKit surfaces detailed `SpeechSessionError` values so you can present actionable messaging:
 
 ```swift
 do {
     for try await segment in kit.startTranscribing() {
         // Use the transcription
     }
-} catch let error as AuralKitError {
+} catch let error as SpeechSessionError {
     switch error {
     case .modelDownloadNoInternet:
         // Prompt the user to reconnect before retrying
@@ -201,31 +207,42 @@ do {
 
 ## API Reference
 
-### AuralKit
+### SpeechSession
 
 ```swift
-@available(iOS 26.0, macOS 26.0, *)
-public final class AuralKit: @unchecked Sendable {
+public final class SpeechSession: @unchecked Sendable {
     // Initialize with a locale
     public init(locale: Locale = .current)
 
     /// Current speech model download progress, if any
     public var modelDownloadProgress: Progress? { get }
 
-    /// Start transcribing
-    public func startTranscribing() -> AsyncThrowingStream<AttributedString, Error>
+    /// Start transcribing - returns stream of TranscriptionResult
+    public func startTranscribing() -> AsyncThrowingStream<TranscriptionResult, Error>
 
     /// Stop transcribing
     public func stopTranscribing() async
 }
 ```
 
-### AttributedString Output
-
-The transcription returns an `AttributedString` with rich metadata:
+### TranscriptionResult
 
 ```swift
-for try await attributedText in auralKit.startTranscribing() {
+public struct TranscriptionResult {
+    /// The transcribed text with timing metadata
+    public let text: AttributedString
+
+    /// Whether this result is final or volatile (partial)
+    public let isFinal: Bool
+}
+```
+
+### Working with Results
+
+Each `TranscriptionResult` contains an `AttributedString` with rich metadata:
+
+```swift
+for try await attributedText in session.startTranscribing() {
     // Get plain text
     let plainText = String(attributedText.characters)
     

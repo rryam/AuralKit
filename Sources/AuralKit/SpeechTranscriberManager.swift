@@ -26,7 +26,7 @@ final class SpeechTranscriberManager: @unchecked Sendable {
                                         attributeOptions: [.audioTimeRange])
 
         guard let transcriber else {
-            throw AuralKitError.recognitionStreamSetupFailed
+            throw SpeechSessionError.recognitionStreamSetupFailed
         }
 
         analyzer = SpeechAnalyzer(modules: [transcriber])
@@ -46,7 +46,7 @@ final class SpeechTranscriberManager: @unchecked Sendable {
     /// Stream audio buffer to the transcriber
     func streamAudioToTranscriber(_ buffer: AVAudioPCMBuffer, converter: BufferConverter) async throws {
         guard let inputBuilder, let analyzerFormat else {
-            throw AuralKitError.invalidAudioDataType
+            throw SpeechSessionError.invalidAudioDataType
         }
 
         let converted = try converter.convertBuffer(buffer, to: analyzerFormat)
@@ -60,7 +60,7 @@ final class SpeechTranscriberManager: @unchecked Sendable {
         print("🎛️ SpeechTranscriberManager: processAudioBuffer called")
         guard let inputBuilder, let analyzerFormat else {
             print("🔴 SpeechTranscriberManager: Missing inputBuilder or analyzerFormat")
-            throw AuralKitError.invalidAudioDataType
+            throw SpeechSessionError.invalidAudioDataType
         }
 
         print("🎛️ SpeechTranscriberManager: Converting buffer")

@@ -17,14 +17,14 @@ class BufferConverter: @unchecked Sendable {
         }
 
         guard let converter else {
-            throw AuralKitError.bufferConverterCreationFailed
+            throw SpeechSessionError.bufferConverterCreationFailed
         }
 
         let sampleRateRatio = converter.outputFormat.sampleRate / converter.inputFormat.sampleRate
         let scaledInputFrameLength = Double(buffer.frameLength) * sampleRateRatio
         let frameCapacity = AVAudioFrameCount(scaledInputFrameLength.rounded(.up))
         guard let conversionBuffer = AVAudioPCMBuffer(pcmFormat: converter.outputFormat, frameCapacity: frameCapacity) else {
-            throw AuralKitError.conversionBufferCreationFailed
+            throw SpeechSessionError.conversionBufferCreationFailed
         }
 
         var nsError: NSError?
@@ -41,7 +41,7 @@ class BufferConverter: @unchecked Sendable {
         }
 
         guard status != .error else {
-            throw AuralKitError.audioConversionFailed(nsError)
+            throw SpeechSessionError.audioConversionFailed(nsError)
         }
 
         return conversionBuffer

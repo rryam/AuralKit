@@ -1,7 +1,7 @@
 import Foundation
 
 /// Errors that can occur during speech transcription operations
-public enum AuralKitError: LocalizedError {
+public enum SpeechSessionError: LocalizedError {
     /// Microphone permission was denied or not granted
     case microphonePermissionDenied
 

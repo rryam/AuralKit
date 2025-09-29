@@ -32,7 +32,9 @@
       "Read(//Users/rudrankriyam/Developer/Apps/Foundation-Models-Framework-Example/Murmer/State/**)",
       "Read(//Users/rudrankriyam/Developer/Apps/Foundation-Models-Framework-Example/Murmer/ViewModels/**)",
       "Read(//Users/rudrankriyam/Developer/Apps/Foundation-Models-Framework-Example/**)",
-      "Bash(cat:*)"
+      "Bash(cat:*)",
+      "WebSearch",
+      "Read(//Users/rudrankriyam/Developer/Packages/**)"
     ],
     "deny": [],
     "includeCoAuthoredBy": false
