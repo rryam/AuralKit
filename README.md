@@ -1,9 +1,11 @@
 # AuralKit
 
-![Swift](https://img.shields.io/badge/Swift-6.2+-orange.svg)
-![Platforms](https://img.shields.io/badge/Platforms-iOS%2026%2B%20|%20macOS%2026%2B-blue.svg)
-![License](https://img.shields.io/badge/License-MIT-green.svg)
+[![Swift](https://img.shields.io/badge/Swift-6.2-orange.svg)](https://swift.org)
+[![Platforms](https://img.shields.io/badge/Platforms-iOS%2026%2B%20|%20macOS%2026%2B-blue.svg)](https://developer.apple.com)
+[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![Swift Package Manager](https://img.shields.io/badge/SPM-compatible-brightgreen.svg)](https://swift.org/package-manager)
 [![GitHub release](https://img.shields.io/github/release/rryam/AuralKit.svg)](https://github.com/rryam/AuralKit/releases)
+[![Build Status](https://github.com/rryam/AuralKit/actions/workflows/build.yml/badge.svg)](https://github.com/rryam/AuralKit/actions)
 
 AuralKit is a simple, lightweight Swift wrapper for speech-to-text transcription using iOS 26's `SpeechTranscriber` and `SpeechAnalyzer` APIs while handling microphone capture, buffer conversion, model downloads, and cancellation on your behalf.
 

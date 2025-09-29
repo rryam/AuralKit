@@ -103,38 +103,26 @@ public final class SpeechSession: @unchecked Sendable {
     /// }
     /// ```
     public func startTranscribing() -> AsyncThrowingStream<TranscriptionResult, Error> {
-        print("🎤 SpeechSession: startTranscribing() called")
         let (stream, continuation) = AsyncThrowingStream<TranscriptionResult, Error>.makeStream()
 
-        continuation.onTermination = { [weak self] termination in
-            print("🎤 SpeechSession: Stream terminated with reason: \(termination)")
-            print("🎤 SpeechSession: About to call cleanup from onTermination")
+        continuation.onTermination = { [weak self] _ in
             Task {
-                print("🎤 SpeechSession: Inside termination cleanup task")
                 await self?.cleanup(cancelRecognizer: true)
-                print("🎤 SpeechSession: Termination cleanup task complete")
             }
         }
 
         Task { [weak self] in
-            guard let self else {
-                print("🔴 SpeechSession: Self is nil in startTranscribing task")
-                return
-            }
+            guard let self else { return }
 
-            print("🎤 SpeechSession: Checking for active stream")
             if await self.streamState.hasActiveStream() {
-                print("🔴 SpeechSession: Already has active stream")
                 continuation.finish(throwing: SpeechSessionError.recognitionStreamSetupFailed)
                 return
             }
 
-            print("🎤 SpeechSession: Setting continuation and starting pipeline")
             await self.streamState.setContinuation(continuation)
             await self.startPipeline(with: continuation)
         }
 
-        print("🎤 SpeechSession: Returning stream")
         return stream
     }
 
@@ -143,88 +131,51 @@ public final class SpeechSession: @unchecked Sendable {
     /// Safe to call even if `startTranscribing()` has not been invoked or the stream has already
     /// completed; the method simply waits for cleanup and returns.
     public func stopTranscribing() async {
-        print("🛑 SpeechSession: stopTranscribing() called")
         await cleanup(cancelRecognizer: true)
         await finishStream(error: nil)
-        print("🛑 SpeechSession: stopTranscribing() completed")
     }
 
     // MARK: - Private helpers
 
     private func startPipeline(with continuation: AsyncThrowingStream<TranscriptionResult, Error>.Continuation) async {
-        print("🔧 SpeechSession: Starting pipeline")
         do {
-            print("🔧 SpeechSession: Ensuring permissions")
             try await permissionsManager.ensurePermissions()
-            print("🔧 SpeechSession: Permissions ensured")
 
 #if os(iOS)
-            print("🔧 SpeechSession: Setting up audio session on iOS")
             try await MainActor.run {
                 let audioSession = AVAudioSession.sharedInstance()
-                print("🔧 SpeechSession: Current audio session category: \(audioSession.category)")
                 try audioSession.setCategory(.playAndRecord, mode: .spokenAudio)
-                print("🔧 SpeechSession: Audio session category set to: \(audioSession.category)")
                 try audioSession.setActive(true, options: .notifyOthersOnDeactivation)
-                print("🔧 SpeechSession: Audio session is active: \(audioSession.isOtherAudioPlaying)")
-                print("🔧 SpeechSession: Input available: \(audioSession.isInputAvailable)")
-                print("🔧 SpeechSession: Input gain: \(audioSession.inputGain)")
             }
-            print("🔧 SpeechSession: Audio session setup complete")
 #endif
 
-            print("🔧 SpeechSession: Setting up transcriber for locale \(locale.identifier)")
             let transcriber = try await transcriberManager.setUpTranscriber(locale: locale)
-            print("🔧 SpeechSession: Transcriber setup complete")
 
-            print("🔧 SpeechSession: Creating recognizer task")
             let recognizerTask = Task<Void, Never> { [weak self] in
-                guard let self else {
-                    print("🔴 SpeechSession: Recognizer task - self is nil")
-                    return
-                }
-                print("🔧 SpeechSession: Recognizer task started")
+                guard let self else { return }
 
                 do {
-                    print("🔧 SpeechSession: Starting to iterate over transcriber results")
-                    print("🔧 SpeechSession: transcriber.results type: \(type(of: transcriber.results))")
-
-                    var resultCount = 0
                     for try await result in transcriber.results {
-                        resultCount += 1
-                        print("🔧 SpeechSession: Got transcriber result #\(resultCount): isFinal=\(result.isFinal), text=\(String(result.text.characters))")
-
                         let transcriptionResult = TranscriptionResult(
                             text: result.text,
                             isFinal: result.isFinal
                         )
                         continuation.yield(transcriptionResult)
                     }
-                    print("🔧 SpeechSession: Recognizer task completed normally after \(resultCount) results")
                     await self.finishFromRecognizerTask(error: nil)
                 } catch is CancellationError {
-                    print("🔧 SpeechSession: Recognizer task cancelled")
                     // Cancellation handled by cleanup logic
                 } catch {
-                    print("🔴 SpeechSession: Recognizer task error: \(error)")
-                    print("🔴 SpeechSession: Error type: \(type(of: error))")
                     await self.finishFromRecognizerTask(error: error)
                 }
-                print("🔧 SpeechSession: Recognizer task is exiting")
             }
 
             await streamState.setRecognizerTask(recognizerTask)
-            print("🔧 SpeechSession: Recognizer task set")
 
-            print("🔧 SpeechSession: Starting audio streaming")
-            // Audio processing happens in the tap callback
             try startAudioStreaming()
-            print("🔧 SpeechSession: Audio streaming started")
 
             await streamState.markStreaming(true)
-            print("🔧 SpeechSession: Pipeline setup complete")
         } catch {
-            print("🔴 SpeechSession: Pipeline startup error: \(error)")
             await finishWithStartupError(error)
         }
     }
@@ -235,29 +186,19 @@ public final class SpeechSession: @unchecked Sendable {
     }
 
     private func finishFromRecognizerTask(error: Error?) async {
-        print("🔧 SpeechSession: finishFromRecognizerTask called with error: \(String(describing: error))")
         await cleanup(cancelRecognizer: false)
         await finishStream(error: error)
     }
 
     private func cleanup(cancelRecognizer: Bool) async {
-        print("🧹 SpeechSession: cleanup called with cancelRecognizer: \(cancelRecognizer)")
         let recognizerTask = await streamState.takeRecognizerTask()
         if cancelRecognizer {
-            print("🧹 SpeechSession: Cancelling recognizer task")
             recognizerTask?.cancel()
         }
 
         await streamState.markStreaming(false)
-        print("🧹 SpeechSession: Marked streaming as false")
-
-        print("🧹 SpeechSession: Stopping audio streaming")
         stopAudioStreaming()
-        print("🧹 SpeechSession: Audio streaming stopped")
-
-        print("🧹 SpeechSession: Stopping transcriber manager")
         await transcriberManager.stop()
-        print("🧹 SpeechSession: Cleanup complete")
     }
 
     private func finishStream(error: Error?) async {
@@ -273,68 +214,33 @@ public final class SpeechSession: @unchecked Sendable {
     // MARK: - Audio Streaming
 
     private func startAudioStreaming() throws {
-        print("🎵 AudioStreaming: startAudioStreaming called")
-
         guard !isAudioStreaming else {
-            print("🔴 AudioStreaming: Already streaming")
             throw SpeechSessionError.recognitionStreamSetupFailed
         }
 
-        // Setup audio engine - exactly like Apple sample
-        print("🎵 AudioStreaming: Removing existing tap")
         audioEngine.inputNode.removeTap(onBus: 0)
 
         let inputFormat = audioEngine.inputNode.outputFormat(forBus: 0)
-        print("🎵 AudioStreaming: Input format: \(inputFormat)")
-        print("🎵 AudioStreaming: Sample rate: \(inputFormat.sampleRate), channels: \(inputFormat.channelCount)")
 
-        print("🎵 AudioStreaming: Installing tap with bufferSize=4096")
-        print("🎵 AudioStreaming: transcriberManager is: \(transcriberManager)")
-        print("🎵 AudioStreaming: converter is: \(converter)")
-
-        var tapCallCount = 0
         audioEngine.inputNode.installTap(onBus: 0,
                                          bufferSize: 4096,
-                                         format: inputFormat) { [transcriberManager, converter] buffer, time in
-            tapCallCount += 1
-            print("🎤 AudioStreaming: TAP CALLBACK FIRED #\(tapCallCount)! frameLength=\(buffer.frameLength), time=\(time)")
+                                         format: inputFormat) { [transcriberManager, converter] buffer, _ in
             do {
                 try transcriberManager.processAudioBuffer(buffer, converter: converter)
             } catch {
-                print("🔴 AudioStreaming: Audio processing error: \(error)")
+                // Audio processing error - ignore and continue
             }
         }
 
-        print("🎵 AudioStreaming: Tap installed successfully")
-
-        print("🎵 AudioStreaming: Preparing audio engine")
         audioEngine.prepare()
-
-        do {
-            print("🎵 AudioStreaming: Starting audio engine")
-            try audioEngine.start()
-            print("🎵 AudioStreaming: Audio engine started successfully")
-            print("🎵 AudioStreaming: Audio engine isRunning: \(audioEngine.isRunning)")
-            isAudioStreaming = true
-        } catch {
-            print("🔴 AudioStreaming: Failed to start audio engine: \(error)")
-            throw error
-        }
-
-        print("🎵 AudioStreaming: Audio streaming active")
+        try audioEngine.start()
+        isAudioStreaming = true
     }
     
     private func stopAudioStreaming() {
-        print("🎵 AudioStreaming: stopAudioStreaming called")
-        guard isAudioStreaming else {
-            print("🎵 AudioStreaming: Not streaming, nothing to stop")
-            return
-        }
-        
-        print("🎵 AudioStreaming: Stopping audio engine")
+        guard isAudioStreaming else { return }
         audioEngine.stop()
         isAudioStreaming = false
-        print("🎵 AudioStreaming: Audio engine stopped")
     }
 }
 

@@ -39,6 +39,7 @@ class ModelManager: @unchecked Sendable {
             currentDownloadProgress = downloader.progress
             do {
                 try await downloader.downloadAndInstall()
+                currentDownloadProgress = nil
             } catch {
                 currentDownloadProgress = nil
                 if let urlError = error as? URLError, urlError.code == .notConnectedToInternet {

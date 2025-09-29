@@ -1,0 +1,396 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		0D2C9B708312F7B7A7E23A33 /* AuralKit in Frameworks */ = {isa = PBXBuildFile; productRef = BE28FF32F80B6AC79CB37BB9 /* AuralKit */; };
+		0D32F9DC5EEA1C53DE8D13B0 /* TranscriptionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED904D0402C83071A8E85CAC /* TranscriptionView.swift */; };
+		1BA6ADA6F8BCA88CEE5787CD /* AuralApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = E753F8F18224F7CC8AF5408E /* AuralApp.swift */; };
+		4B9C3E3D05F65E65D03EBA4D /* TranscriptionDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C80FC8B2BE7097ED045651C /* TranscriptionDetailView.swift */; };
+		953322660A1A1A62C0260615 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1D3477DBCAFCCFB77C7C71D /* SettingsView.swift */; };
+		986932F368883459B7FEF825 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 43AD4C3CAAA551B20034E2A3 /* ContentView.swift */; };
+		9C6D5EF24AFFE2AE0157C023 /* AboutView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D0B0EEA6F94CD5B7889405D /* AboutView.swift */; };
+		A2FB95CAD1BF5DBCD361C98E /* HistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36DA87A814E38A68FCF9B447 /* HistoryView.swift */; };
+		A366B14BFB62C78FE83B0C26 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 31E3959D0929A5287D1A624F /* Assets.xcassets */; };
+		DB8A20E9F2DE59FD40D99E66 /* TranscriptionManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3BF79E9BB137291A06A75678 /* TranscriptionManager.swift */; };
+		F60649ABFE9668C76C86ABBC /* MinimalTranscriptionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D814D29E857FBF63FC04A9B /* MinimalTranscriptionView.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		1D0B0EEA6F94CD5B7889405D /* AboutView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AboutView.swift; sourceTree = "<group>"; };
+		2B71C1A5798D2D5DF5B498A6 /* AuralKit */ = {isa = PBXFileReference; lastKnownFileType = folder; name = AuralKit; path = .; sourceTree = SOURCE_ROOT; };
+		31E3959D0929A5287D1A624F /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		36DA87A814E38A68FCF9B447 /* HistoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryView.swift; sourceTree = "<group>"; };
+		3BF79E9BB137291A06A75678 /* TranscriptionManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptionManager.swift; sourceTree = "<group>"; };
+		43AD4C3CAAA551B20034E2A3 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		5A9426C3785CBCC445AC3E57 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		5D814D29E857FBF63FC04A9B /* MinimalTranscriptionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MinimalTranscriptionView.swift; sourceTree = "<group>"; };
+		7E646A2CBF5CB0DA6AC615F7 /* Aural.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Aural.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		9C80FC8B2BE7097ED045651C /* TranscriptionDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptionDetailView.swift; sourceTree = "<group>"; };
+		E753F8F18224F7CC8AF5408E /* AuralApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuralApp.swift; sourceTree = "<group>"; };
+		ED904D0402C83071A8E85CAC /* TranscriptionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptionView.swift; sourceTree = "<group>"; };
+		F1D3477DBCAFCCFB77C7C71D /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		36133FDAD2340C18E69D645E /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				0D2C9B708312F7B7A7E23A33 /* AuralKit in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		0C6B3CA83FE94D73DB496250 /* Packages */ = {
+			isa = PBXGroup;
+			children = (
+				2B71C1A5798D2D5DF5B498A6 /* AuralKit */,
+			);
+			name = Packages;
+			sourceTree = "<group>";
+		};
+		572C32317B10A39E0B543C52 = {
+			isa = PBXGroup;
+			children = (
+				6B4F8A4BE2D3CDC15F78D80D /* Aural */,
+				0C6B3CA83FE94D73DB496250 /* Packages */,
+				9DF26916A25DCD4B67D3ADA6 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		6B4F8A4BE2D3CDC15F78D80D /* Aural */ = {
+			isa = PBXGroup;
+			children = (
+				1D0B0EEA6F94CD5B7889405D /* AboutView.swift */,
+				31E3959D0929A5287D1A624F /* Assets.xcassets */,
+				E753F8F18224F7CC8AF5408E /* AuralApp.swift */,
+				43AD4C3CAAA551B20034E2A3 /* ContentView.swift */,
+				36DA87A814E38A68FCF9B447 /* HistoryView.swift */,
+				5A9426C3785CBCC445AC3E57 /* Info.plist */,
+				5D814D29E857FBF63FC04A9B /* MinimalTranscriptionView.swift */,
+				F1D3477DBCAFCCFB77C7C71D /* SettingsView.swift */,
+				9C80FC8B2BE7097ED045651C /* TranscriptionDetailView.swift */,
+				3BF79E9BB137291A06A75678 /* TranscriptionManager.swift */,
+				ED904D0402C83071A8E85CAC /* TranscriptionView.swift */,
+			);
+			path = Aural;
+			sourceTree = "<group>";
+		};
+		9DF26916A25DCD4B67D3ADA6 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				7E646A2CBF5CB0DA6AC615F7 /* Aural.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		658E3DBE951A2F0CB6D7D232 /* Aural */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = D14D1CC509C4B3E8EE05A2F3 /* Build configuration list for PBXNativeTarget "Aural" */;
+			buildPhases = (
+				9970525E77F0A6D32D0CD94E /* Sources */,
+				86235D9D89A8B04C14C702CB /* Resources */,
+				36133FDAD2340C18E69D645E /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = Aural;
+			packageProductDependencies = (
+				BE28FF32F80B6AC79CB37BB9 /* AuralKit */,
+			);
+			productName = Aural;
+			productReference = 7E646A2CBF5CB0DA6AC615F7 /* Aural.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		FEB09F25DF91F1DA8358EC61 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+			};
+			buildConfigurationList = EA939562CE012DC43B19B1B5 /* Build configuration list for PBXProject "Aural" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = 572C32317B10A39E0B543C52;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				ECD03CDD50831244C32AAB50 /* XCLocalSwiftPackageReference "." */,
+			);
+			preferredProjectObjectVersion = 77;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				658E3DBE951A2F0CB6D7D232 /* Aural */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		86235D9D89A8B04C14C702CB /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A366B14BFB62C78FE83B0C26 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		9970525E77F0A6D32D0CD94E /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				9C6D5EF24AFFE2AE0157C023 /* AboutView.swift in Sources */,
+				1BA6ADA6F8BCA88CEE5787CD /* AuralApp.swift in Sources */,
+				986932F368883459B7FEF825 /* ContentView.swift in Sources */,
+				A2FB95CAD1BF5DBCD361C98E /* HistoryView.swift in Sources */,
+				F60649ABFE9668C76C86ABBC /* MinimalTranscriptionView.swift in Sources */,
+				953322660A1A1A62C0260615 /* SettingsView.swift in Sources */,
+				4B9C3E3D05F65E65D03EBA4D /* TranscriptionDetailView.swift in Sources */,
+				DB8A20E9F2DE59FD40D99E66 /* TranscriptionManager.swift in Sources */,
+				0D32F9DC5EEA1C53DE8D13B0 /* TranscriptionView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		01D067090F2F1B96BDBFECA4 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				ENABLE_PREVIEWS = YES;
+				INFOPLIST_FILE = Aural/Info.plist;
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "This app needs microphone access to transcribe speech.";
+				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "This app needs speech recognition to convert your speech to text.";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.auralkit.aural;
+				PRODUCT_NAME = Aural;
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_VERSION = 6.2;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		3DB12C89F1B931664C2076E6 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		55FB152B7EF0C0BCA7C47563 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		9F209874C3DE552C7F560A37 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				ENABLE_PREVIEWS = YES;
+				INFOPLIST_FILE = Aural/Info.plist;
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "This app needs microphone access to transcribe speech.";
+				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "This app needs speech recognition to convert your speech to text.";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.auralkit.aural;
+				PRODUCT_NAME = Aural;
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_VERSION = 6.2;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		D14D1CC509C4B3E8EE05A2F3 /* Build configuration list for PBXNativeTarget "Aural" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				9F209874C3DE552C7F560A37 /* Debug */,
+				01D067090F2F1B96BDBFECA4 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		EA939562CE012DC43B19B1B5 /* Build configuration list for PBXProject "Aural" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				55FB152B7EF0C0BCA7C47563 /* Debug */,
+				3DB12C89F1B931664C2076E6 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		ECD03CDD50831244C32AAB50 /* XCLocalSwiftPackageReference "." */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = .;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		BE28FF32F80B6AC79CB37BB9 /* AuralKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = AuralKit;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = FEB09F25DF91F1DA8358EC61 /* Project object */;
+}

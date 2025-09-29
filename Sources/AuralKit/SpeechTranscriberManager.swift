@@ -57,25 +57,25 @@ final class SpeechTranscriberManager: @unchecked Sendable {
 
     /// Process audio buffer synchronously (for use in callbacks)
     func processAudioBuffer(_ buffer: AVAudioPCMBuffer, converter: BufferConverter) throws {
-        print("🎛️ SpeechTranscriberManager: processAudioBuffer called")
         guard let inputBuilder, let analyzerFormat else {
-            print("🔴 SpeechTranscriberManager: Missing inputBuilder or analyzerFormat")
             throw SpeechSessionError.invalidAudioDataType
         }
 
-        print("🎛️ SpeechTranscriberManager: Converting buffer")
         let converted = try converter.convertBuffer(buffer, to: analyzerFormat)
-        print("🎛️ SpeechTranscriberManager: Creating AnalyzerInput")
         let input = AnalyzerInput(buffer: converted)
-        print("🎛️ SpeechTranscriberManager: Yielding to inputBuilder")
         inputBuilder.yield(input)
-        print("🎛️ SpeechTranscriberManager: processAudioBuffer completed")
     }
 
     /// Stop transcribing and clean up
     func stop() async {
         inputBuilder?.finish()
-        try? await analyzer?.finalizeAndFinishThroughEndOfInput()
+        
+        do {
+            try await analyzer?.finalizeAndFinishThroughEndOfInput()
+        } catch {
+            // Finalization failed, but we still need to clean up resources
+            // Log for debugging but don't propagate since stop() is best-effort cleanup
+        }
 
         await modelManager.releaseLocales()
 
