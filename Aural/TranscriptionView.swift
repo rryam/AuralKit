@@ -5,14 +5,14 @@ import Speech
 // MARK: - Sub-views
 
 struct TranscriptContentView: View {
-    let finalizedText: String
-    let volatileText: String
+    let finalizedText: AttributedString
+    let volatileText: AttributedString
     let currentTimeRange: String
     let isTranscribing: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            if !finalizedText.isEmpty {
+            if !finalizedText.characters.isEmpty {
                 Text(finalizedText)
                     .font(.body)
                     .foregroundColor(.primary)
@@ -22,14 +22,14 @@ struct TranscriptContentView: View {
                     .cornerRadius(12)
             }
 
-            if !volatileText.isEmpty {
+            if !volatileText.characters.isEmpty {
                 VolatileTextView(
                     volatileText: volatileText,
                     currentTimeRange: currentTimeRange
                 )
             }
 
-            if finalizedText.isEmpty && volatileText.isEmpty && !isTranscribing {
+            if finalizedText.characters.isEmpty && volatileText.characters.isEmpty && !isTranscribing {
                 EmptyStateView()
             }
         }
@@ -38,7 +38,7 @@ struct TranscriptContentView: View {
 }
 
 struct VolatileTextView: View {
-    let volatileText: String
+    let volatileText: AttributedString
     let currentTimeRange: String
 
     var body: some View {
@@ -48,7 +48,6 @@ struct VolatileTextView: View {
                     .scaleEffect(0.8)
                 Text(volatileText)
                     .font(.body)
-                    .foregroundColor(.secondary)
                     .italic()
             }
 

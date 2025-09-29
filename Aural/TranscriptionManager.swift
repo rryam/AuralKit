@@ -6,29 +6,31 @@ import CoreMedia
 @MainActor
 class TranscriptionManager {
     var isTranscribing = false
-    var currentTranscript = ""
-    var volatileText = ""
-    var finalizedText = ""
+    var volatileText: AttributedString = ""
+    var finalizedText: AttributedString = ""
     var transcriptionHistory: [TranscriptionRecord] = []
     var selectedLocale: Locale = .current
     var error: String?
     var currentTimeRange = ""
-    
+
     private var transcriptionTask: Task<Void, Never>?
     private var speechSession: SpeechSession?
-    
+
     init() {}
-    
-    var fullTranscript: String {
-        finalizedText + (volatileText.isEmpty ? "" : " " + volatileText)
+
+    var fullTranscript: AttributedString {
+        finalizedText + volatileText
+    }
+
+    var currentTranscript: String {
+        String(fullTranscript.characters)
     }
     
     func startTranscription() {
         guard !isTranscribing else { return }
-        
+
         isTranscribing = true
         error = nil
-        currentTranscript = ""
         volatileText = ""
         finalizedText = ""
         currentTimeRange = ""
@@ -60,25 +62,20 @@ class TranscriptionManager {
     }
     
     private func handleTranscriptionResult(_ result: TranscriptionResult) {
-        var attributedText = result.text
-        let text = String(attributedText.characters)
-
         if result.isFinal {
-            // Final text - append to finalized transcript
-            finalizedText += text
+            // Final text - append to finalized transcript (preserving timing metadata)
+            finalizedText += result.text
             volatileText = ""
         } else {
             // Volatile (partial) text - replace previous partial
-            // Apply styling to volatile text
-            attributedText.foregroundColor = .purple.opacity(0.4)
-            volatileText = text
+            var styledText = result.text
+            styledText.foregroundColor = .purple.opacity(0.4)
+            volatileText = styledText
         }
-
-        currentTranscript = fullTranscript
 
         // Extract time range from AttributedString if available
         currentTimeRange = ""
-        attributedText.runs.forEach { run in
+        result.text.runs.forEach { run in
             if let audioRange = run.audioTimeRange {
                 let start = formatTime(audioRange.start)
                 let end = formatTime(audioRange.end)

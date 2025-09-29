@@ -112,61 +112,95 @@ Check out the included **Aural** demo app to see AuralKit in action! The demo sh
 3. Grant microphone and speech recognition permissions
 4. Start transcribing!
 
-### SwiftUI Example
+### SwiftUI Example (Super Simple!)
 
 ```swift
 import SwiftUI
 import AuralKit
 
-@available(iOS 26.0, *)
 struct ContentView: View {
-    @State private var auralKit = AuralKit()
-    @State private var transcribedText = ""
+    @State private var session = SpeechSession()
+    @State private var transcript: AttributedString = ""
     @State private var isTranscribing = false
-    
+
     var body: some View {
         VStack(spacing: 20) {
-            Text(transcribedText.isEmpty ? "Tap to start..." : transcribedText)
+            Text(transcript)
+                .frame(minHeight: 100)
                 .padding()
-                .frame(maxWidth: .infinity, minHeight: 100)
-                .background(Color.gray.opacity(0.1))
-                .cornerRadius(10)
 
-            Button(action: toggleTranscription) {
-                Label(isTranscribing ? "Stop" : "Start", 
-                      systemImage: isTranscribing ? "stop.circle.fill" : "mic.circle.fill")
-                    .padding()
-                    .background(isTranscribing ? Color.red : Color.blue)
-                    .foregroundColor(.white)
-                    .cornerRadius(10)
+            Button(isTranscribing ? "Stop" : "Start") {
+                if isTranscribing {
+                    Task {
+                        await session.stopTranscribing()
+                        isTranscribing = false
+                    }
+                } else {
+                    isTranscribing = true
+                    Task {
+                        for try await result in session.startTranscribing() {
+                            if result.isFinal {
+                                transcript += result.text
+                            }
+                        }
+                        isTranscribing = false
+                    }
+                }
             }
         }
         .padding()
     }
-    
-    func toggleTranscription() {
-        if isTranscribing {
-            Task {
-                await session.stopTranscribing()
-                isTranscribing = false
-            }
-        } else {
-            isTranscribing = true
-            Task {
-                do {
-                    for try await attributedText in session.startTranscribing() {
-                        transcribedText = String(attributedText.characters)
+}
+```
+
+**That's it!** Just 30 lines of code. No manager needed - the API is that simple.
+
+### Want Partial Results Too?
+
+Add one more state variable to show real-time partial transcription:
+
+```swift
+struct ContentView: View {
+    @State private var session = SpeechSession()
+    @State private var finalText: AttributedString = ""
+    @State private var partialText: AttributedString = ""
+    @State private var isTranscribing = false
+
+    var body: some View {
+        VStack(spacing: 20) {
+            Text(finalText + partialText)
+                .frame(minHeight: 100)
+                .padding()
+
+            Button(isTranscribing ? "Stop" : "Start") {
+                if isTranscribing {
+                    Task {
+                        await session.stopTranscribing()
+                        isTranscribing = false
                     }
-                } catch {
-                    print("Error: \(error)")
+                } else {
+                    isTranscribing = true
+                    Task {
+                        for try await result in session.startTranscribing() {
+                            if result.isFinal {
+                                finalText += result.text
+                                partialText = ""
+                            } else {
+                                partialText = result.text
+                            }
+                        }
+                        isTranscribing = false
+                    }
                 }
-                isTranscribing = false
             }
         }
+        .padding()
     }
 }
-
 ```
+
+The `TranscriptionManager` in the demo app adds language selection, history tracking, and export - **completely optional** features!
+
 
 ### Monitoring Model Downloads
 
