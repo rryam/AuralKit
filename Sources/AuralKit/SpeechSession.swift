@@ -1,4 +1,5 @@
 import Foundation
+import AVFoundation
 
 // MARK: - Transcription Result
 
@@ -49,15 +50,15 @@ public final class SpeechSession: @unchecked Sendable {
     // MARK: - Properties
 
     private let permissionsManager = PermissionsManager()
-#if os(iOS)
-    private let audioSessionManager = AudioSessionManager()
-#endif
     private let transcriberManager = SpeechTranscriberManager()
     private let converter = BufferConverter()
     private let streamState = StreamState()
 
     @MainActor
-    private lazy var audioStreamer = AudioStreamer()
+    private lazy var audioEngine = AVAudioEngine()
+    
+    @MainActor
+    private var isAudioStreaming = false
 
     private let locale: Locale
 
@@ -163,7 +164,9 @@ public final class SpeechSession: @unchecked Sendable {
 #if os(iOS)
             print("🔧 SpeechSession: Setting up audio session on iOS")
             try await MainActor.run {
-                try audioSessionManager.setUpAudioSession()
+                let audioSession = AVAudioSession.sharedInstance()
+                try audioSession.setCategory(.playAndRecord, mode: .spokenAudio)
+                try audioSession.setActive(true, options: .notifyOthersOnDeactivation)
             }
             print("🔧 SpeechSession: Audio session setup complete")
 #endif
@@ -211,13 +214,12 @@ public final class SpeechSession: @unchecked Sendable {
             await streamState.setRecognizerTask(recognizerTask)
             print("🔧 SpeechSession: Recognizer task set")
 
-            print("🔧 SpeechSession: Starting audio streamer")
-            // Audio processing happens in the tap callback in AudioStreamer
-            // The tap callback directly calls transcriberManager.processAudioBuffer
-            _ = try await MainActor.run { [self] in
-                try audioStreamer.startStreaming(with: transcriberManager, converter: converter)
+            print("🔧 SpeechSession: Starting audio streaming")
+            // Audio processing happens in the tap callback
+            try await MainActor.run { [self] in
+                try startAudioStreaming()
             }
-            print("🔧 SpeechSession: Audio streamer started")
+            print("🔧 SpeechSession: Audio streaming started")
 
             await streamState.markStreaming(true)
             print("🔧 SpeechSession: Pipeline setup complete")
@@ -249,11 +251,11 @@ public final class SpeechSession: @unchecked Sendable {
         await streamState.markStreaming(false)
         print("🧹 SpeechSession: Marked streaming as false")
 
-        print("🧹 SpeechSession: Stopping audio streamer")
+        print("🧹 SpeechSession: Stopping audio streaming")
         await MainActor.run { [self] in
-            audioStreamer.stop()
+            stopAudioStreaming()
         }
-        print("🧹 SpeechSession: Audio streamer stopped")
+        print("🧹 SpeechSession: Audio streaming stopped")
 
         print("🧹 SpeechSession: Stopping transcriber manager")
         await transcriberManager.stop()
@@ -268,6 +270,64 @@ public final class SpeechSession: @unchecked Sendable {
         } else {
             continuation.finish()
         }
+    }
+    
+    // MARK: - Audio Streaming
+    
+    @MainActor
+    private func startAudioStreaming() throws {
+        print("🎵 AudioStreaming: startAudioStreaming called")
+
+        guard !isAudioStreaming else {
+            print("🔴 AudioStreaming: Already streaming")
+            throw SpeechSessionError.recognitionStreamSetupFailed
+        }
+
+        // Setup audio engine - exactly like Apple sample
+        print("🎵 AudioStreaming: Removing existing tap")
+        audioEngine.inputNode.removeTap(onBus: 0)
+        
+        print("🎵 AudioStreaming: Installing tap with bufferSize=4096")
+        audioEngine.inputNode.installTap(onBus: 0,
+                                         bufferSize: 4096,
+                                         format: audioEngine.inputNode.outputFormat(forBus: 0)) { [weak transcriberManager, weak converter] buffer, _ in
+            guard let transcriberManager, let converter else { return }
+            
+            do {
+                try transcriberManager.processAudioBuffer(buffer, converter: converter)
+            } catch {
+                print("🔴 AudioStreaming: Audio processing error: \(error)")
+            }
+        }
+        
+        print("🎵 AudioStreaming: Preparing audio engine")
+        audioEngine.prepare()
+        
+        do {
+            print("🎵 AudioStreaming: Starting audio engine")
+            try audioEngine.start()
+            print("🎵 AudioStreaming: Audio engine started successfully")
+            isAudioStreaming = true
+        } catch {
+            print("🔴 AudioStreaming: Failed to start audio engine: \(error)")
+            throw error
+        }
+
+        print("🎵 AudioStreaming: Audio streaming active")
+    }
+    
+    @MainActor
+    private func stopAudioStreaming() {
+        print("🎵 AudioStreaming: stopAudioStreaming called")
+        guard isAudioStreaming else {
+            print("🎵 AudioStreaming: Not streaming, nothing to stop")
+            return
+        }
+        
+        print("🎵 AudioStreaming: Stopping audio engine")
+        audioEngine.stop()
+        isAudioStreaming = false
+        print("🎵 AudioStreaming: Audio engine stopped")
     }
 }
 
