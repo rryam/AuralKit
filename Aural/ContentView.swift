@@ -9,7 +9,7 @@ struct ContentView: View {
             if showAdvanced {
                 AdvancedContentView(showAdvanced: $showAdvanced)
             } else {
-                MinimalTranscriptionView()
+                TranscriptionView()
                     .toolbar {
                         ToolbarItem(placement: .automatic) {
                             Button("Advanced") {
@@ -30,7 +30,7 @@ struct AdvancedContentView: View {
 
     var body: some View {
         TabView(selection: $selectedTab) {
-            TranscriptionView(manager: transcriptionManager)
+            AdvancedTranscriptionView(manager: transcriptionManager)
                 .tabItem {
                     Label("Transcribe", systemImage: "mic.circle.fill")
                 }

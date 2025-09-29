@@ -1,6 +1,6 @@
 name: Aural
 options:
-  bundleIdPrefix: com.auralkit
+  bundleIdPrefix: com.rudrankriyam
   deploymentTarget:
     iOS: "26.0"
     macOS: "26.0"
@@ -25,7 +25,7 @@ targets:
       base:
         SWIFT_VERSION: "6.2"
         PRODUCT_NAME: Aural
-        PRODUCT_BUNDLE_IDENTIFIER: com.auralkit.aural
+        PRODUCT_BUNDLE_IDENTIFIER: com.rudrankriyam.aural
         IPHONEOS_DEPLOYMENT_TARGET: "26.0"
         TARGETED_DEVICE_FAMILY: "1,2"
         SUPPORTED_PLATFORMS: "iphoneos iphonesimulator"

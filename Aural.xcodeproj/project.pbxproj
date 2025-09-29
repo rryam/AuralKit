@@ -3,7 +3,7 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 63;
+	objectVersion = 77;
 	objects = {
 
 /* Begin PBXBuildFile section */
@@ -18,8 +18,8 @@
 		9C6D5EF24AFFE2AE0157C023 /* AboutView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D0B0EEA6F94CD5B7889405D /* AboutView.swift */; };
 		A2FB95CAD1BF5DBCD361C98E /* HistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36DA87A814E38A68FCF9B447 /* HistoryView.swift */; };
 		A366B14BFB62C78FE83B0C26 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 31E3959D0929A5287D1A624F /* Assets.xcassets */; };
+		A99E9DD346893ADEFEA3AC16 /* AdvancedTranscriptionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93DA3314E337533E7CA3A549 /* AdvancedTranscriptionView.swift */; };
 		DB8A20E9F2DE59FD40D99E66 /* TranscriptionManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3BF79E9BB137291A06A75678 /* TranscriptionManager.swift */; };
-		F60649ABFE9668C76C86ABBC /* MinimalTranscriptionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D814D29E857FBF63FC04A9B /* MinimalTranscriptionView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -32,8 +32,8 @@
 		3BF79E9BB137291A06A75678 /* TranscriptionManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptionManager.swift; sourceTree = "<group>"; };
 		43AD4C3CAAA551B20034E2A3 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		5A9426C3785CBCC445AC3E57 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
-		5D814D29E857FBF63FC04A9B /* MinimalTranscriptionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MinimalTranscriptionView.swift; sourceTree = "<group>"; };
-		7E646A2CBF5CB0DA6AC615F7 /* Aural.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Aural.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		7E646A2CBF5CB0DA6AC615F7 /* Aural.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Aural.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		93DA3314E337533E7CA3A549 /* AdvancedTranscriptionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdvancedTranscriptionView.swift; sourceTree = "<group>"; };
 		9C80FC8B2BE7097ED045651C /* TranscriptionDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptionDetailView.swift; sourceTree = "<group>"; };
 		E753F8F18224F7CC8AF5408E /* AuralApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuralApp.swift; sourceTree = "<group>"; };
 		ED904D0402C83071A8E85CAC /* TranscriptionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptionView.swift; sourceTree = "<group>"; };
@@ -73,12 +73,12 @@
 			isa = PBXGroup;
 			children = (
 				1D0B0EEA6F94CD5B7889405D /* AboutView.swift */,
+				93DA3314E337533E7CA3A549 /* AdvancedTranscriptionView.swift */,
 				31E3959D0929A5287D1A624F /* Assets.xcassets */,
 				E753F8F18224F7CC8AF5408E /* AuralApp.swift */,
 				43AD4C3CAAA551B20034E2A3 /* ContentView.swift */,
 				36DA87A814E38A68FCF9B447 /* HistoryView.swift */,
 				5A9426C3785CBCC445AC3E57 /* Info.plist */,
-				5D814D29E857FBF63FC04A9B /* MinimalTranscriptionView.swift */,
 				075E14F26905E59928194CCC /* NoiseShader.metal */,
 				F1D3477DBCAFCCFB77C7C71D /* SettingsView.swift */,
 				1CB7004D8320DB8D951F22C7 /* TopGradientView.swift */,
@@ -142,6 +142,7 @@
 			packageReferences = (
 				ECD03CDD50831244C32AAB50 /* XCLocalSwiftPackageReference "." */,
 			);
+			preferredProjectObjectVersion = 77;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
@@ -167,10 +168,10 @@
 			buildActionMask = 2147483647;
 			files = (
 				9C6D5EF24AFFE2AE0157C023 /* AboutView.swift in Sources */,
+				A99E9DD346893ADEFEA3AC16 /* AdvancedTranscriptionView.swift in Sources */,
 				1BA6ADA6F8BCA88CEE5787CD /* AuralApp.swift in Sources */,
 				986932F368883459B7FEF825 /* ContentView.swift in Sources */,
 				A2FB95CAD1BF5DBCD361C98E /* HistoryView.swift in Sources */,
-				F60649ABFE9668C76C86ABBC /* MinimalTranscriptionView.swift in Sources */,
 				1CDE3454CD4ECDE7F6222F07 /* NoiseShader.metal in Sources */,
 				953322660A1A1A62C0260615 /* SettingsView.swift in Sources */,
 				700F97EB1758FA8AF4B964F7 /* TopGradientView.swift in Sources */,
@@ -188,7 +189,6 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
-				DEVELOPMENT_TEAM = YQZQG7N4WG;
 				ENABLE_PREVIEWS = YES;
 				INFOPLIST_FILE = Aural/Info.plist;
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "This app needs microphone access to transcribe speech.";
@@ -203,7 +203,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.auralkit.aural;
+				PRODUCT_BUNDLE_IDENTIFIER = com.rudrankriyam.aural;
 				PRODUCT_NAME = Aural;
 				SDKROOT = iphoneos;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
@@ -339,7 +339,6 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
-				DEVELOPMENT_TEAM = YQZQG7N4WG;
 				ENABLE_PREVIEWS = YES;
 				INFOPLIST_FILE = Aural/Info.plist;
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "This app needs microphone access to transcribe speech.";
@@ -354,7 +353,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.auralkit.aural;
+				PRODUCT_BUNDLE_IDENTIFIER = com.rudrankriyam.aural;
 				PRODUCT_NAME = Aural;
 				SDKROOT = iphoneos;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
