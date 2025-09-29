@@ -23,7 +23,7 @@ struct AboutView: View {
                         
                         Text("Simple Speech-to-Text for iOS & macOS")
                             .font(.headline)
-                            .foregroundColor(.secondary)
+                            .foregroundStyle(.secondary)
                     }
                     .frame(maxWidth: .infinity)
                     .padding(.vertical)
@@ -36,21 +36,9 @@ struct AboutView: View {
                         FeatureRow(
                             icon: "checkmark.circle.fill",
                             title: "Simple API",
-                            description: "Just one line to start transcribing"
+                            description: "Just a few lines to start transcribing"
                         )
-                        
-                        FeatureRow(
-                            icon: "globe",
-                            title: "40+ Languages",
-                            description: "Support for languages worldwide"
-                        )
-                        
-                        FeatureRow(
-                            icon: "sparkles",
-                            title: "Modern & Legacy",
-                            description: "Works on iOS 17+ and macOS 14+ with automatic API selection"
-                        )
-                        
+                                                
                         FeatureRow(
                             icon: "bolt.fill",
                             title: "Real-time Results",
@@ -89,8 +77,8 @@ struct AboutView: View {
                                 Image(systemName: "arrow.up.right.square")
                             }
                             .padding()
-                            .background(Color.blue)
-                            .foregroundColor(.white)
+                            .background(Color.indigo)
+                            .foregroundStyle(.white)
                             .cornerRadius(12)
                         }
                         
@@ -103,7 +91,7 @@ struct AboutView: View {
                             }
                             .padding()
                             .background(Color.gray.opacity(0.2))
-                            .foregroundColor(.primary)
+                            .foregroundStyle(.primary)
                             .cornerRadius(12)
                         }
                     }
@@ -112,7 +100,7 @@ struct AboutView: View {
                     // Footer
                     Text("Made with SwiftUI")
                         .font(.caption)
-                        .foregroundColor(.secondary)
+                        .foregroundStyle(.secondary)
                         .frame(maxWidth: .infinity)
                         .padding(.top)
                 }
@@ -142,7 +130,7 @@ struct FeatureRow: View {
         HStack(alignment: .top, spacing: 12) {
             Image(systemName: icon)
                 .font(.title2)
-                .foregroundColor(.blue)
+                .foregroundStyle(.indigo)
                 .frame(width: 30)
             
             VStack(alignment: .leading, spacing: 4) {
@@ -151,7 +139,7 @@ struct FeatureRow: View {
                     .fontWeight(.semibold)
                 Text(description)
                     .font(.caption)
-                    .foregroundColor(.secondary)
+                    .foregroundStyle(.secondary)
             }
             
             Spacer()

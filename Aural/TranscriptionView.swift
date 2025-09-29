@@ -33,7 +33,7 @@ struct TranscriptionView: View {
                             }
                             .padding()
                             .frame(maxWidth: .infinity, alignment: .leading)
-                            .background(Color.blue.opacity(0.1))
+                            .background(Color.indigo.opacity(0.1))
                             .cornerRadius(12)
                         }
 
@@ -46,7 +46,7 @@ struct TranscriptionView: View {
                 if let error {
                     Text(error)
                         .font(.caption)
-                        .foregroundColor(.red)
+                        .foregroundStyle(.red)
                         .padding()
                         .background(Color.red.opacity(0.1))
                         .cornerRadius(8)
@@ -63,16 +63,17 @@ struct TranscriptionView: View {
 
                         Image(systemName: isTranscribing ? "stop.fill" : "mic.fill")
                             .font(.system(size: 30))
-                            .foregroundColor(.white)
+                            .foregroundStyle(.white)
                     }
                 }
                 .disabled(error != nil)
 
                 Text(isTranscribing ? "Listening..." : "Tap to start")
                     .font(.body)
-                    .foregroundColor(.secondary)
+                    .foregroundStyle(.secondary)
                     .padding(.bottom, 32)
             }
+            .frame(maxWidth: .infinity)
             .background(TopGradientView())
             .navigationTitle("Aural")
             .toolbar {

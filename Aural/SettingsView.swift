@@ -12,7 +12,7 @@ struct SettingsView: View {
                 Section("Transcription Options") {
                     Label("iOS 26 features enabled", systemImage: "checkmark.circle.fill")
                         .font(.caption)
-                        .foregroundColor(.green)
+                        .foregroundStyle(.green)
                 }
                 
                 Section("Default Language") {
@@ -20,7 +20,7 @@ struct SettingsView: View {
                         Text("Language")
                         Spacer()
                         Text(manager.selectedLocale.localizedString(forIdentifier: manager.selectedLocale.identifier) ?? manager.selectedLocale.identifier)
-                            .foregroundColor(.secondary)
+                            .foregroundStyle(.secondary)
                     }
                 }
                 
@@ -33,10 +33,10 @@ struct SettingsView: View {
                             Spacer()
                             Image(systemName: "chevron.right")
                                 .font(.caption)
-                                .foregroundColor(.secondary)
+                                .foregroundStyle(.secondary)
                         }
                     }
-                    .foregroundColor(.primary)
+                    .foregroundStyle(.primary)
                     
                     Link(destination: URL(string: "https://github.com/rryam/AuralKit")!) {
                         HStack {
@@ -52,10 +52,10 @@ struct SettingsView: View {
                     VStack(spacing: 8) {
                         Text("AuralKit Demo")
                             .font(.caption)
-                            .foregroundColor(.secondary)
+                            .foregroundStyle(.secondary)
                         Text("Version 1.0.0")
                             .font(.caption2)
-                            .foregroundColor(.secondary)
+                            .foregroundStyle(.secondary)
                     }
                     .frame(maxWidth: .infinity)
                     .listRowBackground(Color.clear)

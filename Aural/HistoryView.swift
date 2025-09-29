@@ -32,10 +32,10 @@ struct HistoryView: View {
                                     HStack {
                                         Text(record.locale.localizedString(forIdentifier: record.locale.identifier) ?? record.locale.identifier)
                                             .font(.caption)
-                                            .foregroundColor(.secondary)
+                                            .foregroundStyle(.secondary)
                                             .padding(.horizontal, 8)
                                             .padding(.vertical, 2)
-                                            .background(Color.blue.opacity(0.1))
+                                            .background(Color.indigo.opacity(0.1))
                                             .cornerRadius(4)
 
                                         Spacer()
@@ -72,7 +72,7 @@ struct HistoryView: View {
                             manager.clearHistory()
                         } label: {
                             Text("Clear All")
-                                .foregroundColor(.red)
+                                .foregroundStyle(.red)
                         }
                     }
                 }

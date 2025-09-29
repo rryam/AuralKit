@@ -12,7 +12,7 @@ struct MetadataRowView: View {
         HStack {
             Label(label, systemImage: icon)
                 .font(.caption)
-                .foregroundColor(.secondary)
+                .foregroundStyle(.secondary)
             Spacer()
             Text(value)
                 .font(.body)
@@ -95,19 +95,19 @@ struct AlternativesSectionView: View {
                     HStack(alignment: .top, spacing: 8) {
                         Text("\(index + 1).")
                             .font(.caption)
-                            .foregroundColor(.secondary)
+                            .foregroundStyle(.secondary)
                             .frame(width: 20, alignment: .trailing)
 
                         Text(alternative)
                             .font(.body)
-                            .foregroundColor(.secondary)
+                            .foregroundStyle(.secondary)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
                     .padding(.vertical, 4)
                 }
             }
             .padding()
-            .background(Color.blue.opacity(0.05))
+            .background(Color.indigo.opacity(0.05))
             .cornerRadius(12)
         }
     }
@@ -123,8 +123,8 @@ struct ActionButtonsView: View {
                 Label("Share", systemImage: "square.and.arrow.up")
                     .frame(maxWidth: .infinity)
                     .padding()
-                    .background(Color.blue)
-                    .foregroundColor(.white)
+                    .background(Color.indigo)
+                    .foregroundStyle(.white)
                     .cornerRadius(12)
             }
 
@@ -135,7 +135,7 @@ struct ActionButtonsView: View {
                     .frame(maxWidth: .infinity)
                     .padding()
                     .background(isCopied ? Color.green : Color.gray.opacity(0.2))
-                    .foregroundColor(isCopied ? .white : .primary)
+                    .foregroundStyle(isCopied ? .white : .primary)
                     .cornerRadius(12)
             }
         }

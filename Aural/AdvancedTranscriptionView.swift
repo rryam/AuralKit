@@ -15,7 +15,7 @@ struct TranscriptContentView: View {
             if !finalizedText.characters.isEmpty {
                 Text(finalizedText)
                     .font(.body)
-                    .foregroundColor(.primary)
+                    .foregroundStyle(.primary)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding()
                     .background(Color.gray.opacity(0.1))
@@ -54,13 +54,13 @@ struct VolatileTextView: View {
             if !currentTimeRange.isEmpty {
                 Label(currentTimeRange, systemImage: "clock")
                     .font(.caption)
-                    .foregroundColor(.secondary)
+                    .foregroundStyle(.secondary)
             }
 
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding()
-        .background(Color.blue.opacity(0.1))
+        .background(Color.indigo.opacity(0.1))
         .cornerRadius(12)
     }
 }
@@ -70,10 +70,10 @@ struct EmptyStateView: View {
         VStack(spacing: 12) {
             Image(systemName: "mic.circle")
                 .font(.system(size: 60))
-                .foregroundColor(.secondary)
+                .foregroundStyle(.secondary)
             Text("Tap the button below to start transcribing")
                 .font(.headline)
-                .foregroundColor(.secondary)
+                .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -88,9 +88,9 @@ struct LanguageSelectorView: View {
     var body: some View {
         HStack {
             Image(systemName: "globe")
-                .foregroundColor(.secondary)
+                .foregroundStyle(.secondary)
             Text("Language:")
-                .foregroundColor(.secondary)
+                .foregroundStyle(.secondary)
             Spacer()
             Menu {
                 ForEach(commonLocales, id: \.identifier) { locale in
@@ -108,10 +108,10 @@ struct LanguageSelectorView: View {
             } label: {
                 HStack {
                     Text(manager.selectedLocale.localizedString(forIdentifier: manager.selectedLocale.identifier) ?? manager.selectedLocale.identifier)
-                        .foregroundColor(.primary)
+                        .foregroundStyle(.primary)
                     Image(systemName: "chevron.down")
                         .font(.caption)
-                        .foregroundColor(.secondary)
+                        .foregroundStyle(.secondary)
                 }
                 .padding(.horizontal, 12)
                 .padding(.vertical, 6)
@@ -139,7 +139,7 @@ struct RecordButtonView: View {
 
                 Image(systemName: isTranscribing ? "stop.fill" : "mic.fill")
                     .font(.system(size: 30))
-                    .foregroundColor(.white)
+                    .foregroundStyle(.white)
             }
         }
         .disabled(isDisabled)
@@ -152,7 +152,7 @@ struct ErrorView: View {
     var body: some View {
         Text(error)
             .font(.caption)
-            .foregroundColor(.red)
+            .foregroundStyle(.red)
             .padding(.horizontal)
             .padding(.vertical, 8)
             .background(Color.red.opacity(0.1))
@@ -182,7 +182,7 @@ struct ControlsView: View {
 
             Text(manager.isTranscribing ? "Listening..." : "Tap to start")
                 .font(.caption)
-                .foregroundColor(.secondary)
+                .foregroundStyle(.secondary)
                 .padding(.bottom)
         }
         .padding(.vertical)
@@ -242,7 +242,7 @@ struct AdvancedTranscriptionView: View {
 
                     Menu {
                         Label("iOS 26+ Features Active", systemImage: "checkmark.circle.fill")
-                            .foregroundColor(.green)
+                            .foregroundStyle(.green)
                     } label: {
                         Image(systemName: "ellipsis.circle")
                     }
