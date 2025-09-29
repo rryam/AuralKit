@@ -89,7 +89,8 @@ struct MinimalTranscriptionView: View {
                     .foregroundColor(.secondary)
                     .padding(.bottom, 32)
             }
-            .navigationTitle("AuralKit Minimal Demo")
+            .background(TopGradientView())
+            .navigationTitle("Aural")
             .toolbar {
                 if !String(finalText.characters).isEmpty {
                     ShareLink(item: String(finalText.characters)) {
