@@ -54,10 +54,7 @@ public final class SpeechSession: @unchecked Sendable {
     private let converter = BufferConverter()
     private let streamState = StreamState()
 
-    @MainActor
     private lazy var audioEngine = AVAudioEngine()
-    
-    @MainActor
     private var isAudioStreaming = false
 
     private let locale: Locale
@@ -165,8 +162,13 @@ public final class SpeechSession: @unchecked Sendable {
             print("🔧 SpeechSession: Setting up audio session on iOS")
             try await MainActor.run {
                 let audioSession = AVAudioSession.sharedInstance()
+                print("🔧 SpeechSession: Current audio session category: \(audioSession.category)")
                 try audioSession.setCategory(.playAndRecord, mode: .spokenAudio)
+                print("🔧 SpeechSession: Audio session category set to: \(audioSession.category)")
                 try audioSession.setActive(true, options: .notifyOthersOnDeactivation)
+                print("🔧 SpeechSession: Audio session is active: \(audioSession.isOtherAudioPlaying)")
+                print("🔧 SpeechSession: Input available: \(audioSession.isInputAvailable)")
+                print("🔧 SpeechSession: Input gain: \(audioSession.inputGain)")
             }
             print("🔧 SpeechSession: Audio session setup complete")
 #endif
@@ -216,9 +218,7 @@ public final class SpeechSession: @unchecked Sendable {
 
             print("🔧 SpeechSession: Starting audio streaming")
             // Audio processing happens in the tap callback
-            try await MainActor.run { [self] in
-                try startAudioStreaming()
-            }
+            try startAudioStreaming()
             print("🔧 SpeechSession: Audio streaming started")
 
             await streamState.markStreaming(true)
@@ -252,9 +252,7 @@ public final class SpeechSession: @unchecked Sendable {
         print("🧹 SpeechSession: Marked streaming as false")
 
         print("🧹 SpeechSession: Stopping audio streaming")
-        await MainActor.run { [self] in
-            stopAudioStreaming()
-        }
+        stopAudioStreaming()
         print("🧹 SpeechSession: Audio streaming stopped")
 
         print("🧹 SpeechSession: Stopping transcriber manager")
@@ -273,8 +271,7 @@ public final class SpeechSession: @unchecked Sendable {
     }
     
     // MARK: - Audio Streaming
-    
-    @MainActor
+
     private func startAudioStreaming() throws {
         print("🎵 AudioStreaming: startAudioStreaming called")
 
@@ -286,27 +283,38 @@ public final class SpeechSession: @unchecked Sendable {
         // Setup audio engine - exactly like Apple sample
         print("🎵 AudioStreaming: Removing existing tap")
         audioEngine.inputNode.removeTap(onBus: 0)
-        
+
+        let inputFormat = audioEngine.inputNode.outputFormat(forBus: 0)
+        print("🎵 AudioStreaming: Input format: \(inputFormat)")
+        print("🎵 AudioStreaming: Sample rate: \(inputFormat.sampleRate), channels: \(inputFormat.channelCount)")
+
         print("🎵 AudioStreaming: Installing tap with bufferSize=4096")
+        print("🎵 AudioStreaming: transcriberManager is: \(transcriberManager)")
+        print("🎵 AudioStreaming: converter is: \(converter)")
+
+        var tapCallCount = 0
         audioEngine.inputNode.installTap(onBus: 0,
                                          bufferSize: 4096,
-                                         format: audioEngine.inputNode.outputFormat(forBus: 0)) { [weak transcriberManager, weak converter] buffer, _ in
-            guard let transcriberManager, let converter else { return }
-            
+                                         format: inputFormat) { [transcriberManager, converter] buffer, time in
+            tapCallCount += 1
+            print("🎤 AudioStreaming: TAP CALLBACK FIRED #\(tapCallCount)! frameLength=\(buffer.frameLength), time=\(time)")
             do {
                 try transcriberManager.processAudioBuffer(buffer, converter: converter)
             } catch {
                 print("🔴 AudioStreaming: Audio processing error: \(error)")
             }
         }
-        
+
+        print("🎵 AudioStreaming: Tap installed successfully")
+
         print("🎵 AudioStreaming: Preparing audio engine")
         audioEngine.prepare()
-        
+
         do {
             print("🎵 AudioStreaming: Starting audio engine")
             try audioEngine.start()
             print("🎵 AudioStreaming: Audio engine started successfully")
+            print("🎵 AudioStreaming: Audio engine isRunning: \(audioEngine.isRunning)")
             isAudioStreaming = true
         } catch {
             print("🔴 AudioStreaming: Failed to start audio engine: \(error)")
@@ -316,7 +324,6 @@ public final class SpeechSession: @unchecked Sendable {
         print("🎵 AudioStreaming: Audio streaming active")
     }
     
-    @MainActor
     private func stopAudioStreaming() {
         print("🎵 AudioStreaming: stopAudioStreaming called")
         guard isAudioStreaming else {
