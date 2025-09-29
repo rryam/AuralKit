@@ -19,6 +19,9 @@ jobs:
       with:
         xcode-version: '26.0'
 
+    - name: Download Metal Toolchain
+      run: xcodebuild -downloadComponent MetalToolchain
+
     - name: Swift build
       run: swift build
 
