@@ -2,7 +2,6 @@ import SwiftUI
 import AuralKit
 import CoreMedia
 
-@available(iOS 26.0, macOS 26.0, *)
 @Observable
 @MainActor
 class TranscriptionManager {
@@ -40,10 +39,10 @@ class TranscriptionManager {
         transcriptionTask = Task {
             do {
                 guard let auralKit = auralKit else { return }
-                
-                for try await attributedText in auralKit.startTranscribing() {
+
+                for try await result in auralKit.startTranscribing() {
                     await MainActor.run {
-                        handleTranscriptionResult(attributedText)
+                        handleTranscriptionResult(result)
                     }
                 }
             } catch let error as NSError {
@@ -60,30 +59,23 @@ class TranscriptionManager {
         }
     }
     
-    private func handleTranscriptionResult(_ attributedText: AttributedString) {
-        // Check if this is volatile (partial) or final text
-        let isVolatile = attributedText.runs.contains { run in
-            run.foregroundColor != nil
-        }
-        
+    private func handleTranscriptionResult(_ result: TranscriptionResult) {
+        var attributedText = result.text
         let text = String(attributedText.characters)
-        
-        if !isVolatile {
-            // Final text
-            finalizedText = text
+
+        if result.isFinal {
+            // Final text - append to finalized transcript
+            finalizedText += text
             volatileText = ""
         } else {
-            // Volatile text - extract only the new part
-            let finalizedLength = finalizedText.count
-            if text.count > finalizedLength {
-                let index = text.index(text.startIndex, offsetBy: finalizedLength)
-                volatileText = String(text[index...])
-            } else {
-                volatileText = text
-            }
+            // Volatile (partial) text - replace previous partial
+            // Apply styling to volatile text
+            attributedText.foregroundColor = .purple.opacity(0.4)
+            volatileText = text
         }
+
         currentTranscript = fullTranscript
-        
+
         // Extract time range from AttributedString if available
         currentTimeRange = ""
         attributedText.runs.forEach { run in

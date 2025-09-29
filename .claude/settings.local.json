@@ -28,7 +28,11 @@
       "Bash(gh release edit:*)",
       "Bash(chmod:*)",
       "Bash(ls:*)",
-      "Bash(swift repl:*)"
+      "Bash(swift repl:*)",
+      "Read(//Users/rudrankriyam/Developer/Apps/Foundation-Models-Framework-Example/Murmer/State/**)",
+      "Read(//Users/rudrankriyam/Developer/Apps/Foundation-Models-Framework-Example/Murmer/ViewModels/**)",
+      "Read(//Users/rudrankriyam/Developer/Apps/Foundation-Models-Framework-Example/**)",
+      "Bash(cat:*)"
     ],
     "deny": [],
     "includeCoAuthoredBy": false

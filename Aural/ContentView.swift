@@ -1,7 +1,6 @@
 import SwiftUI
 import AuralKit
 
-@available(iOS 26.0, macOS 26.0, *)
 struct ContentView: View {
     @State private var transcriptionManager = TranscriptionManager()
     @State private var selectedTab = 0
@@ -29,7 +28,6 @@ struct ContentView: View {
     }
 }
 
-@available(iOS 26.0, macOS 26.0, *)
 #Preview {
     ContentView()
 }
