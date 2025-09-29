@@ -32,9 +32,9 @@ public struct TranscriptionResult {
 ///     do {
 ///         for try await result in session.startTranscribing() {
 ///             if result.isFinal {
-///                 print("Final: \(String(result.text.characters))")
+///                 print("Final: \(result.text)")
 ///             } else {
-///                 print("Partial: \(String(result.text.characters))")
+///                 print("Partial: \(result.text)")
 ///             }
 ///         }
 ///     } catch {
