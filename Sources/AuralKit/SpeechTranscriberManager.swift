@@ -22,8 +22,8 @@ final class SpeechTranscriberManager: @unchecked Sendable {
     func setUpTranscriber(locale: Locale) async throws -> SpeechTranscriber {
         transcriber = SpeechTranscriber(locale: locale,
                                         transcriptionOptions: [],
-                                        reportingOptions: [.volatileResults],
-                                        attributeOptions: [.audioTimeRange])
+                                        reportingOptions: [.volatileResults, .alternativeTranscriptions],
+                                        attributeOptions: [.audioTimeRange, .transcriptionConfidence])
 
         guard let transcriber else {
             throw SpeechSessionError.recognitionStreamSetupFailed

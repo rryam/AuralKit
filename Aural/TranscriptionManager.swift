@@ -1,6 +1,7 @@
 import SwiftUI
 import AuralKit
 import CoreMedia
+import Speech
 
 @Observable
 @MainActor
@@ -61,7 +62,7 @@ class TranscriptionManager {
         }
     }
     
-    private func handleTranscriptionResult(_ result: TranscriptionResult) {
+    private func handleTranscriptionResult(_ result: SpeechTranscriber.Result) {
         if result.isFinal {
             // Final text - append to finalized transcript (preserving timing metadata)
             finalizedText += result.text
@@ -69,7 +70,7 @@ class TranscriptionManager {
         } else {
             // Volatile (partial) text - replace previous partial
             var styledText = result.text
-            styledText.foregroundColor = .purple.opacity(0.4)
+            styledText.foregroundColor = Color.purple.opacity(0.4)
             volatileText = styledText
         }
 

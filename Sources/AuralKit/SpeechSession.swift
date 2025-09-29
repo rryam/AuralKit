@@ -1,21 +1,6 @@
 import Foundation
 import AVFoundation
-
-// MARK: - Transcription Result
-
-/// A single transcription result from the speech recognizer.
-public struct TranscriptionResult {
-    /// The transcribed text with timing metadata.
-    public let text: AttributedString
-
-    /// Whether this result is final or volatile (partial).
-    public let isFinal: Bool
-
-    public init(text: AttributedString, isFinal: Bool) {
-        self.text = text
-        self.isFinal = isFinal
-    }
-}
+import Speech
 
 // MARK: - SpeechSession
 
@@ -89,7 +74,7 @@ public final class SpeechSession: @unchecked Sendable {
 
     /// Start streaming live microphone audio to the speech analyzer.
     ///
-    /// The returned `AsyncThrowingStream` yields `TranscriptionResult` chunks containing both text and
+    /// The returned `AsyncThrowingStream` yields `SpeechTranscriber.Result` chunks containing both text and
     /// timing metadata (`.audioTimeRange`), as well as whether the result is final or volatile (partial).
     /// Consume the stream with `for try await` and call `stopTranscribing()` to finish early.
     ///
@@ -102,8 +87,8 @@ public final class SpeechSession: @unchecked Sendable {
     ///     }
     /// }
     /// ```
-    public func startTranscribing() -> AsyncThrowingStream<TranscriptionResult, Error> {
-        let (stream, continuation) = AsyncThrowingStream<TranscriptionResult, Error>.makeStream()
+    public func startTranscribing() -> AsyncThrowingStream<SpeechTranscriber.Result, Error> {
+        let (stream, continuation) = AsyncThrowingStream<SpeechTranscriber.Result, Error>.makeStream()
 
         continuation.onTermination = { [weak self] _ in
             Task {
@@ -137,7 +122,7 @@ public final class SpeechSession: @unchecked Sendable {
 
     // MARK: - Private helpers
 
-    private func startPipeline(with continuation: AsyncThrowingStream<TranscriptionResult, Error>.Continuation) async {
+    private func startPipeline(with continuation: AsyncThrowingStream<SpeechTranscriber.Result, Error>.Continuation) async {
         do {
             try await permissionsManager.ensurePermissions()
 
@@ -156,11 +141,7 @@ public final class SpeechSession: @unchecked Sendable {
 
                 do {
                     for try await result in transcriber.results {
-                        let transcriptionResult = TranscriptionResult(
-                            text: result.text,
-                            isFinal: result.isFinal
-                        )
-                        continuation.yield(transcriptionResult)
+                        continuation.yield(result)
                     }
                     await self.finishFromRecognizerTask(error: nil)
                 } catch is CancellationError {
@@ -247,7 +228,7 @@ public final class SpeechSession: @unchecked Sendable {
 // MARK: - Stream State Actor
 
 private actor StreamState {
-    private var continuation: AsyncThrowingStream<TranscriptionResult, Error>.Continuation?
+    private var continuation: AsyncThrowingStream<SpeechTranscriber.Result, Error>.Continuation?
     private var recognizerTask: Task<Void, Never>?
     private var isStreaming = false
 
@@ -255,11 +236,11 @@ private actor StreamState {
         continuation != nil || recognizerTask != nil || isStreaming
     }
 
-    func setContinuation(_ continuation: AsyncThrowingStream<TranscriptionResult, Error>.Continuation) {
+    func setContinuation(_ continuation: AsyncThrowingStream<SpeechTranscriber.Result, Error>.Continuation) {
         self.continuation = continuation
     }
 
-    func takeContinuation() -> AsyncThrowingStream<TranscriptionResult, Error>.Continuation? {
+    func takeContinuation() -> AsyncThrowingStream<SpeechTranscriber.Result, Error>.Continuation? {
         defer { continuation = nil }
         return continuation
     }

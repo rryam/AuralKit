@@ -254,42 +254,63 @@ public final class SpeechSession: @unchecked Sendable {
     /// Current speech model download progress, if any
     public var modelDownloadProgress: Progress? { get }
 
-    /// Start transcribing - returns stream of TranscriptionResult
-    public func startTranscribing() -> AsyncThrowingStream<TranscriptionResult, Error>
+    /// Start transcribing - returns stream of SpeechTranscriber.Result
+    public func startTranscribing() -> AsyncThrowingStream<SpeechTranscriber.Result, Error>
 
     /// Stop transcribing
     public func stopTranscribing() async
 }
 ```
 
-### TranscriptionResult
+### Result Type
+
+AuralKit returns `SpeechTranscriber.Result` directly from the Speech framework, which provides:
 
 ```swift
-public struct TranscriptionResult {
-    /// The transcribed text with timing metadata
-    public let text: AttributedString
-
+public struct Result {
+    /// The most likely transcription with timing and confidence metadata
+    public var text: AttributedString
+    
+    /// Alternative interpretations in descending order of likelihood
+    public let alternatives: [AttributedString]
+    
     /// Whether this result is final or volatile (partial)
-    public let isFinal: Bool
+    public var isFinal: Bool
+    
+    /// The audio time range this result applies to
+    public let range: CMTimeRange
+    
+    /// Time up to which results are finalized
+    public let resultsFinalizationTime: CMTime
 }
 ```
 
 ### Working with Results
 
-Each `TranscriptionResult` contains an `AttributedString` with rich metadata:
+Access transcription text, timing, confidence scores, and alternatives:
 
 ```swift
-for try await attributedText in session.startTranscribing() {
+for try await result in session.startTranscribing() {
     // Get plain text
-    let plainText = String(attributedText.characters)
+    let plainText = String(result.text.characters)
     
     // Access timing information
-    for run in attributedText.runs {
+    for run in result.text.runs {
         if let audioRange = run.audioTimeRange {
             let startTime = audioRange.start.seconds
             let endTime = audioRange.end.seconds
             print("\(run.text): \(startTime)s - \(endTime)s")
         }
+        
+        // Access confidence scores (0.0 to 1.0)
+        if let confidence = run.transcriptionConfidence {
+            print("Confidence: \(confidence)")
+        }
+    }
+    
+    // Access alternative transcriptions
+    for (index, alternative) in result.alternatives.enumerated() {
+        print("Alternative \(index): \(String(alternative.characters))")
     }
 }
 ```
