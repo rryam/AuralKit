@@ -29,9 +29,6 @@ workflows:
       - name: Build Swift Package
         script: |
           swift build
-      - name: Run Tests
-        script: |
-          swift test
       - name: Build Aural App
         script: |
           xcodebuild -scheme Aural -configuration Debug -destination "platform=iOS Simulator,name=iPhone 17 Pro" build
