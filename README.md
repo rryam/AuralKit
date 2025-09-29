@@ -11,6 +11,10 @@ AuralKit is a simple, lightweight Swift wrapper for speech-to-text transcription
 
 **Public API**: `SpeechSession` - A clean, session-based interface for speech transcription.
 
+## Acknowledgements
+
+This project would not have been possible without Apple's excellent sample code. The implementation is heavily inspired by [Bringing advanced speech-to-text capabilities to your app](https://developer.apple.com/documentation/Speech/bringing-advanced-speech-to-text-capabilities-to-your-app), which shows how to add live speech-to-text transcription with `SpeechAnalyzer`.
+
 ## Quick Start
 
 ```swift
@@ -155,9 +159,7 @@ struct ContentView: View {
 }
 ```
 
-**That's it!** Just 30 lines of code. No manager needed - the API is that simple.
-
-### Want Partial Results Too?
+### Partial Results
 
 Add one more state variable to show real-time partial transcription:
 
@@ -201,8 +203,7 @@ struct ContentView: View {
 }
 ```
 
-The `TranscriptionManager` in the demo app adds language selection, history tracking, and export - **completely optional** features!
-
+The `TranscriptionManager` in the demo app adds language selection, history tracking, and export.
 
 ### Monitoring Model Downloads
 
