@@ -31,28 +31,66 @@ import Speech
 /// Call `stopTranscribing()` to end capture and unwind the stream. The same instance may be reused
 /// for subsequent transcription sessions.
 public final class SpeechSession: @unchecked Sendable {
+    
+    // MARK: - Default Configuration
+    
+    /// Default reporting options: provides partial results and alternative transcriptions
+    public static let defaultReportingOptions: Set<SpeechTranscriber.ReportingOption> = [
+        .volatileResults,
+        .alternativeTranscriptions
+    ]
+    
+    /// Default attribute options: includes timing and confidence metadata
+    public static let defaultAttributeOptions: Set<SpeechTranscriber.ResultAttributeOption> = [
+        .audioTimeRange,
+        .transcriptionConfidence
+    ]
 
     // MARK: - Properties
 
     private let permissionsManager = PermissionsManager()
-    private let transcriberManager = SpeechTranscriberManager()
     private let converter = BufferConverter()
-    private let streamState = StreamState()
+    private let modelManager = ModelManager()
 
     private lazy var audioEngine = AVAudioEngine()
     private var isAudioStreaming = false
 
     private let locale: Locale
+    private let reportingOptions: Set<SpeechTranscriber.ReportingOption>
+    private let attributeOptions: Set<SpeechTranscriber.ResultAttributeOption>
+    
+    // Transcriber components
+    private var transcriber: SpeechTranscriber?
+    private var analyzer: SpeechAnalyzer?
+    private var inputSequence: AsyncStream<AnalyzerInput>?
+    private var inputBuilder: AsyncStream<AnalyzerInput>.Continuation?
+    private var analyzerFormat: AVAudioFormat?
+    
+    // Stream state management
+    private var continuation: AsyncThrowingStream<SpeechTranscriber.Result, Error>.Continuation?
+    private var recognizerTask: Task<Void, Never>?
+    private var streamingActive = false
 
     // MARK: - Init
 
     /// Create a new transcriber instance.
     ///
-    /// - Parameter locale: Desired transcription locale. Defaults to the device locale and is
-    ///   validated against `SpeechTranscriber.supportedLocales`. If the locale is not yet installed,
-    ///   `AuralKit` automatically downloads the corresponding on-device model.
-    public init(locale: Locale = .current) {
+    /// - Parameters:
+    ///   - locale: Desired transcription locale. Defaults to the device locale and is
+    ///     validated against `SpeechTranscriber.supportedLocales`. If the locale is not yet installed,
+    ///     `AuralKit` automatically downloads the corresponding on-device model.
+    ///   - reportingOptions: Options controlling when and how results are delivered.
+    ///     Defaults to `.volatileResults` (partial results) and `.alternativeTranscriptions`.
+    ///   - attributeOptions: Options controlling what metadata is included with results.
+    ///     Defaults to `.audioTimeRange` (timing info) and `.transcriptionConfidence`.
+    public init(
+        locale: Locale = .current,
+        reportingOptions: Set<SpeechTranscriber.ReportingOption> = defaultReportingOptions,
+        attributeOptions: Set<SpeechTranscriber.ResultAttributeOption> = defaultAttributeOptions
+    ) {
         self.locale = locale
+        self.reportingOptions = reportingOptions
+        self.attributeOptions = attributeOptions
     }
 
     /// Progress of the ongoing model download, if any.
@@ -67,7 +105,7 @@ public final class SpeechSession: @unchecked Sendable {
     /// }
     /// ```
     public var modelDownloadProgress: Progress? {
-        transcriberManager.downloadProgress
+        modelManager.currentDownloadProgress
     }
 
     // MARK: - Public API
@@ -96,16 +134,14 @@ public final class SpeechSession: @unchecked Sendable {
             }
         }
 
-        Task { [weak self] in
-            guard let self else { return }
-
-            if await self.streamState.hasActiveStream() {
+        Task {
+            if self.continuation != nil || recognizerTask != nil || streamingActive {
                 continuation.finish(throwing: SpeechSessionError.recognitionStreamSetupFailed)
                 return
             }
 
-            await self.streamState.setContinuation(continuation)
-            await self.startPipeline(with: continuation)
+            self.continuation = continuation
+            await startPipeline(with: continuation)
         }
 
         return stream
@@ -134,9 +170,9 @@ public final class SpeechSession: @unchecked Sendable {
             }
 #endif
 
-            let transcriber = try await transcriberManager.setUpTranscriber(locale: locale)
+            let transcriber = try await setUpTranscriber()
 
-            let recognizerTask = Task<Void, Never> { [weak self] in
+            recognizerTask = Task<Void, Never> { [weak self] in
                 guard let self else { return }
 
                 do {
@@ -151,11 +187,9 @@ public final class SpeechSession: @unchecked Sendable {
                 }
             }
 
-            await streamState.setRecognizerTask(recognizerTask)
-
             try startAudioStreaming()
 
-            await streamState.markStreaming(true)
+            streamingActive = true
         } catch {
             await finishWithStartupError(error)
         }
@@ -172,23 +206,26 @@ public final class SpeechSession: @unchecked Sendable {
     }
 
     private func cleanup(cancelRecognizer: Bool) async {
-        let recognizerTask = await streamState.takeRecognizerTask()
+        let task = recognizerTask
+        recognizerTask = nil
+        
         if cancelRecognizer {
-            recognizerTask?.cancel()
+            task?.cancel()
         }
 
-        await streamState.markStreaming(false)
+        streamingActive = false
         stopAudioStreaming()
-        await transcriberManager.stop()
+        await stopTranscriberAndCleanup()
     }
 
     private func finishStream(error: Error?) async {
-        guard let continuation = await streamState.takeContinuation() else { return }
+        guard let cont = continuation else { return }
+        continuation = nil
 
         if let error {
-            continuation.finish(throwing: error)
+            cont.finish(throwing: error)
         } else {
-            continuation.finish()
+            cont.finish()
         }
     }
     
@@ -205,9 +242,10 @@ public final class SpeechSession: @unchecked Sendable {
 
         audioEngine.inputNode.installTap(onBus: 0,
                                          bufferSize: 4096,
-                                         format: inputFormat) { [transcriberManager, converter] buffer, _ in
+                                         format: inputFormat) { [weak self] buffer, _ in
+            guard let self else { return }
             do {
-                try transcriberManager.processAudioBuffer(buffer, converter: converter)
+                try self.processAudioBuffer(buffer)
             } catch {
                 // Audio processing error - ignore and continue
             }
@@ -223,38 +261,64 @@ public final class SpeechSession: @unchecked Sendable {
         audioEngine.stop()
         isAudioStreaming = false
     }
-}
+    
+    // MARK: - Transcriber Setup and Management
+    
+    /// Set up the transcriber with the configured locale and options
+    private func setUpTranscriber() async throws -> SpeechTranscriber {
+        transcriber = SpeechTranscriber(
+            locale: locale,
+            transcriptionOptions: [],
+            reportingOptions: reportingOptions,
+            attributeOptions: attributeOptions
+        )
 
-// MARK: - Stream State Actor
+        guard let transcriber else {
+            throw SpeechSessionError.recognitionStreamSetupFailed
+        }
 
-private actor StreamState {
-    private var continuation: AsyncThrowingStream<SpeechTranscriber.Result, Error>.Continuation?
-    private var recognizerTask: Task<Void, Never>?
-    private var isStreaming = false
+        analyzer = SpeechAnalyzer(modules: [transcriber])
 
-    func hasActiveStream() -> Bool {
-        continuation != nil || recognizerTask != nil || isStreaming
+        try await modelManager.ensureModel(transcriber: transcriber, locale: locale)
+
+        analyzerFormat = await SpeechAnalyzer.bestAvailableAudioFormat(compatibleWith: [transcriber])
+        (inputSequence, inputBuilder) = AsyncStream<AnalyzerInput>.makeStream()
+
+        guard let inputSequence else { return transcriber }
+
+        try await analyzer?.start(inputSequence: inputSequence)
+
+        return transcriber
     }
 
-    func setContinuation(_ continuation: AsyncThrowingStream<SpeechTranscriber.Result, Error>.Continuation) {
-        self.continuation = continuation
+    /// Process audio buffer synchronously (for use in callbacks)
+    private func processAudioBuffer(_ buffer: AVAudioPCMBuffer) throws {
+        guard let inputBuilder, let analyzerFormat else {
+            throw SpeechSessionError.invalidAudioDataType
+        }
+
+        let converted = try converter.convertBuffer(buffer, to: analyzerFormat)
+        let input = AnalyzerInput(buffer: converted)
+        inputBuilder.yield(input)
     }
 
-    func takeContinuation() -> AsyncThrowingStream<SpeechTranscriber.Result, Error>.Continuation? {
-        defer { continuation = nil }
-        return continuation
-    }
+    /// Stop transcribing and clean up
+    private func stopTranscriberAndCleanup() async {
+        inputBuilder?.finish()
+        
+        do {
+            try await analyzer?.finalizeAndFinishThroughEndOfInput()
+        } catch {
+            // Finalization failed, but we still need to clean up resources
+            // Log for debugging but don't propagate since stop() is best-effort cleanup
+        }
 
-    func setRecognizerTask(_ task: Task<Void, Never>?) {
-        recognizerTask = task
-    }
+        await modelManager.releaseLocales()
 
-    func takeRecognizerTask() -> Task<Void, Never>? {
-        defer { recognizerTask = nil }
-        return recognizerTask
-    }
-
-    func markStreaming(_ streaming: Bool) {
-        isStreaming = streaming
+        inputBuilder = nil
+        inputSequence = nil
+        analyzerFormat = nil
+        analyzer = nil
+        transcriber = nil
     }
 }
