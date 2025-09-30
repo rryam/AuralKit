@@ -46,6 +46,27 @@ public final class SpeechSession: @unchecked Sendable {
         .transcriptionConfidence
     ]
 
+#if os(iOS)
+    /// Audio session configuration for iOS
+    public struct AudioSessionConfiguration {
+        public let category: AVAudioSession.Category
+        public let mode: AVAudioSession.Mode
+        public let options: AVAudioSession.CategoryOptions
+        
+        public init(
+            category: AVAudioSession.Category = .playAndRecord,
+            mode: AVAudioSession.Mode = .spokenAudio,
+            options: AVAudioSession.CategoryOptions = .notifyOthersOnDeactivation
+        ) {
+            self.category = category
+            self.mode = mode
+            self.options = options
+        }
+        
+        public static let `default` = AudioSessionConfiguration()
+    }
+#endif
+
     // MARK: - Properties
 
     private let permissionsManager = PermissionsManager()
@@ -58,6 +79,10 @@ public final class SpeechSession: @unchecked Sendable {
     private let locale: Locale
     private let reportingOptions: Set<SpeechTranscriber.ReportingOption>
     private let attributeOptions: Set<SpeechTranscriber.ResultAttributeOption>
+    
+#if os(iOS)
+    private let audioConfig: AudioSessionConfiguration
+#endif
     
     // Transcriber components
     private var transcriber: SpeechTranscriber?
@@ -91,7 +116,35 @@ public final class SpeechSession: @unchecked Sendable {
         self.locale = locale
         self.reportingOptions = reportingOptions
         self.attributeOptions = attributeOptions
+#if os(iOS)
+        self.audioConfig = AudioSessionConfiguration.default
+#endif
     }
+
+#if os(iOS)
+    /// Create a new transcriber instance with custom audio session configuration (iOS only).
+    ///
+    /// - Parameters:
+    ///   - locale: Desired transcription locale. Defaults to the device locale and is
+    ///     validated against `SpeechTranscriber.supportedLocales`. If the locale is not yet installed,
+    ///     `AuralKit` automatically downloads the corresponding on-device model.
+    ///   - reportingOptions: Options controlling when and how results are delivered.
+    ///     Defaults to `.volatileResults` (partial results) and `.alternativeTranscriptions`.
+    ///   - attributeOptions: Options controlling what metadata is included with results.
+    ///     Defaults to `.audioTimeRange` (timing info) and `.transcriptionConfidence`.
+    ///   - audioConfig: Audio session configuration for iOS. Controls category, mode, and options.
+    public init(
+        locale: Locale = .current,
+        reportingOptions: Set<SpeechTranscriber.ReportingOption> = defaultReportingOptions,
+        attributeOptions: Set<SpeechTranscriber.ResultAttributeOption> = defaultAttributeOptions,
+        audioConfig: AudioSessionConfiguration = .default
+    ) {
+        self.locale = locale
+        self.reportingOptions = reportingOptions
+        self.attributeOptions = attributeOptions
+        self.audioConfig = audioConfig
+    }
+#endif
 
     /// Progress of the ongoing model download, if any.
     ///
@@ -165,8 +218,8 @@ public final class SpeechSession: @unchecked Sendable {
 #if os(iOS)
             try await MainActor.run {
                 let audioSession = AVAudioSession.sharedInstance()
-                try audioSession.setCategory(.playAndRecord, mode: .spokenAudio)
-                try audioSession.setActive(true, options: .notifyOthersOnDeactivation)
+                try audioSession.setCategory(audioConfig.category, mode: audioConfig.mode, options: audioConfig.options)
+                try audioSession.setActive(true)
             }
 #endif
 
