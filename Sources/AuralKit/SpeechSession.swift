@@ -48,7 +48,7 @@ public final class SpeechSession: @unchecked Sendable {
 
 #if os(iOS)
     /// Audio session configuration for iOS
-    public struct AudioSessionConfiguration {
+    public struct AudioSessionConfiguration: Sendable {
         public let category: AVAudioSession.Category
         public let mode: AVAudioSession.Mode
         public let options: AVAudioSession.CategoryOptions
@@ -56,7 +56,7 @@ public final class SpeechSession: @unchecked Sendable {
         public init(
             category: AVAudioSession.Category = .playAndRecord,
             mode: AVAudioSession.Mode = .spokenAudio,
-            options: AVAudioSession.CategoryOptions = .notifyOthersOnDeactivation
+            options: AVAudioSession.CategoryOptions = .duckOthers
         ) {
             self.category = category
             self.mode = mode
