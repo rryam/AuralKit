@@ -169,7 +169,16 @@ public final class SpeechSession: @unchecked Sendable {
     /// timing metadata (`.audioTimeRange`), as well as whether the result is final or volatile (partial).
     /// Consume the stream with `for try await` and call `stopTranscribing()` to finish early.
     ///
+    /// - Parameter contextualStrings: Optional dictionary mapping contextual strings tags
+    ///   to arrays of contextual words that help improve transcription accuracy. For example,
+    ///   use `.general` for domain-specific terminology or `.personal` for names.
+    /// - Returns: An async throwing stream of transcription results.
+    /// - Throws: `SpeechSessionError` if permissions are denied, locale is unsupported,
+    ///   transcription setup fails, or context setup fails.
+    ///
+    /// # Example
     /// ```swift
+    /// // Basic usage
     /// for try await result in session.startTranscribing() {
     ///     if result.isFinal {
     ///         // Final result - accumulate this
@@ -177,8 +186,17 @@ public final class SpeechSession: @unchecked Sendable {
     ///         // Volatile result - replace previous partial
     ///     }
     /// }
+    ///
+    /// // With contextual strings
+    /// for try await result in session.startTranscribing(
+    ///     contextualStrings: [.general: ["SwiftUI", "Combine", "AsyncStream"]]
+    /// ) {
+    ///     // Process results...
+    /// }
     /// ```
-    public func startTranscribing() -> AsyncThrowingStream<SpeechTranscriber.Result, Error> {
+    public func startTranscribing(
+        contextualStrings: [AnalysisContext.ContextualStringsTag: [String]]? = nil
+    ) -> AsyncThrowingStream<SpeechTranscriber.Result, Error> {
         let (stream, continuation) = AsyncThrowingStream<SpeechTranscriber.Result, Error>.makeStream()
 
         continuation.onTermination = { [weak self] _ in
@@ -194,10 +212,35 @@ public final class SpeechSession: @unchecked Sendable {
             }
 
             self.continuation = continuation
-            await startPipeline(with: continuation)
+            await startPipeline(with: continuation, contextualStrings: contextualStrings)
         }
 
         return stream
+    }
+
+    /// Start streaming live microphone audio to the speech analyzer with contextual strings.
+    ///
+    /// Convenience method that takes a simple array of contextual words and maps them to
+    /// the `.general` analysis context property internally.
+    ///
+    /// - Parameter contextualStrings: Optional array of contextual words that help improve
+    ///   transcription accuracy for domain-specific terminology.
+    /// - Returns: An async throwing stream of transcription results.
+    /// - Throws: `SpeechSessionError` if permissions are denied, locale is unsupported,
+    ///   transcription setup fails, or context setup fails.
+    ///
+    /// # Example
+    /// ```swift
+    /// for try await result in session.startTranscribing(
+    ///     contextualStrings: ["SwiftUI", "Combine", "AsyncStream"]
+    /// ) {
+    ///     // Process results...
+    /// }
+    /// ```
+    public func startTranscribing(
+        contextualStrings: [String]
+    ) -> AsyncThrowingStream<SpeechTranscriber.Result, Error> {
+        return startTranscribing(contextualStrings: [.general: contextualStrings])
     }
 
     /// Stop capturing audio and finish the current transcription stream.
@@ -211,7 +254,10 @@ public final class SpeechSession: @unchecked Sendable {
 
     // MARK: - Private helpers
 
-    private func startPipeline(with continuation: AsyncThrowingStream<SpeechTranscriber.Result, Error>.Continuation) async {
+    private func startPipeline(
+        with continuation: AsyncThrowingStream<SpeechTranscriber.Result, Error>.Continuation,
+        contextualStrings: [AnalysisContext.ContextualStringsTag: [String]]? = nil
+    ) async {
         do {
             try await permissionsManager.ensurePermissions()
 
@@ -223,7 +269,7 @@ public final class SpeechSession: @unchecked Sendable {
             }
 #endif
 
-            let transcriber = try await setUpTranscriber()
+            let transcriber = try await setUpTranscriber(contextualStrings: contextualStrings)
 
             recognizerTask = Task<Void, Never> { [weak self] in
                 guard let self else { return }
@@ -318,7 +364,9 @@ public final class SpeechSession: @unchecked Sendable {
     // MARK: - Transcriber Setup and Management
     
     /// Set up the transcriber with the configured locale and options
-    private func setUpTranscriber() async throws -> SpeechTranscriber {
+    private func setUpTranscriber(
+        contextualStrings: [AnalysisContext.ContextualStringsTag: [String]]? = nil
+    ) async throws -> SpeechTranscriber {
         transcriber = SpeechTranscriber(
             locale: locale,
             transcriptionOptions: [],
@@ -333,6 +381,19 @@ public final class SpeechSession: @unchecked Sendable {
         analyzer = SpeechAnalyzer(modules: [transcriber])
 
         try await modelManager.ensureModel(transcriber: transcriber, locale: locale)
+
+        // Set up analysis context with contextual strings if provided
+        if let contextualStrings, !contextualStrings.isEmpty, let analyzer {
+            let analysisContext = AnalysisContext()
+            for (tag, strings) in contextualStrings {
+                analysisContext.contextualStrings[tag] = strings
+            }
+            do {
+                try await analyzer.setContext(analysisContext)
+            } catch {
+                throw SpeechSessionError.contextSetupFailed(error)
+            }
+        }
 
         analyzerFormat = await SpeechAnalyzer.bestAvailableAudioFormat(compatibleWith: [transcriber])
         (inputSequence, inputBuilder) = AsyncStream<AnalyzerInput>.makeStream()

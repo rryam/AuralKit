@@ -32,6 +32,9 @@ public enum SpeechSessionError: LocalizedError {
     /// Model download failed for other reasons
     case modelDownloadFailed(NSError?)
 
+    /// Failed to set up analysis context with contextual strings
+    case contextSetupFailed(Error)
+
     public var errorDescription: String? {
         switch self {
         case .microphonePermissionDenied:
@@ -85,6 +88,11 @@ public enum SpeechSessionError: LocalizedError {
                 return NSLocalizedString("Speech model download failed.",
                                        comment: "Generic model download failure")
             }
+
+        case .contextSetupFailed(let underlyingError):
+            return String(format: NSLocalizedString("Failed to set up analysis context: %@",
+                                                   comment: "Error when analysis context setup fails"),
+                         underlyingError.localizedDescription)
         }
     }
 
@@ -121,6 +129,10 @@ public enum SpeechSessionError: LocalizedError {
         case .modelDownloadFailed:
             return NSLocalizedString("The speech model could not be downloaded.",
                                    comment: "Failure reason when model download fails")
+
+        case .contextSetupFailed:
+            return NSLocalizedString("Unable to configure the speech analyzer with the provided contextual strings.",
+                                   comment: "Failure reason when context setup fails")
         }
     }
 
@@ -153,6 +165,10 @@ public enum SpeechSessionError: LocalizedError {
         case .modelDownloadFailed:
             return NSLocalizedString("Try again later or verify your network connection.",
                                    comment: "Recovery suggestion when model download fails")
+
+        case .contextSetupFailed:
+            return NSLocalizedString("Try starting transcription again or simplify the contextual strings provided.",
+                                   comment: "Recovery suggestion when context setup fails")
         }
     }
 }

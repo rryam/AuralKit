@@ -154,3 +154,5 @@ AuralKitDemo/DerivedData/
 # Build artifacts
 .build/
 *.xcresult
+.claude
+
