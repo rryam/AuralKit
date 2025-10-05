@@ -63,16 +63,11 @@ class TranscriptionManager {
     }
     
     private func handleTranscriptionResult(_ result: SpeechTranscriber.Result) {
-        if result.isFinal {
-            // Final text - append to finalized transcript (preserving timing metadata)
-            finalizedText += result.text
-            volatileText = ""
-        } else {
-            // Volatile (partial) text - replace previous partial
-            var styledText = result.text
-            styledText.foregroundColor = Color.purple.opacity(0.4)
-            volatileText = styledText
-        }
+        result.apply(
+            to: &finalizedText,
+            partialText: &volatileText,
+            partialStyler: { $0.foregroundColor = Color.purple.opacity(0.4) }
+        )
 
         // Extract time range from AttributedString if available
         currentTimeRange = ""
@@ -151,5 +146,22 @@ struct TranscriptionRecord: Identifiable, Codable {
         self.timestamp = timestamp
         self.alternatives = alternatives
         self.timeRange = timeRange
+    }
+}
+
+extension SpeechTranscriber.Result {
+    func apply(
+        to finalText: inout AttributedString,
+        partialText: inout AttributedString,
+        partialStyler: ((inout AttributedString) -> Void)? = nil
+    ) {
+        if isFinal {
+            finalText += text
+            partialText = ""
+        } else {
+            var styledText = text
+            partialStyler?(&styledText)
+            partialText = styledText
+        }
     }
 }

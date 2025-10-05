@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**AuralKit** is a Swift package that wraps iOS 26's `SpeechTranscriber` and `SpeechAnalyzer` APIs for speech-to-text transcription. The public API is a single class called `SpeechSession` (not AuralKit - the package name is AuralKit, but the main class is SpeechSession).
+**AuralKit** is a Swift package that wraps iOS 26's `SpeechTranscriber` and `SpeechAnalyzer` APIs for speech-to-text transcription. The public API is a single actor called `SpeechSession` (not AuralKit - the package name is AuralKit, but the main type is SpeechSession).
 
 ### Key Design Principles
 
@@ -14,7 +14,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 3. **Apple's reference implementation**: The core transcription code (buffer conversion, analyzer setup, result handling) follows Apple's SpeechExample exactly. When making changes to transcription logic, verify against Apple's patterns.
 
-4. **Session-based API**: Similar to `URLSession`, users create a `SpeechSession` and call `startTranscribing()` / `stopTranscribing()`.
+4. **Session-based API**: Similar to `URLSession`, users create a `SpeechSession` and call `await startTranscribing()` / `stopTranscribing()`.
 
 5. **Simplicity first**: The API is designed to be usable in ~30 lines of SwiftUI code without any manager class. The demo's `TranscriptionManager` is completely optional.
 
@@ -45,9 +45,9 @@ After `open Package.swift`:
 
 ### Public API Layer (Sources/AuralKit/)
 
-**SpeechSession.swift** - The ONLY public API class
+**SpeechSession.swift** - The ONLY public API actor
 - `init(locale: Locale = .current)` - Create a session
-- `startTranscribing() -> AsyncThrowingStream<TranscriptionResult, Error>` - Start streaming results
+- `startTranscribing() async -> AsyncThrowingStream<TranscriptionResult, Error>` - Start streaming results
 - `stopTranscribing() async` - Stop transcription
 - `modelDownloadProgress: Progress?` - Monitor model downloads
 
@@ -102,7 +102,8 @@ After `open Package.swift`:
 ### Result Handling Pattern (DO NOT BREAK THIS)
 
 ```swift
-for try await result in session.startTranscribing() {
+let stream = await session.startTranscribing()
+for try await result in stream {
     if result.isFinal {
         finalizedText += result.text  // Append, don't replace
         partialText = ""
