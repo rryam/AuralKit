@@ -102,12 +102,10 @@ struct TranscriptionView: View {
                 do {
                     let stream = await session.startTranscribing()
                     for try await result in stream {
-                        if result.isFinal {
-                            finalText += result.text
-                            partialText = ""
-                        } else {
-                            partialText = result.text
-                        }
+                        result.apply(
+                            to: &finalText,
+                            partialText: &partialText
+                        )
                     }
                 } catch {
                     self.error = error.localizedDescription
