@@ -26,7 +26,8 @@ let session = SpeechSession(locale: .current)
 let streamTask = Task {
     do {
         // Start the async stream
-        for try await result in session.startTranscribing() {
+        let stream = await session.startTranscribing()
+        for try await result in stream {
             if result.isFinal {
                 print("Final: \(result.text)")
             } else {
@@ -78,7 +79,10 @@ let session = SpeechSession(locale: Locale(identifier: "es-ES"))
 let streamTask = Task {
     do {
         // Start transcribing
-        for try await attributedText in session.startTranscribing() {
+        let stream = await session.startTranscribing()
+        for try await result in stream {
+            let attributedText = result.text
+
             // Access the plain text
             let plainText = String(attributedText.characters)
             print(plainText)
@@ -144,7 +148,8 @@ struct ContentView: View {
                 } else {
                     isTranscribing = true
                     Task {
-                        for try await result in session.startTranscribing() {
+                        let stream = await session.startTranscribing()
+                        for try await result in stream {
                             if result.isFinal {
                                 transcript += result.text
                             }
@@ -185,7 +190,8 @@ struct ContentView: View {
                 } else {
                     isTranscribing = true
                     Task {
-                        for try await result in session.startTranscribing() {
+                        let stream = await session.startTranscribing()
+                        for try await result in stream {
                             if result.isFinal {
                                 finalText += result.text
                                 partialText = ""
@@ -210,9 +216,9 @@ The `TranscriptionManager` in the demo app adds language selection, history trac
 When a locale has not been installed yet, AuralKit automatically downloads the appropriate speech model. You can observe download progress through the `modelDownloadProgress` property:
 
 ```swift
-let kit = AuralKit(locale: Locale(identifier: "ja-JP"))
+let session = SpeechSession(locale: Locale(identifier: "ja-JP"))
 
-if let progress = kit.modelDownloadProgress {
+if let progress = await session.modelDownloadProgress {
     print("Downloading model: \(progress.fractionCompleted * 100)%")
 }
 ```
@@ -225,7 +231,8 @@ AuralKit surfaces detailed `SpeechSessionError` values so you can present action
 
 ```swift
 do {
-    for try await segment in kit.startTranscribing() {
+    let stream = await kit.startTranscribing()
+    for try await segment in stream {
         // Use the transcription
     }
 } catch let error as SpeechSessionError {
@@ -247,7 +254,7 @@ do {
 ### SpeechSession
 
 ```swift
-public final class SpeechSession: @unchecked Sendable {
+public actor SpeechSession {
     // Initialize with a locale
     public init(locale: Locale = .current)
 
@@ -255,7 +262,7 @@ public final class SpeechSession: @unchecked Sendable {
     public var modelDownloadProgress: Progress? { get }
 
     /// Start transcribing - returns stream of SpeechTranscriber.Result
-    public func startTranscribing() -> AsyncThrowingStream<SpeechTranscriber.Result, Error>
+    public func startTranscribing() async -> AsyncThrowingStream<SpeechTranscriber.Result, Error>
 
     /// Stop transcribing
     public func stopTranscribing() async
@@ -290,7 +297,8 @@ public struct Result {
 Access transcription text, timing, confidence scores, and alternatives:
 
 ```swift
-for try await result in session.startTranscribing() {
+let stream = await session.startTranscribing()
+for try await result in stream {
     // Get plain text
     let plainText = String(result.text.characters)
     

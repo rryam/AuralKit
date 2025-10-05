@@ -5,9 +5,10 @@ import Testing
 struct AuralKitTests {
 
     @Test("Model download progress starts nil")
-    func testInitialDownloadProgressIsNil() {
+    func testInitialDownloadProgressIsNil() async {
         let kit = SpeechSession()
-        #expect(kit.modelDownloadProgress == nil)
+        let progress = await kit.modelDownloadProgress
+        #expect(progress == nil)
     }
 
     @Test("Stop transcribing without session is a no-op")
@@ -15,6 +16,6 @@ struct AuralKitTests {
     func testStopWithoutSession() async {
         let kit = SpeechSession()
         await kit.stopTranscribing()
-        #expect(kit.modelDownloadProgress == nil)
+        #expect(await kit.modelDownloadProgress == nil)
     }
 }

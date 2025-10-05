@@ -15,7 +15,8 @@ import Speech
 ///
 /// Task {
 ///     do {
-///         for try await result in session.startTranscribing() {
+///         let stream = await session.startTranscribing()
+///         for try await result in stream {
 ///             if result.isFinal {
 ///                 print("Final: \(result.text)")
 ///             } else {
@@ -30,7 +31,7 @@ import Speech
 ///
 /// Call `stopTranscribing()` to end capture and unwind the stream. The same instance may be reused
 /// for subsequent transcription sessions.
-public final class SpeechSession: @unchecked Sendable {
+public actor SpeechSession {
     
     // MARK: - Default Configuration
     
@@ -73,7 +74,7 @@ public final class SpeechSession: @unchecked Sendable {
     private let converter = BufferConverter()
     private let modelManager = ModelManager()
 
-    private lazy var audioEngine = AVAudioEngine()
+    private let audioEngine = AVAudioEngine()
     private var isAudioStreaming = false
 
     private let locale: Locale
@@ -170,7 +171,8 @@ public final class SpeechSession: @unchecked Sendable {
     /// Consume the stream with `for try await` and call `stopTranscribing()` to finish early.
     ///
     /// ```swift
-    /// for try await result in session.startTranscribing() {
+    /// let stream = await session.startTranscribing()
+    /// for try await result in stream {
     ///     if result.isFinal {
     ///         // Final result - accumulate this
     ///     } else {
@@ -178,7 +180,7 @@ public final class SpeechSession: @unchecked Sendable {
     ///     }
     /// }
     /// ```
-    public func startTranscribing() -> AsyncThrowingStream<SpeechTranscriber.Result, Error> {
+    public func startTranscribing() async -> AsyncThrowingStream<SpeechTranscriber.Result, Error> {
         let (stream, continuation) = AsyncThrowingStream<SpeechTranscriber.Result, Error>.makeStream()
 
         continuation.onTermination = { [weak self] _ in
@@ -187,15 +189,13 @@ public final class SpeechSession: @unchecked Sendable {
             }
         }
 
-        Task {
-            if self.continuation != nil || recognizerTask != nil || streamingActive {
-                continuation.finish(throwing: SpeechSessionError.recognitionStreamSetupFailed)
-                return
-            }
-
-            self.continuation = continuation
-            await startPipeline(with: continuation)
+        if self.continuation != nil || recognizerTask != nil || streamingActive {
+            continuation.finish(throwing: SpeechSessionError.recognitionStreamSetupFailed)
+            return stream
         }
+
+        self.continuation = continuation
+        await startPipeline(with: continuation)
 
         return stream
     }
@@ -297,10 +297,14 @@ public final class SpeechSession: @unchecked Sendable {
                                          bufferSize: 4096,
                                          format: inputFormat) { [weak self] buffer, _ in
             guard let self else { return }
-            do {
-                try self.processAudioBuffer(buffer)
-            } catch {
-                // Audio processing error - ignore and continue
+            guard let bufferCopy = makeSendableBufferCopy(from: buffer) else { return }
+            let boxedBuffer = PCMBufferBox(buffer: bufferCopy)
+            Task {
+                do {
+                    try await self.processAudioBuffer(boxedBuffer.buffer)
+                } catch {
+                    // Audio processing error - ignore and continue
+                }
             }
         }
 
@@ -374,4 +378,42 @@ public final class SpeechSession: @unchecked Sendable {
         analyzer = nil
         transcriber = nil
     }
+}
+
+// MARK: - Buffer Copy Helpers
+
+private final class PCMBufferBox: @unchecked Sendable {
+    let buffer: AVAudioPCMBuffer
+
+    init(buffer: AVAudioPCMBuffer) {
+        self.buffer = buffer
+    }
+}
+
+private func makeSendableBufferCopy(from buffer: AVAudioPCMBuffer) -> AVAudioPCMBuffer? {
+    guard let copy = AVAudioPCMBuffer(pcmFormat: buffer.format, frameCapacity: buffer.frameCapacity) else {
+        return nil
+    }
+
+    copy.frameLength = buffer.frameLength
+
+    let sourceBuffersPointer = UnsafeMutablePointer(mutating: buffer.audioBufferList)
+    let sourceBuffers = UnsafeMutableAudioBufferListPointer(sourceBuffersPointer)
+    let destinationBuffers = UnsafeMutableAudioBufferListPointer(copy.mutableAudioBufferList)
+
+    for index in 0..<sourceBuffers.count {
+        let sourceBuffer = sourceBuffers[index]
+        var destinationBuffer = destinationBuffers[index]
+
+        guard let sourceData = sourceBuffer.mData, let destinationData = destinationBuffer.mData else {
+            continue
+        }
+
+        memcpy(destinationData, sourceData, Int(sourceBuffer.mDataByteSize))
+        destinationBuffer.mDataByteSize = sourceBuffer.mDataByteSize
+        destinationBuffer.mNumberChannels = sourceBuffer.mNumberChannels
+        destinationBuffers[index] = destinationBuffer
+    }
+
+    return copy
 }

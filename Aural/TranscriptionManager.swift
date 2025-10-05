@@ -43,7 +43,8 @@ class TranscriptionManager {
             do {
                 guard let speechSession = speechSession else { return }
 
-                for try await result in speechSession.startTranscribing() {
+                let stream = await speechSession.startTranscribing()
+                for try await result in stream {
                     await MainActor.run {
                         handleTranscriptionResult(result)
                     }

@@ -100,7 +100,8 @@ struct TranscriptionView: View {
 
             Task {
                 do {
-                    for try await result in session.startTranscribing() {
+                    let stream = await session.startTranscribing()
+                    for try await result in stream {
                         if result.isFinal {
                             finalText += result.text
                             partialText = ""
