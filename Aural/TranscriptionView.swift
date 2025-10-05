@@ -101,8 +101,7 @@ struct TranscriptionView: View {
 
             Task {
                 do {
-                    let stream = await session.startTranscribing()
-                    for try await result in stream {
+                    for try await result in session.startTranscribing() {
                         result.apply(
                             to: &finalText,
                             partialText: &partialText

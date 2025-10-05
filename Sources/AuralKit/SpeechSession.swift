@@ -15,8 +15,7 @@ import Speech
 ///
 /// Task {
 ///     do {
-///         let stream = await session.startTranscribing()
-///         for try await result in stream {
+///         for try await result in session.startTranscribing() {
 ///             if result.isFinal {
 ///                 print("Final: \(result.text)")
 ///             } else {
@@ -31,7 +30,7 @@ import Speech
 ///
 /// Call `stopTranscribing()` to end capture and unwind the stream. The same instance may be reused
 /// for subsequent transcription sessions.
-public actor SpeechSession {
+public final class SpeechSession: @unchecked Sendable {
     
     // MARK: - Default Configuration
     
@@ -74,7 +73,7 @@ public actor SpeechSession {
     private let converter = BufferConverter()
     private let modelManager = ModelManager()
 
-    private let audioEngine = AVAudioEngine()
+    private lazy var audioEngine = AVAudioEngine()
     private var isAudioStreaming = false
 
     private let locale: Locale
@@ -170,17 +169,34 @@ public actor SpeechSession {
     /// timing metadata (`.audioTimeRange`), as well as whether the result is final or volatile (partial).
     /// Consume the stream with `for try await` and call `stopTranscribing()` to finish early.
     ///
+    /// - Parameter contextualStrings: Optional dictionary mapping contextual strings tags
+    ///   to arrays of contextual words that help improve transcription accuracy. For example,
+    ///   use `.general` for domain-specific terminology or `.personal` for names.
+    /// - Returns: An async throwing stream of transcription results.
+    /// - Throws: `SpeechSessionError` if permissions are denied, locale is unsupported,
+    ///   transcription setup fails, or context setup fails.
+    ///
+    /// # Example
     /// ```swift
-    /// let stream = await session.startTranscribing()
-    /// for try await result in stream {
+    /// // Basic usage
+    /// for try await result in session.startTranscribing() {
     ///     if result.isFinal {
     ///         // Final result - accumulate this
     ///     } else {
     ///         // Volatile result - replace previous partial
     ///     }
     /// }
+    ///
+    /// // With contextual strings
+    /// for try await result in session.startTranscribing(
+    ///     contextualStrings: [.general: ["SwiftUI", "Combine", "AsyncStream"]]
+    /// ) {
+    ///     // Process results...
+    /// }
     /// ```
-    public func startTranscribing() async -> AsyncThrowingStream<SpeechTranscriber.Result, Error> {
+    public func startTranscribing(
+        contextualStrings: [AnalysisContext.ContextualStringsTag: [String]]? = nil
+    ) -> AsyncThrowingStream<SpeechTranscriber.Result, Error> {
         let (stream, continuation) = AsyncThrowingStream<SpeechTranscriber.Result, Error>.makeStream()
 
         continuation.onTermination = { [weak self] _ in
@@ -189,15 +205,42 @@ public actor SpeechSession {
             }
         }
 
-        if self.continuation != nil || recognizerTask != nil || streamingActive {
-            continuation.finish(throwing: SpeechSessionError.recognitionStreamSetupFailed)
-            return stream
+        Task {
+            if self.continuation != nil || recognizerTask != nil || streamingActive {
+                continuation.finish(throwing: SpeechSessionError.recognitionStreamSetupFailed)
+                return
+            }
+
+            self.continuation = continuation
+            await startPipeline(with: continuation, contextualStrings: contextualStrings)
         }
 
-        self.continuation = continuation
-        await startPipeline(with: continuation)
-
         return stream
+    }
+
+    /// Start streaming live microphone audio to the speech analyzer with contextual strings.
+    ///
+    /// Convenience method that takes a simple array of contextual words and maps them to
+    /// the `.general` analysis context property internally.
+    ///
+    /// - Parameter contextualStrings: Optional array of contextual words that help improve
+    ///   transcription accuracy for domain-specific terminology.
+    /// - Returns: An async throwing stream of transcription results.
+    /// - Throws: `SpeechSessionError` if permissions are denied, locale is unsupported,
+    ///   transcription setup fails, or context setup fails.
+    ///
+    /// # Example
+    /// ```swift
+    /// for try await result in session.startTranscribing(
+    ///     contextualStrings: ["SwiftUI", "Combine", "AsyncStream"]
+    /// ) {
+    ///     // Process results...
+    /// }
+    /// ```
+    public func startTranscribing(
+        contextualStrings: [String]
+    ) -> AsyncThrowingStream<SpeechTranscriber.Result, Error> {
+        return startTranscribing(contextualStrings: [.general: contextualStrings])
     }
 
     /// Stop capturing audio and finish the current transcription stream.
@@ -211,7 +254,10 @@ public actor SpeechSession {
 
     // MARK: - Private helpers
 
-    private func startPipeline(with continuation: AsyncThrowingStream<SpeechTranscriber.Result, Error>.Continuation) async {
+    private func startPipeline(
+        with continuation: AsyncThrowingStream<SpeechTranscriber.Result, Error>.Continuation,
+        contextualStrings: [AnalysisContext.ContextualStringsTag: [String]]? = nil
+    ) async {
         do {
             try await permissionsManager.ensurePermissions()
 
@@ -223,7 +269,7 @@ public actor SpeechSession {
             }
 #endif
 
-            let transcriber = try await setUpTranscriber()
+            let transcriber = try await setUpTranscriber(contextualStrings: contextualStrings)
 
             recognizerTask = Task<Void, Never> { [weak self] in
                 guard let self else { return }
@@ -297,14 +343,10 @@ public actor SpeechSession {
                                          bufferSize: 4096,
                                          format: inputFormat) { [weak self] buffer, _ in
             guard let self else { return }
-            guard let bufferCopy = makeSendableBufferCopy(from: buffer) else { return }
-            let boxedBuffer = PCMBufferBox(buffer: bufferCopy)
-            Task {
-                do {
-                    try await self.processAudioBuffer(boxedBuffer.buffer)
-                } catch {
-                    // Audio processing error - ignore and continue
-                }
+            do {
+                try self.processAudioBuffer(buffer)
+            } catch {
+                // Audio processing error - ignore and continue
             }
         }
 
@@ -322,7 +364,9 @@ public actor SpeechSession {
     // MARK: - Transcriber Setup and Management
     
     /// Set up the transcriber with the configured locale and options
-    private func setUpTranscriber() async throws -> SpeechTranscriber {
+    private func setUpTranscriber(
+        contextualStrings: [AnalysisContext.ContextualStringsTag: [String]]? = nil
+    ) async throws -> SpeechTranscriber {
         transcriber = SpeechTranscriber(
             locale: locale,
             transcriptionOptions: [],
@@ -337,6 +381,19 @@ public actor SpeechSession {
         analyzer = SpeechAnalyzer(modules: [transcriber])
 
         try await modelManager.ensureModel(transcriber: transcriber, locale: locale)
+
+        // Set up analysis context with contextual strings if provided
+        if let contextualStrings, !contextualStrings.isEmpty, let analyzer {
+            let analysisContext = AnalysisContext()
+            for (tag, strings) in contextualStrings {
+                analysisContext.contextualStrings[tag] = strings
+            }
+            do {
+                try await analyzer.setContext(analysisContext)
+            } catch {
+                throw SpeechSessionError.contextSetupFailed(error)
+            }
+        }
 
         analyzerFormat = await SpeechAnalyzer.bestAvailableAudioFormat(compatibleWith: [transcriber])
         (inputSequence, inputBuilder) = AsyncStream<AnalyzerInput>.makeStream()
@@ -378,42 +435,4 @@ public actor SpeechSession {
         analyzer = nil
         transcriber = nil
     }
-}
-
-// MARK: - Buffer Copy Helpers
-
-private final class PCMBufferBox: @unchecked Sendable {
-    let buffer: AVAudioPCMBuffer
-
-    init(buffer: AVAudioPCMBuffer) {
-        self.buffer = buffer
-    }
-}
-
-private func makeSendableBufferCopy(from buffer: AVAudioPCMBuffer) -> AVAudioPCMBuffer? {
-    guard let copy = AVAudioPCMBuffer(pcmFormat: buffer.format, frameCapacity: buffer.frameCapacity) else {
-        return nil
-    }
-
-    copy.frameLength = buffer.frameLength
-
-    let sourceBuffersPointer = UnsafeMutablePointer(mutating: buffer.audioBufferList)
-    let sourceBuffers = UnsafeMutableAudioBufferListPointer(sourceBuffersPointer)
-    let destinationBuffers = UnsafeMutableAudioBufferListPointer(copy.mutableAudioBufferList)
-
-    for index in 0..<sourceBuffers.count {
-        let sourceBuffer = sourceBuffers[index]
-        var destinationBuffer = destinationBuffers[index]
-
-        guard let sourceData = sourceBuffer.mData, let destinationData = destinationBuffer.mData else {
-            continue
-        }
-
-        memcpy(destinationData, sourceData, Int(sourceBuffer.mDataByteSize))
-        destinationBuffer.mDataByteSize = sourceBuffer.mDataByteSize
-        destinationBuffer.mNumberChannels = sourceBuffer.mNumberChannels
-        destinationBuffers[index] = destinationBuffer
-    }
-
-    return copy
 }
