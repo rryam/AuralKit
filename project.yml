@@ -38,4 +38,6 @@ targets:
         INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
         INFOPLIST_KEY_NSMicrophoneUsageDescription: "This app needs microphone access to transcribe speech."
         INFOPLIST_KEY_NSSpeechRecognitionUsageDescription: "This app needs speech recognition to convert your speech to text."
+        DEVELOPMENT_TEAM: YQZQG7N4WG
+        CODE_SIGN_STYLE: Automatic
 

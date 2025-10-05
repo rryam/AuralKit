@@ -91,6 +91,7 @@ struct TranscriptionView: View {
             Task {
                 await session.stopTranscribing()
                 isTranscribing = false
+                partialText = ""
             }
         } else {
             isTranscribing = true
@@ -110,6 +111,7 @@ struct TranscriptionView: View {
                 } catch {
                     self.error = error.localizedDescription
                 }
+                partialText = ""
                 isTranscribing = false
             }
         }
