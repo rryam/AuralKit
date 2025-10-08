@@ -6,6 +6,7 @@ struct TranscriptionView: View {
     @State private var session = SpeechSession()
     @State private var finalText: AttributedString = ""
     @State private var partialText: AttributedString = ""
+    @State private var micInput: AudioInputInfo?
     @State private var isTranscribing = false
     @State private var error: String?
 
@@ -78,8 +79,29 @@ struct TranscriptionView: View {
             .navigationTitle("Aural")
             .toolbar {
                 if !String(finalText.characters).isEmpty {
-                    ShareLink(item: String(finalText.characters)) {
-                        Image(systemName: "square.and.arrow.up")
+                    ToolbarItem(placement: .topBarTrailing) {
+                        ShareLink(item: String(finalText.characters)) {
+                            Image(systemName: "square.and.arrow.up")
+                        }
+                    }
+                }
+                
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        // show more information about the mic
+                        if let micInput {
+                            print(micInput)
+                        }
+                    } label: {
+                        Image(systemName: micInput?.portIcon ?? "mic")
+                            .contentTransition(.symbolEffect)
+                    }
+                }
+            }
+            .task {
+                for await input in session.audioInputConfigurationStream {
+                    withAnimation {
+                        micInput = input
                     }
                 }
             }
