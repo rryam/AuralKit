@@ -125,6 +125,32 @@ struct LanguageSelectorView: View {
     }
 }
 
+struct PresetSelectorView: View {
+    @Bindable var manager: TranscriptionManager
+
+    var body: some View {
+        HStack {
+            Image(systemName: "slider.horizontal.3")
+                .foregroundStyle(.secondary)
+            Text("Preset:")
+                .foregroundStyle(.secondary)
+            Spacer()
+            Picker("Preset", selection: $manager.selectedPreset) {
+                ForEach(DemoTranscriberPreset.allCases) { option in
+                    Text(option.displayName).tag(option)
+                }
+            }
+            .pickerStyle(.menu)
+            .labelsHidden()
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .background(Color.gray.opacity(0.1))
+            .cornerRadius(8)
+        }
+        .padding(.horizontal)
+    }
+}
+
 struct RecordButtonView: View {
     let status: SpeechSession.Status
     let isDisabled: Bool
@@ -220,6 +246,7 @@ struct ControlsView: View {
 
     var body: some View {
         VStack(spacing: 20) {
+            PresetSelectorView(manager: manager)
             LanguageSelectorView(
                 manager: manager,
                 commonLocales: commonLocales

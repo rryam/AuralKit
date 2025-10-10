@@ -13,6 +13,12 @@ struct SettingsView: View {
                     Label("iOS 26 features enabled", systemImage: "checkmark.circle.fill")
                         .font(.caption)
                         .foregroundStyle(.green)
+
+                    Picker("Transcriber Preset", selection: $manager.selectedPreset) {
+                        ForEach(DemoTranscriberPreset.allCases) { option in
+                            Text(option.displayName).tag(option)
+                        }
+                    }
                 }
                 
                 Section("Default Language") {

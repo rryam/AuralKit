@@ -3,7 +3,8 @@ import AuralKit
 
 /// Minimal example showing how easy SpeechSession is to use
 struct TranscriptionView: View {
-    @State private var session = SpeechSession()
+    @State private var presetChoice: DemoTranscriberPreset = .manual
+    @State private var session = SpeechSession(preset: DemoTranscriberPreset.manual.preset)
     @State private var finalText: AttributedString = ""
     @State private var partialText: AttributedString = ""
 #if os(iOS)
@@ -16,6 +17,20 @@ struct TranscriptionView: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 32) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Transcriber Preset")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Picker("Transcriber Preset", selection: $presetChoice) {
+                        ForEach(DemoTranscriberPreset.allCases) { option in
+                            Text(option.displayName).tag(option)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal)
+
                 ScrollView {
                     VStack(alignment: .leading, spacing: 16) {
                         if !finalText.characters.isEmpty {
@@ -109,7 +124,7 @@ struct TranscriptionView: View {
                     }
                 }
             }
-            .task {
+            .task(id: ObjectIdentifier(session)) {
                 for await input in session.audioInputConfigurationStream {
                     withAnimation {
                         micInput = input
@@ -117,10 +132,28 @@ struct TranscriptionView: View {
                 }
             }
 #endif
-            .task {
+            .task(id: ObjectIdentifier(session)) {
                 for await newStatus in session.statusStream {
                     status = newStatus
                 }
+            }
+        }
+        .onChange(of: presetChoice) { _, newChoice in
+            Task { @MainActor in
+                let previousSession = session
+
+                transcriptionTask?.cancel()
+                transcriptionTask = nil
+
+                if status != .idle, status != .stopping {
+                    await previousSession.stopTranscribing()
+                }
+
+                session = makeSession(for: newChoice)
+                status = .idle
+                finalText = ""
+                partialText = ""
+                error = nil
             }
         }
     }
@@ -233,6 +266,10 @@ struct TranscriptionView: View {
         case .stopping:
             return "Stopping..."
         }
+    }
+
+    private func makeSession(for choice: DemoTranscriberPreset) -> SpeechSession {
+        SpeechSession(preset: choice.preset)
     }
 }
 

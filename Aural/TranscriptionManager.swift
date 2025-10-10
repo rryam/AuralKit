@@ -11,6 +11,13 @@ class TranscriptionManager {
     var finalizedText: AttributedString = ""
     var transcriptionHistory: [TranscriptionRecord] = []
     var selectedLocale: Locale = .current
+    var selectedPreset: DemoTranscriberPreset = .manual {
+        didSet {
+            if oldValue != selectedPreset, status != .idle {
+                stopTranscription()
+            }
+        }
+    }
     var error: String?
     var currentTimeRange = ""
 
@@ -40,7 +47,7 @@ class TranscriptionManager {
         finalizedText = ""
         currentTimeRange = ""
 
-        let session = SpeechSession(locale: selectedLocale)
+        let session = SpeechSession(locale: selectedLocale, preset: selectedPreset.preset)
         speechSession = session
         observeStatus(from: session)
 
@@ -63,8 +70,7 @@ class TranscriptionManager {
         statusTask?.cancel()
         statusTask = Task { @MainActor [weak self] in
             guard let self else { return }
-            let stream = session.statusStream
-            for await newStatus in stream {
+            for await newStatus in session.statusStream {
                 self.status = newStatus
             }
         }
@@ -139,7 +145,7 @@ class TranscriptionManager {
     func toggleTranscription() {
         primaryAction()
     }
-
+    
     func clearHistory() {
         transcriptionHistory.removeAll()
     }
