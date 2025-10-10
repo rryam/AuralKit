@@ -30,6 +30,17 @@ A comprehensive analysis of potential features and enhancements based on iOS 26+
 
 ---
 
+## Audio File Transcription – Implementation Plan
+
+- [x] Audit existing live transcription pipeline to identify reusable components for offline processing
+  - Live path responsibilities reused: `setUpTranscriber`, `finishStream`, cleanup routines, and model management. Only `startAudioStreaming`/tap setup is microphone-specific and will be bypassed for file reads.
+- [ ] Design public API surface for file-based transcription (streaming and one-shot variants, progress callbacks, error cases)
+- [ ] Define audio file validation rules and conversion strategy via `BufferConverter`
+- [ ] Implement offline transcription pipeline (file reader, analyzer integration, progress, cancellation)
+- [ ] Add unit/integration tests with fixture audio and ensure tooling/CI updates
+
+---
+
 ## 1. Core Transcription Features
 
 ### 1.1 Fine-Grained Transcription Options
