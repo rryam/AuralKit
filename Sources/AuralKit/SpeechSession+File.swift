@@ -1,5 +1,5 @@
 import Foundation
-import AVFoundation
+@preconcurrency import AVFoundation
 import Speech
 
 public struct FileTranscriptionOptions {
@@ -39,7 +39,7 @@ public extension SpeechSession {
     func streamTranscription(
         from audioFile: URL,
         options: FileTranscriptionOptions = .init(),
-        progressHandler: ((Double) -> Void)? = nil
+        progressHandler: (@Sendable (Double) -> Void)? = nil
     ) -> AsyncThrowingStream<SpeechTranscriber.Result, Error> {
         let (stream, newContinuation) = AsyncThrowingStream<SpeechTranscriber.Result, Error>.makeStream()
 
@@ -82,7 +82,7 @@ public extension SpeechSession {
     func transcribe(
         audioFile: URL,
         options: FileTranscriptionOptions = .init(),
-        progressHandler: ((Double) -> Void)? = nil
+        progressHandler: (@Sendable (Double) -> Void)? = nil
     ) async throws -> FileTranscriptionResult {
         let stream = streamTranscription(from: audioFile, options: options, progressHandler: progressHandler)
         let accumulator: @Sendable (inout [SpeechTranscriber.Result], SpeechTranscriber.Result) -> Void = { results, result in
@@ -103,7 +103,7 @@ private extension SpeechSession {
         with streamContinuation: AsyncThrowingStream<SpeechTranscriber.Result, Error>.Continuation,
         audioFileURL: URL,
         options: FileTranscriptionOptions,
-        progressHandler: ((Double) -> Void)?
+        progressHandler: (@Sendable (Double) -> Void)?
     ) async {
         do {
             let validation = try validateAudioFile(at: audioFileURL, maxDuration: options.maxDuration)
@@ -122,13 +122,15 @@ private extension SpeechSession {
                 }
 
                 do {
-                    try await self.feedAudioFile(validation, progressHandler: handler)
+                    let completed = try await self.feedAudioFile(validation, progressHandler: handler)
 
-                    if let handler {
+                    if completed, let handler {
                         await MainActor.run {
                             handler(1.0)
                         }
                     }
+                } catch is CancellationError {
+                    // Swallow cancellation triggered by cleanup.
                 } catch {
                     await self.finishWithStartupError(error)
                 }
@@ -214,10 +216,10 @@ private extension SpeechSession {
         }
     }
 
-    func feedAudioFile(
+    nonisolated func feedAudioFile(
         _ payload: (file: AVAudioFile, totalFrames: AVAudioFramePosition),
-        progressHandler: ((Double) -> Void)?
-    ) async throws {
+        progressHandler: (@Sendable (Double) -> Void)?
+    ) async throws -> Bool {
         var processedFrames: AVAudioFramePosition = 0
         let frameCapacity: AVAudioFrameCount = 4096
         let file = payload.file
@@ -245,7 +247,14 @@ private extension SpeechSession {
             if buffer.frameLength == 0 {
                 break
             }
-            try processAudioBuffer(buffer)
+
+            guard let bufferCopy = buffer.copy() as? AVAudioPCMBuffer else {
+                throw SpeechSessionError.conversionBufferCreationFailed
+            }
+
+            try await MainActor.run {
+                try self.processAudioBuffer(bufferCopy)
+            }
 
             processedFrames += AVAudioFramePosition(buffer.frameLength)
 
@@ -257,7 +266,11 @@ private extension SpeechSession {
             }
         }
 
-        inputBuilder?.finish()
+        await MainActor.run {
+            self.inputBuilder?.finish()
+        }
+
+        return !Task.isCancelled && processedFrames >= totalFrames
     }
 
 }
