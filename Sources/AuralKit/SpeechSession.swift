@@ -38,6 +38,17 @@ import Speech
 ///   to the main actor before touching analyzer state.
 @MainActor
 public final class SpeechSession {
+
+    // MARK: - Status
+
+    /// Discrete lifecycle stages for a speech transcription session.
+    public enum Status: Equatable, Sendable {
+        case idle
+        case preparing
+        case transcribing
+        case paused
+        case stopping
+    }
     
     // MARK: - Default Configuration
     
@@ -86,6 +97,17 @@ public final class SpeechSession {
     let locale: Locale
     let reportingOptions: Set<SpeechTranscriber.ReportingOption>
     let attributeOptions: Set<SpeechTranscriber.ResultAttributeOption>
+
+    /// Current lifecycle status for the session.
+    public private(set) var status: Status = .idle
+    private var statusContinuation: AsyncStream<Status>.Continuation?
+    public private(set) lazy var statusStream: AsyncStream<Status> = {
+        AsyncStream<Status> { [weak self] continuation in
+            guard let self else { return }
+            continuation.yield(self.status)
+            self.statusContinuation = continuation
+        }
+    }()
     
 #if os(iOS)
     let audioConfig: AudioSessionConfiguration
@@ -179,6 +201,7 @@ public final class SpeechSession {
         }
         audioInputConfigurationContinuation?.finish()
 #endif
+        statusContinuation?.finish()
     }
 
     /// Progress of the ongoing model download, if any.
@@ -246,6 +269,7 @@ public final class SpeechSession {
             return stream
         }
 
+        setStatus(.preparing)
         continuation = newContinuation
 
         Task { @MainActor [weak self] in
@@ -286,8 +310,54 @@ public final class SpeechSession {
     /// Safe to call even if `startTranscribing()` has not been invoked or the stream has already
     /// completed; the method simply waits for cleanup and returns.
     public func stopTranscribing() async {
+        prepareForStop()
         await cleanup(cancelRecognizer: true)
         await finishStream(error: nil)
     }
 
+    /// Pause capture without tearing down the analyzer pipeline.
+    ///
+    /// Safe to call only when the session is actively transcribing. Additional calls are ignored.
+    public func pauseTranscribing() async {
+        guard status == .transcribing else { return }
+        stopAudioStreaming()
+        setStatus(.paused)
+    }
+
+    /// Resume a paused capture session.
+    ///
+    /// - Throws: `SpeechSessionError` if audio streaming cannot restart.
+    public func resumeTranscribing() async throws {
+        guard status == .paused else { return }
+        do {
+            try startAudioStreaming()
+            setStatus(.transcribing)
+        } catch {
+            prepareForStop()
+            await cleanup(cancelRecognizer: true)
+            await finishStream(error: error)
+            throw error
+        }
+    }
+
+}
+
+// MARK: - Status Helpers
+
+@MainActor
+extension SpeechSession {
+    func setStatus(_ newStatus: Status) {
+        guard status != newStatus else { return }
+        status = newStatus
+        statusContinuation?.yield(newStatus)
+    }
+
+    func prepareForStop() {
+        switch status {
+        case .idle, .stopping:
+            break
+        default:
+            setStatus(.stopping)
+        }
+    }
 }
