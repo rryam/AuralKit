@@ -45,17 +45,20 @@ extension SpeechSession {
             try startAudioStreaming()
 
             streamingActive = true
+            setStatus(.transcribing)
         } catch {
             await finishWithStartupError(error)
         }
     }
 
     func finishWithStartupError(_ error: Error) async {
+        prepareForStop()
         await cleanup(cancelRecognizer: true)
         await finishStream(error: error)
     }
 
     func finishFromRecognizerTask(error: Error?) async {
+        prepareForStop()
         await cleanup(cancelRecognizer: false)
         await finishStream(error: error)
     }
@@ -71,6 +74,7 @@ extension SpeechSession {
         streamingActive = false
         stopAudioStreaming()
         await stopTranscriberAndCleanup()
+        setStatus(.idle)
     }
 
     func finishStream(error: Error?) async {
