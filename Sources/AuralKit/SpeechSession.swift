@@ -102,6 +102,7 @@ public final class SpeechSession {
     /// Current lifecycle status for the session.
     public private(set) var status: Status = .idle
     private var statusContinuation: AsyncStream<Status>.Continuation?
+    /// Async stream that emits lifecycle status updates, beginning with the current status.
     public private(set) lazy var statusStream: AsyncStream<Status> = {
         AsyncStream<Status> { [weak self] continuation in
             guard let self else { return }
@@ -116,6 +117,7 @@ public final class SpeechSession {
 
 #if os(iOS) || os(macOS)
     var audioInputConfigurationContinuation: AsyncStream<AudioInputInfo?>.Continuation?
+    /// Stream that delivers `AudioInputInfo` updates whenever the active audio input changes.
     public private(set) lazy var audioInputConfigurationStream: AsyncStream<AudioInputInfo?> = {
         AsyncStream { [weak self] continuation in
             self?.audioInputConfigurationContinuation = continuation
@@ -142,8 +144,10 @@ public final class SpeechSession {
 
     // Voice activation state
     var speechDetectorResultsContinuation: AsyncStream<SpeechDetector.Result>.Continuation?
+    /// Stream of speech detector results when voice activation reporting is enabled; `nil` otherwise.
     public private(set) var speechDetectorResultsStream: AsyncStream<SpeechDetector.Result>?
     var speechDetectorResultsTask: Task<Void, Never>?
+    /// Reflects the speech detector's most recent state; defaults to `true` when monitoring is inactive.
     public private(set) var isSpeechDetected: Bool = true
 
     struct VoiceActivationConfiguration {
@@ -315,6 +319,7 @@ public final class SpeechSession {
 
     // MARK: - Public API
 
+    /// Returns `true` when voice activation has been configured for the session.
     public var isVoiceActivationEnabled: Bool {
         voiceActivationConfiguration != nil
     }
@@ -338,6 +343,7 @@ public final class SpeechSession {
         }
     }
 
+    /// Disable any active voice activation configuration and tear down detector streams. Takes effect on the next transcription start.
     public func disableVoiceActivation() {
         voiceActivationConfiguration = nil
         tearDownSpeechDetectorStream()
