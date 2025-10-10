@@ -18,7 +18,7 @@ workflows:
         includes:
           - "Sources"
           - "Tests"
-          - "AuralKitDemo"
+          - "Aural"
           - "Package.swift"
     triggering:
       <<: *events
