@@ -9,7 +9,7 @@ workflows:
   auralkit:
     name: AuralKit Workflow
     environment:
-      xcode: 26.0
+      xcode: edge
       vars:
         XCODE_SCHEME: "AuralKit"
         APP_ID: "AuralKit"
