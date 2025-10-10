@@ -65,7 +65,7 @@ public final class SpeechSession {
     let reportingOptions: Set<SpeechTranscriber.ReportingOption>
     let attributeOptions: Set<SpeechTranscriber.ResultAttributeOption>
 
-    private var statusContinuation: AsyncStream<Status>.Continuation?
+    var statusContinuation: AsyncStream<Status>.Continuation?
     
 #if os(iOS)
     let audioConfig: AudioSessionConfiguration
@@ -87,7 +87,7 @@ public final class SpeechSession {
     // MARK: - Public Observables
 
     /// Current lifecycle status for the session.
-    public private(set) var status: Status = .idle
+    public internal(set) var status: Status = .idle
 
     /// Async stream that emits lifecycle status updates, beginning with the current status.
     public private(set) lazy var statusStream: AsyncStream<Status> = {
@@ -502,34 +502,4 @@ public final class SpeechSession {
         }
     }
 
-}
-
-// MARK: - Status Helpers
-
-@MainActor
-extension SpeechSession {
-    func setStatus(_ newStatus: Status) {
-        guard status != newStatus else { return }
-        let previousStatus = status
-        if Self.shouldLog(.notice) {
-            let previousDescription = String(describing: previousStatus)
-            let newDescription = String(describing: newStatus)
-            Self.logger.notice("Status transition: \(previousDescription, privacy: .public) -> \(newDescription, privacy: .public)")
-        }
-        status = newStatus
-        statusContinuation?.yield(newStatus)
-    }
-
-    func prepareForStop() {
-        switch status {
-        case .idle, .stopping:
-            break
-        default:
-            if Self.shouldLog(.debug) {
-                let currentDescription = String(describing: status)
-                Self.logger.debug("Preparing for stop from status: \(currentDescription, privacy: .public)")
-            }
-            setStatus(.stopping)
-        }
-    }
 }
