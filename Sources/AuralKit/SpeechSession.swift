@@ -125,11 +125,12 @@ public final class SpeechSession {
     
     // Transcriber components
     var transcriber: SpeechTranscriber?
+    var speechDetector: SpeechDetector?
     var analyzer: SpeechAnalyzer?
     var inputSequence: AsyncStream<AnalyzerInput>?
     var inputBuilder: AsyncStream<AnalyzerInput>.Continuation?
     var analyzerFormat: AVAudioFormat?
-    private var voiceActivationConfiguration: VoiceActivationConfiguration?
+    var voiceActivationConfiguration: VoiceActivationConfiguration?
     
     // Stream state management
     var continuation: AsyncThrowingStream<SpeechTranscriber.Result, Error>.Continuation?
@@ -140,16 +141,28 @@ public final class SpeechSession {
     var routeChangeObserver: NSObjectProtocol?
 
     // Voice activation state
-    private var speechDetectorResultsContinuation: AsyncStream<SpeechDetector.Result>.Continuation?
+    var speechDetectorResultsContinuation: AsyncStream<SpeechDetector.Result>.Continuation?
     public private(set) var speechDetectorResultsStream: AsyncStream<SpeechDetector.Result>?
-    private var speechDetectorResultsTask: Task<Void, Never>?
+    var speechDetectorResultsTask: Task<Void, Never>?
 
-    private struct VoiceActivationConfiguration {
+    struct VoiceActivationConfiguration {
         let detectionOptions: SpeechDetector.DetectionOptions
         let reportResults: Bool
     }
 
-    private func tearDownSpeechDetectorStream() {
+    func prepareSpeechDetectorResultsStream(reportResults: Bool) -> AsyncStream<SpeechDetector.Result>.Continuation? {
+        if reportResults {
+            let (stream, continuation) = AsyncStream<SpeechDetector.Result>.makeStream()
+            speechDetectorResultsStream = stream
+            speechDetectorResultsContinuation = continuation
+            return continuation
+        } else {
+            tearDownSpeechDetectorStream()
+            return nil
+        }
+    }
+
+    func tearDownSpeechDetectorStream() {
         speechDetectorResultsTask?.cancel()
         speechDetectorResultsTask = nil
         speechDetectorResultsContinuation?.finish()

@@ -25,9 +25,30 @@ extension SpeechSession {
             throw SpeechSessionError.recognitionStreamSetupFailed
         }
 
-        analyzer = SpeechAnalyzer(modules: [transcriber])
+        var modules: [any SpeechModule] = []
+
+        if let configuration = voiceActivationConfiguration {
+            let detector = SpeechDetector(
+                detectionOptions: configuration.detectionOptions,
+                reportResults: configuration.reportResults
+            )
+            speechDetector = detector
+            _ = prepareSpeechDetectorResultsStream(reportResults: configuration.reportResults)
+            modules.append(detector)
+        } else {
+            speechDetector = nil
+            tearDownSpeechDetectorStream()
+        }
+
+        modules.append(transcriber)
+
+        analyzer = SpeechAnalyzer(modules: modules)
 
         try await modelManager.ensureModel(transcriber: transcriber, locale: locale)
+
+        if modules.count > 1 {
+            try await modelManager.ensureAssets(for: modules)
+        }
 
         if let contextualStrings, !contextualStrings.isEmpty, let analyzer {
             let analysisContext = AnalysisContext()
@@ -41,7 +62,7 @@ extension SpeechSession {
             }
         }
 
-        analyzerFormat = await SpeechAnalyzer.bestAvailableAudioFormat(compatibleWith: [transcriber])
+        analyzerFormat = await SpeechAnalyzer.bestAvailableAudioFormat(compatibleWith: modules)
         (inputSequence, inputBuilder) = AsyncStream<AnalyzerInput>.makeStream()
 
         guard let inputSequence else { return transcriber }
@@ -72,6 +93,9 @@ extension SpeechSession {
         }
 
         await modelManager.releaseLocales()
+
+        tearDownSpeechDetectorStream()
+        speechDetector = nil
 
         inputBuilder = nil
         inputSequence = nil
