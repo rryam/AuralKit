@@ -256,6 +256,7 @@ public final class SpeechSession {
         let (stream, continuation) = AsyncStream<SpeechDetector.Result>.makeStream()
         speechDetectorResultsStream = stream
         speechDetectorResultsContinuation = continuation
+        Self.log("Prepared speech detector results stream", level: .debug)
         return continuation
     }
 
@@ -266,12 +267,14 @@ public final class SpeechSession {
         speechDetectorResultsContinuation = nil
         speechDetectorResultsStream = nil
         isSpeechDetected = true
+        Self.log("Speech detector stream torn down", level: .debug)
     }
 
     func startSpeechDetectorMonitoring() {
         guard let detector = speechDetector else { return }
 
         speechDetectorResultsTask?.cancel()
+        Self.log("Starting speech detector monitoring", level: .debug)
         speechDetectorResultsTask = Task<Void, Never> { [weak self] in
             guard let self else { return }
             do {
@@ -291,6 +294,7 @@ public final class SpeechSession {
             await MainActor.run {
                 self.handleSpeechDetectorStreamCompletion(error: nil)
             }
+            Self.log("Speech detector monitoring completed", level: .notice)
         }
     }
 
@@ -298,6 +302,7 @@ public final class SpeechSession {
     func handleSpeechDetectorResult(_ result: SpeechDetector.Result) {
         isSpeechDetected = result.speechDetected
         speechDetectorResultsContinuation?.yield(result)
+        Self.log("Speech detector result: speechDetected=\(result.speechDetected)", level: .debug)
     }
 
     @MainActor
@@ -314,6 +319,8 @@ public final class SpeechSession {
 
         if let error {
             Self.log("Speech detector monitoring failed: \(error.localizedDescription)", level: .error)
+        } else {
+            Self.log("Speech detector monitoring stopped", level: .notice)
         }
     }
 
@@ -418,6 +425,7 @@ public final class SpeechSession {
         detectionOptions: SpeechDetector.DetectionOptions = .init(sensitivityLevel: .medium),
         reportResults: Bool = false
     ) {
+        Self.log("Configuring voice activation (sensitivity: \(detectionOptions.sensitivityLevel), reportResults: \(reportResults))", level: .info)
         voiceActivationConfiguration = VoiceActivationConfiguration(
             detectionOptions: detectionOptions,
             reportResults: reportResults
@@ -436,6 +444,7 @@ public final class SpeechSession {
     /// After calling this method, the session will process all audio without power-saving
     /// voice activity detection. Changes take effect on the next transcription start.
     public func disableVoiceActivation() {
+        Self.log("Disabling voice activation", level: .info)
         voiceActivationConfiguration = nil
         tearDownSpeechDetectorStream()
     }
@@ -567,6 +576,7 @@ public final class SpeechSession {
 extension SpeechSession {
     func setStatus(_ newStatus: Status) {
         guard status != newStatus else { return }
+        Self.log("Status transition: \(status) -> \(newStatus)", level: .notice)
         status = newStatus
         statusContinuation?.yield(newStatus)
     }
@@ -576,6 +586,7 @@ extension SpeechSession {
         case .idle, .stopping:
             break
         default:
+            Self.log("Preparing for stop from status: \(status)", level: .debug)
             setStatus(.stopping)
         }
     }

@@ -1,9 +1,12 @@
 import Foundation
 import Speech
+import OSLog
 
 // MARK: - Model Manager
 
 class ModelManager: @unchecked Sendable {
+
+    private let logger = Logger(subsystem: "com.auralkit.speech", category: "ModelManager")
 
     private(set) var currentDownloadProgress: Progress?
 
@@ -14,9 +17,11 @@ class ModelManager: @unchecked Sendable {
         }
 
         if await installed(locale: locale) {
+            logger.notice("Locale \(locale.identifier(.bcp47)) already installed")
             currentDownloadProgress = nil
             return
         } else {
+            logger.info("Ensuring model download for locale \(locale.identifier(.bcp47))")
             try await downloadIfNeeded(for: transcriber)
         }
     }
@@ -46,11 +51,14 @@ class ModelManager: @unchecked Sendable {
     private func downloadAssetsIfNeeded(for modules: [any SpeechModule]) async throws {
         if let downloader = try await AssetInventory.assetInstallationRequest(supporting: modules) {
             currentDownloadProgress = downloader.progress
+            logger.info("Starting asset download for \(modules.count) module(s)")
             do {
                 try await downloader.downloadAndInstall()
                 currentDownloadProgress = nil
+                logger.notice("Asset download completed successfully")
             } catch {
                 currentDownloadProgress = nil
+                logger.error("Asset download failed: \(error.localizedDescription, privacy: .public)")
                 if let urlError = error as? URLError, urlError.code == .notConnectedToInternet {
                     throw SpeechSessionError.modelDownloadNoInternet
                 }
@@ -65,6 +73,7 @@ class ModelManager: @unchecked Sendable {
             }
         } else {
             currentDownloadProgress = nil
+            logger.debug("No asset download required for modules")
         }
     }
 
@@ -75,5 +84,6 @@ class ModelManager: @unchecked Sendable {
             await AssetInventory.release(reservedLocale: locale)
         }
         currentDownloadProgress = nil
+        logger.debug("Released reserved locales")
     }
 }

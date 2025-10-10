@@ -10,6 +10,7 @@ extension SpeechSession {
     func setUpTranscriber(
         contextualStrings: [AnalysisContext.ContextualStringsTag: [String]]? = nil
     ) async throws -> SpeechTranscriber {
+        Self.log("Setting up transcriber", level: .notice)
         let effectiveTranscriptionOptions = preset?.transcriptionOptions ?? []
         let effectiveReportingOptions = preset?.reportingOptions ?? reportingOptions
         let effectiveAttributeOptions = preset?.attributeOptions ?? attributeOptions
@@ -37,6 +38,7 @@ extension SpeechSession {
             _ = prepareSpeechDetectorResultsStream(reportResults: configuration.reportResults)
             let detectorModule: any SpeechModule = detector
             modules.append(detectorModule)
+            Self.log("Added speech detector module with sensitivity: \(configuration.detectionOptions.sensitivityLevel)", level: .info)
         } else {
             speechDetector = nil
             tearDownSpeechDetectorStream()
@@ -53,12 +55,15 @@ extension SpeechSession {
         modules.append(transcriber)
 
         analyzer = SpeechAnalyzer(modules: modules)
+        Self.log("Analyzer instantiated with \(modules.count) module(s)", level: .debug)
 
         try await modelManager.ensureModel(transcriber: transcriber, locale: locale)
+        Self.log("Model ensured for locale \(locale.identifier(.bcp47))", level: .info)
 
         if modules.count > 1 {
             let supplementalModules = modules.filter { !($0 is SpeechTranscriber) }
             if !supplementalModules.isEmpty {
+                Self.log("Ensuring supplemental assets for \(supplementalModules.count) module(s)", level: .info)
                 try await modelManager.ensureAssets(for: supplementalModules)
             }
         }
@@ -73,6 +78,7 @@ extension SpeechSession {
             } catch {
                 throw SpeechSessionError.contextSetupFailed(error)
             }
+            Self.log("Configured contextual strings for analyzer", level: .debug)
         }
 
         analyzerFormat = await SpeechAnalyzer.bestAvailableAudioFormat(compatibleWith: modules)
@@ -81,6 +87,7 @@ extension SpeechSession {
         guard let inputSequence else { return transcriber }
 
         try await analyzer?.start(inputSequence: inputSequence)
+        Self.log("Analyzer started", level: .info)
 
         if voiceActivationConfiguration != nil {
             startSpeechDetectorMonitoring()
@@ -101,6 +108,7 @@ extension SpeechSession {
 
     func stopTranscriberAndCleanup() async {
         inputBuilder?.finish()
+        Self.log("Stopping transcriber and cleaning up", level: .debug)
 
         do {
             try await analyzer?.finalizeAndFinishThroughEndOfInput()
@@ -119,5 +127,6 @@ extension SpeechSession {
         analyzerFormat = nil
         analyzer = nil
         transcriber = nil
+        Self.log("Transcriber cleanup complete", level: .debug)
     }
 }

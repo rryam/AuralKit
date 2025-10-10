@@ -11,6 +11,7 @@ extension SpeechSession {
             throw SpeechSessionError.recognitionStreamSetupFailed
         }
 
+        Self.log("Starting audio streaming", level: .debug)
         audioEngine.inputNode.removeTap(onBus: 0)
 
         let inputFormat = audioEngine.inputNode.outputFormat(forBus: 0)
@@ -37,10 +38,12 @@ extension SpeechSession {
         audioEngine.prepare()
         try audioEngine.start()
         isAudioStreaming = true
+        Self.log("Audio streaming started", level: .debug)
     }
 
     func stopAudioStreaming() {
         guard isAudioStreaming else { return }
+        Self.log("Stopping audio streaming", level: .debug)
         audioEngine.stop()
         isAudioStreaming = false
     }
@@ -114,13 +117,20 @@ extension SpeechSession {
 #if os(iOS)
         let audioSession = AVAudioSession.sharedInstance()
         if let input = audioSession.currentRoute.inputs.first {
+            Self.log("Publishing audio input info for port: \(input.portName)", level: .info)
             audioInputConfigurationContinuation?.yield(AudioInputInfo(from: input))
         } else {
+            Self.log("No active audio input detected", level: .debug)
             audioInputConfigurationContinuation?.yield(nil)
         }
 #elseif os(macOS)
         do {
             let info = try AudioInputInfo.current()
+            if let info {
+                Self.log("Publishing audio input info for port: \(info.portName)", level: .info)
+            } else {
+                Self.log("No active audio input detected", level: .debug)
+            }
             audioInputConfigurationContinuation?.yield(info)
         } catch {
             Self.log("Failed to obtain audio input details: \(error.localizedDescription)", level: .error)
@@ -131,6 +141,7 @@ extension SpeechSession {
 #endif
 
     func reset() async throws {
+        Self.log("Resetting audio engine", level: .debug)
         let wasStreaming = isAudioStreaming
 
         if wasStreaming {
@@ -143,5 +154,6 @@ extension SpeechSession {
 
         guard wasStreaming else { return }
         try startAudioStreaming()
+        Self.log("Audio engine reset complete", level: .debug)
     }
 }
