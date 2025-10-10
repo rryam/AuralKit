@@ -129,6 +129,7 @@ public final class SpeechSession {
     var inputSequence: AsyncStream<AnalyzerInput>?
     var inputBuilder: AsyncStream<AnalyzerInput>.Continuation?
     var analyzerFormat: AVAudioFormat?
+    private var voiceActivationConfiguration: VoiceActivationConfiguration?
     
     // Stream state management
     var continuation: AsyncThrowingStream<SpeechTranscriber.Result, Error>.Continuation?
@@ -137,6 +138,24 @@ public final class SpeechSession {
 
     // Notification Handling
     var routeChangeObserver: NSObjectProtocol?
+
+    // Voice activation state
+    private var speechDetectorResultsContinuation: AsyncStream<SpeechDetector.Result>.Continuation?
+    public private(set) var speechDetectorResultsStream: AsyncStream<SpeechDetector.Result>?
+    private var speechDetectorResultsTask: Task<Void, Never>?
+
+    private struct VoiceActivationConfiguration {
+        let detectionOptions: SpeechDetector.DetectionOptions
+        let reportResults: Bool
+    }
+
+    private func tearDownSpeechDetectorStream() {
+        speechDetectorResultsTask?.cancel()
+        speechDetectorResultsTask = nil
+        speechDetectorResultsContinuation?.finish()
+        speechDetectorResultsContinuation = nil
+        speechDetectorResultsStream = nil
+    }
 
     // MARK: - Init
 
@@ -227,6 +246,29 @@ public final class SpeechSession {
     }
 
     // MARK: - Public API
+
+    public var isVoiceActivationEnabled: Bool {
+        voiceActivationConfiguration != nil
+    }
+
+    public func configureVoiceActivation(
+        detectionOptions: SpeechDetector.DetectionOptions = .init(sensitivityLevel: .medium),
+        reportResults: Bool = false
+    ) {
+        voiceActivationConfiguration = VoiceActivationConfiguration(
+            detectionOptions: detectionOptions,
+            reportResults: reportResults
+        )
+
+        if !reportResults {
+            tearDownSpeechDetectorStream()
+        }
+    }
+
+    public func disableVoiceActivation() {
+        voiceActivationConfiguration = nil
+        tearDownSpeechDetectorStream()
+    }
 
     /// Start streaming live microphone audio to the speech analyzer.
     ///
