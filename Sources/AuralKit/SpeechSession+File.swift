@@ -50,7 +50,7 @@ public extension SpeechSession {
             }
         }
 
-        guard continuation == nil, recognizerTask == nil, streamingActive == false else {
+        guard continuation == nil, recognizerTask == nil, streamingMode == .inactive else {
             newContinuation.finish(throwing: SpeechSessionError.recognitionStreamSetupFailed)
             return stream
         }
@@ -209,10 +209,10 @@ private extension SpeechSession {
                 }
         }
 
-        streamingActive = true
+        streamingMode = .filePlayback
         setStatus(.transcribing)
         if Self.shouldLog(.info) {
-            Self.logger.info("File transcription pipeline active")
+            Self.logger.info("File transcription pipeline active (mode: file playback)")
         }
     }
 

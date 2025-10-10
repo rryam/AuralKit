@@ -122,10 +122,10 @@ extension SpeechSession {
 
             try startAudioStreaming()
 
-            streamingActive = true
+            streamingMode = .liveMicrophone
             setStatus(.transcribing)
             if Self.shouldLog(.info) {
-                Self.logger.info("Pipeline started and streaming active")
+                Self.logger.info("Pipeline started (mode: live microphone)")
             }
         } catch {
             if Self.shouldLog(.error) {
@@ -177,7 +177,7 @@ extension SpeechSession {
             task?.cancel()
         }
 
-        streamingActive = false
+        streamingMode = .inactive
         stopAudioStreaming()
         await stopTranscriberAndCleanup()
         setStatus(.idle)

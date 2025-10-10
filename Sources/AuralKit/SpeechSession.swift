@@ -1,7 +1,6 @@
 import Foundation
 import AVFoundation
 import Speech
-import OSLog
 
 // MARK: - SpeechSession
 
@@ -42,45 +41,6 @@ public final class SpeechSession {
 
     // MARK: - Logging
 
-    /// Logging levels supported by `SpeechSession`.
-    public enum LogLevel: CaseIterable, Sendable, Hashable {
-        case off
-        case error
-        case notice
-        case info
-        case debug
-
-        var rank: Int {
-            switch self {
-            case .off: return 0
-            case .error: return 1
-            case .notice: return 2
-            case .info: return 3
-            case .debug: return 4
-            }
-        }
-
-        public var displayName: String {
-            switch self {
-            case .off: return "Off"
-            case .error: return "Error"
-            case .notice: return "Notice"
-            case .info: return "Info"
-            case .debug: return "Debug"
-            }
-        }
-    }
-
-    internal static let logger = Logger(subsystem: "com.auralkit.speech", category: "SpeechSession")
-
-    /// Global logging level for all `SpeechSession` instances. Defaults to `.off`.
-    public static var logging: LogLevel = .off
-
-    internal static func shouldLog(_ level: LogLevel) -> Bool {
-        if logging == .off { return false }
-        return level.rank <= logging.rank
-    }
-
     // MARK: - Status
 
     /// Discrete lifecycle stages for a speech transcription session.
@@ -92,41 +52,6 @@ public final class SpeechSession {
         case stopping
     }
     
-    // MARK: - Default Configuration
-    
-    /// Default reporting options: provides partial results and alternative transcriptions
-    public static let defaultReportingOptions: Set<SpeechTranscriber.ReportingOption> = [
-        .volatileResults,
-        .alternativeTranscriptions
-    ]
-    
-    /// Default attribute options: includes timing and confidence metadata
-    public static let defaultAttributeOptions: Set<SpeechTranscriber.ResultAttributeOption> = [
-        .audioTimeRange,
-        .transcriptionConfidence
-    ]
-
-#if os(iOS)
-    /// Audio session configuration for iOS
-    public struct AudioSessionConfiguration: Sendable {
-        public let category: AVAudioSession.Category
-        public let mode: AVAudioSession.Mode
-        public let options: AVAudioSession.CategoryOptions
-        
-        public init(
-            category: AVAudioSession.Category = .playAndRecord,
-            mode: AVAudioSession.Mode = .spokenAudio,
-            options: AVAudioSession.CategoryOptions = .duckOthers
-        ) {
-            self.category = category
-            self.mode = mode
-            self.options = options
-        }
-        
-        public static let `default` = AudioSessionConfiguration()
-    }
-#endif
-
     // MARK: - Properties
 
     let converter = BufferConverter()
@@ -212,7 +137,14 @@ public final class SpeechSession {
     var continuation: AsyncThrowingStream<SpeechTranscriber.Result, Error>.Continuation?
     var recognizerTask: Task<Void, Never>?
     var fileIngestionTask: Task<Void, Never>?
-    var streamingActive = false
+    /// Discrete source types currently feeding the analyzer pipeline.
+    enum StreamingMode: Equatable, Sendable {
+        case inactive
+        case liveMicrophone
+        case filePlayback
+    }
+
+    var streamingMode: StreamingMode = .inactive
 
     // Notification Handling
     var routeChangeObserver: NSObjectProtocol?
@@ -494,7 +426,7 @@ public final class SpeechSession {
             }
         }
 
-        guard continuation == nil, recognizerTask == nil, streamingActive == false else {
+        guard continuation == nil, recognizerTask == nil, streamingMode == .inactive else {
             newContinuation.finish(throwing: SpeechSessionError.recognitionStreamSetupFailed)
             return stream
         }
