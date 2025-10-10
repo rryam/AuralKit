@@ -27,17 +27,27 @@ extension SpeechSession {
 
         var modules: [any SpeechModule] = []
 
-        if let configuration = voiceActivationConfiguration {
+        if supportsVoiceActivation, let configuration = voiceActivationConfiguration {
             let detector = SpeechDetector(
                 detectionOptions: configuration.detectionOptions,
                 reportResults: configuration.reportResults
             )
             speechDetector = detector
             _ = prepareSpeechDetectorResultsStream(reportResults: configuration.reportResults)
-            modules.append(detector)
+            if let detectorModule = detector as? any SpeechModule {
+                modules.append(detectorModule)
+            } else {
+                speechDetector = nil
+                tearDownSpeechDetectorStream()
+                voiceActivationConfiguration = nil
+                print("SpeechDetector does not conform to SpeechModule on this platform; voice activation disabled.")
+            }
         } else {
             speechDetector = nil
             tearDownSpeechDetectorStream()
+            if voiceActivationConfiguration != nil && !supportsVoiceActivation {
+                voiceActivationConfiguration = nil
+            }
         }
 
         modules.append(transcriber)
@@ -47,7 +57,10 @@ extension SpeechSession {
         try await modelManager.ensureModel(transcriber: transcriber, locale: locale)
 
         if modules.count > 1 {
-            try await modelManager.ensureAssets(for: modules)
+            let supplementalModules = modules.filter { !($0 is SpeechTranscriber) }
+            if !supplementalModules.isEmpty {
+                try await modelManager.ensureAssets(for: supplementalModules)
+            }
         }
 
         if let contextualStrings, !contextualStrings.isEmpty, let analyzer {

@@ -152,15 +152,19 @@ public final class SpeechSession {
     }
 
     func prepareSpeechDetectorResultsStream(reportResults: Bool) -> AsyncStream<SpeechDetector.Result>.Continuation? {
-        if reportResults {
-            let (stream, continuation) = AsyncStream<SpeechDetector.Result>.makeStream()
-            speechDetectorResultsStream = stream
-            speechDetectorResultsContinuation = continuation
-            return continuation
-        } else {
+        guard reportResults else {
             tearDownSpeechDetectorStream()
             return nil
         }
+
+        if let existing = speechDetectorResultsContinuation {
+            return existing
+        }
+
+        let (stream, continuation) = AsyncStream<SpeechDetector.Result>.makeStream()
+        speechDetectorResultsStream = stream
+        speechDetectorResultsContinuation = continuation
+        return continuation
     }
 
     func tearDownSpeechDetectorStream() {
@@ -173,7 +177,7 @@ public final class SpeechSession {
     }
 
     func startSpeechDetectorMonitoring() {
-        guard let detector = speechDetector else { return }
+        guard supportsVoiceActivation, let detector = speechDetector else { return }
 
         speechDetectorResultsTask?.cancel()
         speechDetectorResultsTask = Task<Void, Never> { [weak self] in
@@ -184,17 +188,16 @@ public final class SpeechSession {
                         self.handleSpeechDetectorResult(result)
                     }
                 }
-                await MainActor.run {
-                    self.handleSpeechDetectorStreamCompletion(error: nil)
-                }
-            } catch is CancellationError {
-                await MainActor.run {
-                    self.handleSpeechDetectorStreamCompletion(error: nil)
-                }
             } catch {
+                let finalError = (error as? CancellationError) != nil ? nil : error
                 await MainActor.run {
-                    self.handleSpeechDetectorStreamCompletion(error: error)
+                    self.handleSpeechDetectorStreamCompletion(error: finalError)
                 }
+                return
+            }
+
+            await MainActor.run {
+                self.handleSpeechDetectorStreamCompletion(error: nil)
             }
         }
     }
@@ -220,6 +223,22 @@ public final class SpeechSession {
         if let error {
             print("Speech detector monitoring failed: \(error.localizedDescription)")
         }
+    }
+
+    var supportsVoiceActivation: Bool {
+#if os(iOS)
+        if #available(iOS 26, *) {
+            return true
+        }
+        return false
+#elseif os(macOS)
+        if #available(macOS 15, *) {
+            return true
+        }
+        return false
+#else
+        return false
+#endif
     }
 
     // MARK: - Init
@@ -320,6 +339,12 @@ public final class SpeechSession {
         detectionOptions: SpeechDetector.DetectionOptions = .init(sensitivityLevel: .medium),
         reportResults: Bool = false
     ) {
+        guard supportsVoiceActivation else {
+            voiceActivationConfiguration = nil
+            tearDownSpeechDetectorStream()
+            return
+        }
+
         voiceActivationConfiguration = VoiceActivationConfiguration(
             detectionOptions: detectionOptions,
             reportResults: reportResults
