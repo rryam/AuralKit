@@ -110,6 +110,10 @@ including `converter.primeMethod = .none`. Ask for explicit approval before edit
   touching UI- or engine-bound state, hop onto `@MainActor`.
 - Avoid sharing mutable state between tasks without actor or `Sendable` guarantees.
 
+### Testing Framework
+
+- All tests must use Swift Testing (`import Testing`). Avoid introducing new XCTest-based suites.
+
 ---
 
 ## Contribution Checklist

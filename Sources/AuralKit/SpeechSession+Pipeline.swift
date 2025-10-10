@@ -33,16 +33,21 @@ extension SpeechSession {
             throw SpeechSessionError.microphonePermissionDenied
         }
 
-        // Check speech recognition permission
+        try await ensureSpeechRecognitionAuthorization()
+    }
+
+    func ensureSpeechRecognitionAuthorization(context: String? = nil) async throws {
+        let suffix = context.map { " \($0)" } ?? ""
+
         switch SFSpeechRecognizer.authorizationStatus() {
         case .authorized:
             if Self.shouldLog(.info) {
-                Self.logger.info("Speech recognition permission already authorized")
+                Self.logger.info("Speech recognition permission already authorized\(suffix)")
             }
             return
         case .notDetermined:
             if Self.shouldLog(.notice) {
-                Self.logger.notice("Requesting speech recognition permission")
+                Self.logger.notice("Requesting speech recognition permission\(suffix)")
             }
             let granted = await withCheckedContinuation { continuation in
                 SFSpeechRecognizer.requestAuthorization { status in
@@ -51,13 +56,13 @@ extension SpeechSession {
             }
             if !granted {
                 if Self.shouldLog(.error) {
-                    Self.logger.error("Speech recognition permission denied")
+                    Self.logger.error("Speech recognition permission denied\(suffix)")
                 }
                 throw SpeechSessionError.speechRecognitionPermissionDenied
             }
         default:
             if Self.shouldLog(.error) {
-                Self.logger.error("Speech recognition permission unavailable")
+                Self.logger.error("Speech recognition permission unavailable\(suffix)")
             }
             throw SpeechSessionError.speechRecognitionPermissionDenied
         }
@@ -160,6 +165,10 @@ extension SpeechSession {
         }
         let task = recognizerTask
         recognizerTask = nil
+
+        let ingestionTask = fileIngestionTask
+        fileIngestionTask = nil
+        ingestionTask?.cancel()
 
         if cancelRecognizer {
             if Self.shouldLog(.debug) {
