@@ -41,8 +41,11 @@ A comprehensive analysis of potential features and enhancements based on iOS 26+
 - [x] Define audio file validation rules and conversion strategy via `BufferConverter`
   - Validation: existence/readability, `AVAudioFile` open succeeds, format convertible to analyzer format (PCM float 32), optional duration cap (e.g. 2 hours) to guard resources.
   - Conversion flow: reuse `BufferConverter.convertBuffer(_:to:)` after reading blocks from the source file; normalize channel count via mixer when needed.
-- [ ] Implement offline transcription pipeline (file reader, analyzer integration, progress, cancellation)
-- [ ] Add unit/integration tests with fixture audio and ensure tooling/CI updates
+- [x] Implement offline transcription pipeline (file reader, analyzer integration, progress, cancellation)
+  - Added `streamTranscription(from:options:progressHandler:)` and `transcribe(audioFile:options:progressHandler:)` APIs with shared analyzer setup and progress reporting.
+  - Introduced file feed loop that converts buffers through `BufferConverter`, reuses cleanup flows, and respects cancellation.
+- [x] Add unit/integration tests with fixture audio and ensure tooling/CI updates
+  - Created silence CAF fixture generator in tests and validated missing file, duration limit, and new error surfaces via `FileTranscriptionTests`.
 
 ---
 
