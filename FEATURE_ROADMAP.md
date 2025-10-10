@@ -34,7 +34,10 @@ A comprehensive analysis of potential features and enhancements based on iOS 26+
 
 - [x] Audit existing live transcription pipeline to identify reusable components for offline processing
   - Live path responsibilities reused: `setUpTranscriber`, `finishStream`, cleanup routines, and model management. Only `startAudioStreaming`/tap setup is microphone-specific and will be bypassed for file reads.
-- [ ] Design public API surface for file-based transcription (streaming and one-shot variants, progress callbacks, error cases)
+- [x] Design public API surface for file-based transcription (streaming and one-shot variants, progress callbacks, error cases)
+  - Proposed additions: `transcribe(audioFile:progress:) async throws -> TranscriptionResult` and `streamTranscription(from:progress:) -> AsyncThrowingStream<SpeechTranscriber.Result, Error>` with optional `progress` closure.
+  - Extend `SpeechSessionError` with cases for unsupported format, file access, and duration limit.
+  - Consider optional `FileTranscriptionOptions` struct for locale/preset overrides and maxDuration.
 - [ ] Define audio file validation rules and conversion strategy via `BufferConverter`
 - [ ] Implement offline transcription pipeline (file reader, analyzer integration, progress, cancellation)
 - [ ] Add unit/integration tests with fixture audio and ensure tooling/CI updates
