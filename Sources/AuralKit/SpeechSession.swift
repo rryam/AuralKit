@@ -332,8 +332,28 @@ public final class SpeechSession {
 
     // MARK: - Public API
 
-    /// Configure optional voice activation. Updates take effect the next time a transcription
-    /// pipeline is started; callers should stop and restart an active session for changes to apply.
+    /// Configure optional voice activation to reduce power consumption during transcription.
+    ///
+    /// Voice activation uses a Voice Activity Detection (VAD) model to identify speech and skip
+    /// processing silent audio segments, saving power. However, there is a tradeoff: if the model
+    /// drops audio that actually contains speech, transcription accuracy may suffer.
+    ///
+    /// - Important: Updates take effect the next time a transcription pipeline is started.
+    ///   Stop and restart an active session for changes to apply.
+    ///
+    /// - Note: For use cases with a lot of silence, it may be tempting to always enable voice
+    ///   activation. Evaluate the power savings against potential accuracy loss for your specific
+    ///   context. The `sensitivityLevel` controls how aggressive the VAD model will be:
+    ///   - `.low`: More forgiving, less likely to drop speech but uses more power
+    ///   - `.medium`: Recommended for most use cases (default)
+    ///   - `.high`: More aggressive, saves more power but may drop speech
+    ///
+    /// - Parameters:
+    ///   - detectionOptions: Configuration for the VAD model. Defaults to
+    ///     `.init(sensitivityLevel: .medium)`, which is recommended for most use cases.
+    ///   - reportResults: When `true`, enables the `speechDetectorResultsStream` to report
+    ///     moment-to-moment VAD results. When `false` (default), VAD operates as a silent
+    ///     power optimization without reporting individual detection events.
     public func configureVoiceActivation(
         detectionOptions: SpeechDetector.DetectionOptions = .init(sensitivityLevel: .medium),
         reportResults: Bool = false
@@ -351,7 +371,10 @@ public final class SpeechSession {
         }
     }
 
-    /// Disable any active voice activation configuration and tear down detector streams. Takes effect on the next transcription start.
+    /// Disable voice activation and tear down any active detector streams.
+    ///
+    /// After calling this method, the session will process all audio without power-saving
+    /// voice activity detection. Changes take effect on the next transcription start.
     public func disableVoiceActivation() {
         voiceActivationConfiguration = nil
         tearDownSpeechDetectorStream()
