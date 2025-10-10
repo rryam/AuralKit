@@ -38,7 +38,9 @@ A comprehensive analysis of potential features and enhancements based on iOS 26+
   - Proposed additions: `transcribe(audioFile:progress:) async throws -> TranscriptionResult` and `streamTranscription(from:progress:) -> AsyncThrowingStream<SpeechTranscriber.Result, Error>` with optional `progress` closure.
   - Extend `SpeechSessionError` with cases for unsupported format, file access, and duration limit.
   - Consider optional `FileTranscriptionOptions` struct for locale/preset overrides and maxDuration.
-- [ ] Define audio file validation rules and conversion strategy via `BufferConverter`
+- [x] Define audio file validation rules and conversion strategy via `BufferConverter`
+  - Validation: existence/readability, `AVAudioFile` open succeeds, format convertible to analyzer format (PCM float 32), optional duration cap (e.g. 2 hours) to guard resources.
+  - Conversion flow: reuse `BufferConverter.convertBuffer(_:to:)` after reading blocks from the source file; normalize channel count via mixer when needed.
 - [ ] Implement offline transcription pipeline (file reader, analyzer integration, progress, cancellation)
 - [ ] Add unit/integration tests with fixture audio and ensure tooling/CI updates
 
