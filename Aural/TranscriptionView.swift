@@ -9,8 +9,9 @@ struct TranscriptionView: View {
 #if os(iOS)
     @State private var micInput: AudioInputInfo?
 #endif
-    @State private var isTranscribing = false
+    @State private var status: SpeechSession.Status = .idle
     @State private var error: String?
+    @State private var transcriptionTask: Task<Void, Never>?
 
     var body: some View {
         NavigationStack {
@@ -57,21 +58,28 @@ struct TranscriptionView: View {
                 }
 
                 Button {
-                    toggleTranscription()
+                    handlePrimaryAction()
                 } label: {
                     ZStack {
                         Circle()
-                            .fill(Color.indigo)
+                            .fill(buttonColor)
                             .frame(width: 80, height: 80)
-
-                        Image(systemName: isTranscribing ? "stop.fill" : "mic.fill")
+                        Image(systemName: buttonIcon)
                             .font(.system(size: 30))
                             .foregroundStyle(.white)
                     }
                 }
-                .disabled(error != nil)
+                .disabled(error != nil || status == .stopping)
 
-                Text(isTranscribing ? "Listening..." : "Tap to start")
+                if showStopButton {
+                    Button("Stop") {
+                        handleStopAction()
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.gray)
+                }
+
+                Text(statusMessage)
                     .font(.body)
                     .foregroundStyle(.secondary)
                     .padding(.bottom, 32)
@@ -109,36 +117,134 @@ struct TranscriptionView: View {
                 }
             }
 #endif
+            .task {
+                let stream = await MainActor.run { session.statusStream }
+                for await newStatus in stream {
+                    await MainActor.run {
+                        status = newStatus
+                    }
+                }
+            }
         }
     }
 
-    func toggleTranscription() {
-        if isTranscribing {
+    private func handlePrimaryAction() {
+        switch status {
+        case .idle:
+            startSession()
+        case .preparing:
+            handleStopAction()
+        case .transcribing:
             Task {
-                await session.stopTranscribing()
-                isTranscribing = false
-                partialText = ""
+                await session.pauseTranscribing()
             }
-        } else {
-            isTranscribing = true
-            error = nil
-            finalText = ""
-            partialText = ""
-
+        case .paused:
             Task {
                 do {
-                    for try await result in session.startTranscribing() {
+                    try await session.resumeTranscribing()
+                } catch {
+                    await MainActor.run {
+                        self.error = error.localizedDescription
+                    }
+                }
+            }
+        case .stopping:
+            break
+        }
+    }
+
+    private func handleStopAction() {
+        Task {
+            await session.stopTranscribing()
+            await MainActor.run {
+                self.partialText = ""
+            }
+        }
+        transcriptionTask?.cancel()
+        transcriptionTask = nil
+    }
+
+    private func startSession() {
+        error = nil
+        finalText = ""
+        partialText = ""
+
+        transcriptionTask?.cancel()
+        transcriptionTask = Task {
+            do {
+                for try await result in session.startTranscribing() {
+                    await MainActor.run {
                         result.apply(
                             to: &finalText,
                             partialText: &partialText
                         )
                     }
-                } catch {
+                }
+            } catch is CancellationError {
+                // Ignore cancellations triggered by stop action
+            } catch {
+                await MainActor.run {
                     self.error = error.localizedDescription
                 }
-                partialText = ""
-                isTranscribing = false
             }
+            await MainActor.run {
+                self.partialText = ""
+                self.transcriptionTask = nil
+            }
+        }
+    }
+
+    private var buttonColor: Color {
+        switch status {
+        case .idle:
+            return Color.indigo
+        case .preparing:
+            return Color.orange
+        case .transcribing:
+            return Color.red
+        case .paused:
+            return Color.yellow
+        case .stopping:
+            return Color.gray
+        }
+    }
+
+    private var buttonIcon: String {
+        switch status {
+        case .idle:
+            return "mic.fill"
+        case .preparing:
+            return "hourglass"
+        case .transcribing:
+            return "pause.fill"
+        case .paused:
+            return "play.fill"
+        case .stopping:
+            return "stop.fill"
+        }
+    }
+
+    private var showStopButton: Bool {
+        switch status {
+        case .idle, .stopping:
+            return false
+        case .preparing, .transcribing, .paused:
+            return true
+        }
+    }
+
+    private var statusMessage: String {
+        switch status {
+        case .idle:
+            return "Tap to start"
+        case .preparing:
+            return "Preparing session..."
+        case .transcribing:
+            return "Listening..."
+        case .paused:
+            return "Paused — tap to resume or stop"
+        case .stopping:
+            return "Stopping..."
         }
     }
 }

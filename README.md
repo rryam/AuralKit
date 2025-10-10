@@ -131,7 +131,8 @@ import AuralKit
 struct ContentView: View {
     @State private var session = SpeechSession()
     @State private var transcript: AttributedString = ""
-    @State private var isTranscribing = false
+    @State private var status: SpeechSession.Status = .idle
+    @State private var streamTask: Task<Void, Never>?
 
     var body: some View {
         VStack(spacing: 20) {
@@ -139,27 +140,79 @@ struct ContentView: View {
                 .frame(minHeight: 100)
                 .padding()
 
-            Button(isTranscribing ? "Stop" : "Start") {
-                if isTranscribing {
-                    Task {
-                        await session.stopTranscribing()
-                        isTranscribing = false
-                    }
-                } else {
-                    isTranscribing = true
-                    Task {
-                        let stream = await session.startTranscribing()
-                        for try await result in stream {
-                            if result.isFinal {
-                                transcript += result.text
-                            }
-                        }
-                        isTranscribing = false
-                    }
-                }
+            Button(buttonTitle, action: handlePrimaryAction)
+                .disabled(status == .stopping)
+
+            if showsStopButton {
+                Button("Stop", action: handleStop)
+                    .buttonStyle(.borderedProminent)
+            }
+        }
+        .task {
+            let stream = await MainActor.run { session.statusStream }
+            for await newStatus in stream {
+                status = newStatus
             }
         }
         .padding()
+    }
+
+    func handlePrimaryAction() {
+        switch status {
+        case .idle:
+            transcript = ""
+            streamTask = Task {
+                do {
+                    for try await result in session.startTranscribing() {
+                        if result.isFinal {
+                            await MainActor.run {
+                                transcript += result.text
+                            }
+                        }
+                    }
+                } catch {
+                    // surface errors to the UI as needed
+                }
+            }
+        case .preparing:
+            handleStop()
+        case .transcribing:
+            Task { await session.pauseTranscribing() }
+        case .paused:
+            Task { try? await session.resumeTranscribing() }
+        case .stopping:
+            break
+        }
+    }
+
+    func handleStop() {
+        streamTask?.cancel()
+        streamTask = nil
+        Task { await session.stopTranscribing() }
+    }
+
+    var buttonTitle: String {
+        switch status {
+        case .idle:
+            return "Start"
+        case .preparing:
+            return "Cancel"
+        case .transcribing:
+            return "Pause"
+        case .paused:
+            return "Resume"
+        case .stopping:
+            return "Stopping…"
+        }
+    }
+
+    var showsStopButton: Bool {
+        switch status {
+        case .idle, .stopping:
+            return false
+        case .preparing, .transcribing, .paused:
+            return true
+        }
     }
 }
 ```
@@ -173,7 +226,8 @@ struct ContentView: View {
     @State private var session = SpeechSession()
     @State private var finalText: AttributedString = ""
     @State private var partialText: AttributedString = ""
-    @State private var isTranscribing = false
+    @State private var status: SpeechSession.Status = .idle
+    @State private var streamTask: Task<Void, Never>?
 
     var body: some View {
         VStack(spacing: 20) {
@@ -181,30 +235,85 @@ struct ContentView: View {
                 .frame(minHeight: 100)
                 .padding()
 
-            Button(isTranscribing ? "Stop" : "Start") {
-                if isTranscribing {
-                    Task {
-                        await session.stopTranscribing()
-                        isTranscribing = false
-                    }
-                } else {
-                    isTranscribing = true
-                    Task {
-                        let stream = await session.startTranscribing()
-                        for try await result in stream {
-                            if result.isFinal {
-                                finalText += result.text
-                                partialText = ""
-                            } else {
-                                partialText = result.text
-                            }
-                        }
-                        isTranscribing = false
-                    }
-                }
+            Button(buttonTitle, action: handlePrimaryAction)
+                .disabled(status == .stopping)
+
+            if showsStopButton {
+                Button("Stop", action: handleStop)
+                    .buttonStyle(.bordered)
+            }
+        }
+        .task {
+            let stream = await MainActor.run { session.statusStream }
+            for await newStatus in stream {
+                status = newStatus
             }
         }
         .padding()
+    }
+
+    func handlePrimaryAction() {
+        switch status {
+        case .idle:
+            finalText = ""
+            partialText = ""
+            streamTask = Task {
+                do {
+                    for try await result in session.startTranscribing() {
+                        if result.isFinal {
+                            await MainActor.run {
+                                finalText += result.text
+                                partialText = ""
+                            }
+                        } else {
+                            await MainActor.run {
+                                partialText = result.text
+                            }
+                        }
+                    }
+                } catch {
+                    // expose error as needed
+                }
+            }
+        case .preparing:
+            handleStop()
+        case .transcribing:
+            Task { await session.pauseTranscribing() }
+        case .paused:
+            Task { try? await session.resumeTranscribing() }
+        case .stopping:
+            break
+        }
+    }
+
+    func handleStop() {
+        streamTask?.cancel()
+        streamTask = nil
+        Task { await session.stopTranscribing() }
+    }
+
+    var buttonTitle: String {
+        switch status {
+        case .idle:
+            return "Start"
+        case .preparing:
+            return "Cancel"
+        case .transcribing:
+            return "Pause"
+        case .paused:
+            return "Resume"
+        case .stopping:
+            return "Stopping…"
+        }
+    }
+
+    var showsStopButton: Bool {
+        switch status {
+        case .idle, .stopping:
+            return false
+        case .preparing, .transcribing, .paused:
+            return true
+        }
     }
 }
 ```
