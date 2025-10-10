@@ -10,11 +10,15 @@ extension SpeechSession {
     func setUpTranscriber(
         contextualStrings: [AnalysisContext.ContextualStringsTag: [String]]? = nil
     ) async throws -> SpeechTranscriber {
+        let effectiveTranscriptionOptions = preset?.transcriptionOptions ?? []
+        let effectiveReportingOptions = preset?.reportingOptions ?? reportingOptions
+        let effectiveAttributeOptions = preset?.attributeOptions ?? attributeOptions
+
         transcriber = SpeechTranscriber(
             locale: locale,
-            transcriptionOptions: [],
-            reportingOptions: reportingOptions,
-            attributeOptions: attributeOptions
+            transcriptionOptions: effectiveTranscriptionOptions,
+            reportingOptions: effectiveReportingOptions,
+            attributeOptions: effectiveAttributeOptions
         )
 
         guard let transcriber else {

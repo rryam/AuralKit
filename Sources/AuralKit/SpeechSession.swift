@@ -84,6 +84,7 @@ public final class SpeechSession {
     var isAudioStreaming = false
 
     let locale: Locale
+    let preset: SpeechTranscriber.Preset?
     let reportingOptions: Set<SpeechTranscriber.ReportingOption>
     let attributeOptions: Set<SpeechTranscriber.ResultAttributeOption>
     
@@ -123,16 +124,19 @@ public final class SpeechSession {
     ///   - locale: Desired transcription locale. Defaults to the device locale and is
     ///     validated against `SpeechTranscriber.supportedLocales`. If the locale is not yet installed,
     ///     `AuralKit` automatically downloads the corresponding on-device model.
-    ///   - reportingOptions: Options controlling when and how results are delivered.
+    ///   - preset: Optional preset that configures transcription, reporting, and attribute options.
+    ///   - reportingOptions: Options controlling when and how results are delivered when no preset is provided.
     ///     Defaults to `.volatileResults` (partial results) and `.alternativeTranscriptions`.
-    ///   - attributeOptions: Options controlling what metadata is included with results.
+    ///   - attributeOptions: Options controlling what metadata is included with results when no preset is provided.
     ///     Defaults to `.audioTimeRange` (timing info) and `.transcriptionConfidence`.
     public init(
         locale: Locale = .current,
+        preset: SpeechTranscriber.Preset? = nil,
         reportingOptions: Set<SpeechTranscriber.ReportingOption> = defaultReportingOptions,
         attributeOptions: Set<SpeechTranscriber.ResultAttributeOption> = defaultAttributeOptions
     ) {
         self.locale = locale
+        self.preset = preset
         self.reportingOptions = reportingOptions
         self.attributeOptions = attributeOptions
 #if os(iOS)
@@ -150,18 +154,21 @@ public final class SpeechSession {
     ///   - locale: Desired transcription locale. Defaults to the device locale and is
     ///     validated against `SpeechTranscriber.supportedLocales`. If the locale is not yet installed,
     ///     `AuralKit` automatically downloads the corresponding on-device model.
-    ///   - reportingOptions: Options controlling when and how results are delivered.
+    ///   - preset: Optional preset that configures transcription, reporting, and attribute options.
+    ///   - reportingOptions: Options controlling when and how results are delivered when no preset is provided.
     ///     Defaults to `.volatileResults` (partial results) and `.alternativeTranscriptions`.
-    ///   - attributeOptions: Options controlling what metadata is included with results.
+    ///   - attributeOptions: Options controlling what metadata is included with results when no preset is provided.
     ///     Defaults to `.audioTimeRange` (timing info) and `.transcriptionConfidence`.
     ///   - audioConfig: Audio session configuration for iOS. Controls category, mode, and options.
     public init(
         locale: Locale = .current,
+        preset: SpeechTranscriber.Preset? = nil,
         reportingOptions: Set<SpeechTranscriber.ReportingOption> = defaultReportingOptions,
         attributeOptions: Set<SpeechTranscriber.ResultAttributeOption> = defaultAttributeOptions,
         audioConfig: AudioSessionConfiguration = .default
     ) {
         self.locale = locale
+        self.preset = preset
         self.reportingOptions = reportingOptions
         self.attributeOptions = attributeOptions
         self.audioConfig = audioConfig

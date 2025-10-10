@@ -11,6 +11,13 @@ class TranscriptionManager {
     var finalizedText: AttributedString = ""
     var transcriptionHistory: [TranscriptionRecord] = []
     var selectedLocale: Locale = .current
+    var selectedPreset: DemoTranscriberPreset = .manual {
+        didSet {
+            if oldValue != selectedPreset, isTranscribing {
+                stopTranscription()
+            }
+        }
+    }
     var error: String?
     var currentTimeRange = ""
 
@@ -37,7 +44,7 @@ class TranscriptionManager {
         currentTimeRange = ""
         
         // Create configured SpeechSession instance
-        speechSession = SpeechSession(locale: selectedLocale)
+        speechSession = SpeechSession(locale: selectedLocale, preset: selectedPreset.preset)
 
         transcriptionTask = Task {
             do {
