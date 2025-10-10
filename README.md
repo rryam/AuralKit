@@ -131,7 +131,7 @@ import AuralKit
 struct ContentView: View {
     @State private var session = SpeechSession()
     @State private var transcript: AttributedString = ""
-    @State private var isTranscribing = false
+    @State private var status: SpeechSession.Status = .idle
 
     var body: some View {
         VStack(spacing: 20) {
@@ -139,24 +139,29 @@ struct ContentView: View {
                 .frame(minHeight: 100)
                 .padding()
 
-            Button(isTranscribing ? "Stop" : "Start") {
-                if isTranscribing {
-                    Task {
-                        await session.stopTranscribing()
-                        isTranscribing = false
-                    }
-                } else {
-                    isTranscribing = true
-                    Task {
-                        let stream = await session.startTranscribing()
-                        for try await result in stream {
+            Button(status == .transcribing ? "Pause" : "Start") {
+                Task {
+                    switch status {
+                    case .idle:
+                        transcript = ""
+                        for try await result in session.startTranscribing() {
                             if result.isFinal {
                                 transcript += result.text
                             }
                         }
-                        isTranscribing = false
+                    case .transcribing:
+                        await session.pauseTranscribing()
+                    case .paused:
+                        try? await session.resumeTranscribing()
+                    default:
+                        break
                     }
                 }
+            }
+        }
+        .task {
+            for await newStatus in session.statusStream {
+                status = newStatus
             }
         }
         .padding()
@@ -173,7 +178,7 @@ struct ContentView: View {
     @State private var session = SpeechSession()
     @State private var finalText: AttributedString = ""
     @State private var partialText: AttributedString = ""
-    @State private var isTranscribing = false
+    @State private var status: SpeechSession.Status = .idle
 
     var body: some View {
         VStack(spacing: 20) {
@@ -181,17 +186,13 @@ struct ContentView: View {
                 .frame(minHeight: 100)
                 .padding()
 
-            Button(isTranscribing ? "Stop" : "Start") {
-                if isTranscribing {
-                    Task {
-                        await session.stopTranscribing()
-                        isTranscribing = false
-                    }
-                } else {
-                    isTranscribing = true
-                    Task {
-                        let stream = await session.startTranscribing()
-                        for try await result in stream {
+            Button(statusButtonTitle) {
+                Task {
+                    switch status {
+                    case .idle:
+                        finalText = ""
+                        partialText = ""
+                        for try await result in session.startTranscribing() {
                             if result.isFinal {
                                 finalText += result.text
                                 partialText = ""
@@ -199,12 +200,35 @@ struct ContentView: View {
                                 partialText = result.text
                             }
                         }
-                        isTranscribing = false
+                    case .transcribing:
+                        await session.pauseTranscribing()
+                    case .paused:
+                        try? await session.resumeTranscribing()
+                    default:
+                        break
                     }
                 }
             }
         }
+        .task {
+            for await newStatus in session.statusStream {
+                status = newStatus
+            }
+        }
         .padding()
+    }
+
+    private var statusButtonTitle: String {
+        switch status {
+        case .idle:
+            return "Start"
+        case .transcribing:
+            return "Pause"
+        case .paused:
+            return "Resume"
+        default:
+            return "Working…"
+        }
     }
 }
 ```

@@ -6,7 +6,7 @@ import Speech
 @Observable
 @MainActor
 class TranscriptionManager {
-    var isTranscribing = false
+    var status: SpeechSession.Status = .idle
     var volatileText: AttributedString = ""
     var finalizedText: AttributedString = ""
     var transcriptionHistory: [TranscriptionRecord] = []
@@ -15,6 +15,7 @@ class TranscriptionManager {
     var currentTimeRange = ""
 
     private var transcriptionTask: Task<Void, Never>?
+    private var statusTask: Task<Void, Never>?
     private var speechSession: SpeechSession?
 
     init() {}
@@ -26,42 +27,49 @@ class TranscriptionManager {
     var currentTranscript: String {
         String(fullTranscript.characters)
     }
+
+    var isTranscribing: Bool {
+        status == .transcribing
+    }
     
     func startTranscription() {
-        guard !isTranscribing else { return }
+        guard status == .idle else { return }
 
-        isTranscribing = true
         error = nil
         volatileText = ""
         finalizedText = ""
         currentTimeRange = ""
-        
-        // Create configured SpeechSession instance
-        speechSession = SpeechSession(locale: selectedLocale)
 
-        transcriptionTask = Task {
+        let session = SpeechSession(locale: selectedLocale)
+        speechSession = session
+        observeStatus(from: session)
+
+        transcriptionTask = Task { @MainActor in
             do {
-                guard let speechSession = speechSession else { return }
-
-                for try await result in speechSession.startTranscribing() {
-                    await MainActor.run {
-                        handleTranscriptionResult(result)
-                    }
+                for try await result in session.startTranscribing() {
+                    self.handleTranscriptionResult(result)
                 }
-            } catch let error as NSError {
-                await MainActor.run {
-                    self.error = error.localizedDescription
-                    self.isTranscribing = false
-                }
+                self.finishSession()
+            } catch is CancellationError {
+                self.cleanupSession()
             } catch {
-                await MainActor.run {
-                    self.error = error.localizedDescription
-                    self.isTranscribing = false
-                }
+                self.error = error.localizedDescription
+                self.finishSession()
             }
         }
     }
-    
+
+    private func observeStatus(from session: SpeechSession) {
+        statusTask?.cancel()
+        statusTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            let stream = session.statusStream
+            for await newStatus in stream {
+                self.status = newStatus
+            }
+        }
+    }
+
     private func handleTranscriptionResult(_ result: SpeechTranscriber.Result) {
         result.apply(
             to: &finalizedText,
@@ -69,7 +77,6 @@ class TranscriptionManager {
             partialStyler: { $0.foregroundColor = Color.purple.opacity(0.4) }
         )
 
-        // Extract time range from AttributedString if available
         currentTimeRange = ""
         result.text.runs.forEach { run in
             if let audioRange = run.audioTimeRange {
@@ -89,14 +96,59 @@ class TranscriptionManager {
     }
     
     func stopTranscription() {
-        guard isTranscribing else { return }
-        
-        transcriptionTask?.cancel()
-        Task {
-            await speechSession?.stopTranscribing()
+        guard status != .idle, status != .stopping else { return }
+        Task { @MainActor in
+            await self.speechSession?.stopTranscribing()
         }
-        isTranscribing = false
-        
+    }
+
+    func pauseTranscription() {
+        guard status == .transcribing else { return }
+        Task { @MainActor in
+            await self.speechSession?.pauseTranscribing()
+        }
+    }
+
+    func resumeTranscription() {
+        guard status == .paused else { return }
+        error = nil
+        Task { @MainActor in
+            do {
+                try await self.speechSession?.resumeTranscribing()
+            } catch {
+                self.error = error.localizedDescription
+            }
+        }
+    }
+
+    func primaryAction() {
+        switch status {
+        case .idle:
+            startTranscription()
+        case .preparing:
+            stopTranscription()
+        case .transcribing:
+            pauseTranscription()
+        case .paused:
+            resumeTranscription()
+        case .stopping:
+            break
+        }
+    }
+
+    func toggleTranscription() {
+        primaryAction()
+    }
+
+    func clearHistory() {
+        transcriptionHistory.removeAll()
+    }
+    
+    func deleteRecord(_ record: TranscriptionRecord) {
+        transcriptionHistory.removeAll { $0.id == record.id }
+    }
+
+    private func finishSession() {
         if !currentTranscript.isEmpty {
             let record = TranscriptionRecord(
                 id: UUID(),
@@ -108,22 +160,18 @@ class TranscriptionManager {
             )
             transcriptionHistory.insert(record, at: 0)
         }
+
+        cleanupSession()
     }
-    
-    func toggleTranscription() {
-        if isTranscribing {
-            stopTranscription()
-        } else {
-            startTranscription()
-        }
-    }
-    
-    func clearHistory() {
-        transcriptionHistory.removeAll()
-    }
-    
-    func deleteRecord(_ record: TranscriptionRecord) {
-        transcriptionHistory.removeAll { $0.id == record.id }
+
+    private func cleanupSession() {
+        volatileText = ""
+        currentTimeRange = ""
+        transcriptionTask = nil
+        statusTask?.cancel()
+        statusTask = nil
+        speechSession = nil
+        status = .idle
     }
 }
 

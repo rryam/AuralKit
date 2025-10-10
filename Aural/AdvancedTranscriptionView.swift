@@ -8,7 +8,7 @@ struct TranscriptContentView: View {
     let finalizedText: AttributedString
     let volatileText: AttributedString
     let currentTimeRange: String
-    let isTranscribing: Bool
+    let status: SpeechSession.Status
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -29,7 +29,9 @@ struct TranscriptContentView: View {
                 )
             }
 
-            if finalizedText.characters.isEmpty && volatileText.characters.isEmpty && !isTranscribing {
+            if finalizedText.characters.isEmpty &&
+                volatileText.characters.isEmpty &&
+                status == .idle {
                 EmptyStateView()
             }
         }
@@ -124,25 +126,75 @@ struct LanguageSelectorView: View {
 }
 
 struct RecordButtonView: View {
-    let isTranscribing: Bool
+    let status: SpeechSession.Status
     let isDisabled: Bool
-    let action: () -> Void
+    let primaryAction: () -> Void
+    let stopAction: () -> Void
     @Binding var animationScale: CGFloat
 
     var body: some View {
-        Button(action: action) {
-            ZStack {
-                Circle()
-                    .fill(isTranscribing ? Color.red : Color.blue)
-                    .frame(width: 80, height: 80)
-                    .scaleEffect(animationScale)
+        VStack(spacing: 12) {
+            Button(action: primaryAction) {
+                ZStack {
+                    Circle()
+                        .fill(buttonColor)
+                        .frame(width: 80, height: 80)
+                        .scaleEffect(animationScale)
 
-                Image(systemName: isTranscribing ? "stop.fill" : "mic.fill")
-                    .font(.system(size: 30))
-                    .foregroundStyle(.white)
+                    Image(systemName: buttonIcon)
+                        .font(.system(size: 30))
+                        .foregroundStyle(.white)
+                        .symbolEffect(.pulse, isActive: status == .preparing)
+                }
+            }
+            .disabled(isDisabled || status == .stopping)
+
+            if showsStopButton {
+                Button("Stop", action: stopAction)
+                    .buttonStyle(.borderedProminent)
+                    .tint(.gray)
+                    .disabled(status == .stopping)
             }
         }
-        .disabled(isDisabled)
+    }
+
+    private var buttonColor: Color {
+        switch status {
+        case .idle:
+            return Color.blue
+        case .preparing:
+            return Color.orange
+        case .transcribing:
+            return Color.red
+        case .paused:
+            return Color.yellow
+        case .stopping:
+            return Color.gray
+        }
+    }
+
+    private var buttonIcon: String {
+        switch status {
+        case .idle:
+            return "mic.fill"
+        case .preparing:
+            return "hourglass"
+        case .transcribing:
+            return "pause.fill"
+        case .paused:
+            return "play.fill"
+        case .stopping:
+            return "stop.fill"
+        }
+    }
+
+    private var showsStopButton: Bool {
+        switch status {
+        case .idle, .stopping:
+            return false
+        case .preparing, .transcribing, .paused:
+            return true
+        }
     }
 }
 
@@ -174,13 +226,14 @@ struct ControlsView: View {
             )
 
             RecordButtonView(
-                isTranscribing: manager.isTranscribing,
+                status: manager.status,
                 isDisabled: manager.error != nil,
-                action: manager.toggleTranscription,
+                primaryAction: manager.primaryAction,
+                stopAction: manager.stopTranscription,
                 animationScale: $animationScale
             )
 
-            Text(manager.isTranscribing ? "Listening..." : "Tap to start")
+            Text(statusMessage(for: manager.status))
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .padding(.bottom)
@@ -192,6 +245,21 @@ struct ControlsView: View {
         .background(Color(NSColor.windowBackgroundColor))
         #endif
         .shadow(color: .black.opacity(0.1), radius: 10, y: -5)
+    }
+
+    private func statusMessage(for status: SpeechSession.Status) -> String {
+        switch status {
+        case .idle:
+            return "Tap to start"
+        case .preparing:
+            return "Preparing session..."
+        case .transcribing:
+            return "Listening..."
+        case .paused:
+            return "Paused — tap to resume or stop"
+        case .stopping:
+            return "Stopping..."
+        }
     }
 }
 
@@ -211,7 +279,7 @@ struct AdvancedTranscriptionView: View {
                         finalizedText: manager.finalizedText,
                         volatileText: manager.volatileText,
                         currentTimeRange: manager.currentTimeRange,
-                        isTranscribing: manager.isTranscribing
+                        status: manager.status
                     )
                 }
                 .frame(maxHeight: .infinity)
@@ -250,14 +318,10 @@ struct AdvancedTranscriptionView: View {
             }
         }
         .onAppear {
-            withAnimation(.easeInOut(duration: 1.0).repeatForever(autoreverses: true)) {
-                animationScale = manager.isTranscribing ? 1.2 : 1.0
-            }
+            updateAnimation(for: manager.status)
         }
-        .onChange(of: manager.isTranscribing) { _, isTranscribing in
-            withAnimation(.easeInOut(duration: 1.0).repeatForever(autoreverses: true)) {
-                animationScale = isTranscribing ? 1.2 : 1.0
-            }
+        .onChange(of: manager.status) { _, status in
+            updateAnimation(for: status)
         }
     }
 
@@ -273,5 +337,12 @@ struct AdvancedTranscriptionView: View {
             Locale(identifier: "ja-JP"),
             Locale(identifier: "ko-KR")
         ]
+    }
+
+    private func updateAnimation(for status: SpeechSession.Status) {
+        let isActive = status == .transcribing
+        withAnimation(.easeInOut(duration: 1.0).repeatForever(autoreverses: true)) {
+            animationScale = isActive ? 1.2 : 1.0
+        }
     }
 }
