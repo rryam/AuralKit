@@ -69,6 +69,10 @@ extension SpeechSession {
 
         try await analyzer?.start(inputSequence: inputSequence)
 
+        if voiceActivationConfiguration != nil {
+            startSpeechDetectorMonitoring()
+        }
+
         return transcriber
     }
 

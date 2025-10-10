@@ -18,4 +18,23 @@ struct AuralKitTests {
         await kit.stopTranscribing()
         #expect(kit.modelDownloadProgress == nil)
     }
+
+    @Test("Voice activation configuration updates state")
+    @MainActor
+    func testVoiceActivationConfiguration() {
+        let kit = SpeechSession()
+        #expect(kit.isVoiceActivationEnabled == false)
+        #expect(kit.speechDetectorResultsStream == nil)
+        #expect(kit.isSpeechDetected == true)
+
+        kit.configureVoiceActivation(reportResults: true)
+        #expect(kit.isVoiceActivationEnabled == true)
+        #expect(kit.speechDetectorResultsStream != nil)
+        #expect(kit.isSpeechDetected == true)
+
+        kit.disableVoiceActivation()
+        #expect(kit.isVoiceActivationEnabled == false)
+        #expect(kit.speechDetectorResultsStream == nil)
+        #expect(kit.isSpeechDetected == true)
+    }
 }
