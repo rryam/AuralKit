@@ -1,5 +1,6 @@
 import SwiftUI
 import AuralKit
+import Speech
 
 /// Minimal example showing how easy SpeechSession is to use
 struct TranscriptionView: View {

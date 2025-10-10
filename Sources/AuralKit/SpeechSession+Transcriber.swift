@@ -27,6 +27,7 @@ extension SpeechSession {
 
         var modules: [any SpeechModule] = []
 
+#if compiler(>=6.2.1) // SpeechDetector conforms to SpeechModule in iOS 26.1+
         if let configuration = voiceActivationConfiguration {
             let detector = SpeechDetector(
                 detectionOptions: configuration.detectionOptions,
@@ -41,6 +42,13 @@ extension SpeechSession {
             tearDownSpeechDetectorStream()
             voiceActivationConfiguration = nil
         }
+#else
+        // SpeechDetector doesn't conform to SpeechModule on iOS/macOS 26.0
+        // Voice activation requires iOS/macOS 26.1+ SDK
+        speechDetector = nil
+        tearDownSpeechDetectorStream()
+        voiceActivationConfiguration = nil
+#endif
 
         modules.append(transcriber)
 
