@@ -7,20 +7,26 @@ A comprehensive analysis of potential features and enhancements based on iOS 26+
 ## Table of Contents
 
 1. [Core Transcription Features](#1-core-transcription-features)
-2. [Voice Activity Detection (VAD)](#2-voice-activity-detection-vad)
-3. [Custom Language Models](#3-custom-language-models)
-4. [Advanced Context Management](#4-advanced-context-management)
-5. [Audio File Transcription](#5-audio-file-transcription)
-6. [DictationTranscriber Support](#6-dictationtranscriber-support)
-7. [Advanced SpeechAnalyzer Features](#7-advanced-speechanalyzer-features)
-8. [Multi-Module Analysis](#8-multi-module-analysis)
-9. [Session Control & Lifecycle](#9-session-control--lifecycle)
-10. [Result Enhancements](#10-result-enhancements)
-11. [UI & Developer Experience](#11-ui--developer-experience)
-12. [Performance & Optimization](#12-performance--optimization)
-13. [Audio Pipeline Features](#13-audio-pipeline-features)
-14. [Error Handling & Diagnostics](#14-error-handling--diagnostics)
-15. [Testing & Quality](#15-testing--quality)
+2. [Custom Language Models](#2-custom-language-models)
+3. [Advanced Context Management](#3-advanced-context-management)
+4. [Audio File Transcription](#4-audio-file-transcription)
+5. [DictationTranscriber Support](#5-dictationtranscriber-support)
+6. [Advanced SpeechAnalyzer Features](#6-advanced-speechanalyzer-features)
+7. [Multi-Module Analysis](#7-multi-module-analysis)
+8. [Session Control & Lifecycle](#8-session-control--lifecycle)
+9. [Result Enhancements](#9-result-enhancements)
+10. [UI & Developer Experience](#10-ui--developer-experience)
+11. [Performance & Optimization](#11-performance--optimization)
+12. [Audio Pipeline Features](#12-audio-pipeline-features)
+13. [Error Handling & Diagnostics](#13-error-handling--diagnostics)
+14. [Testing & Quality](#14-testing--quality)
+
+---
+
+## Completed Features
+
+- ~~Integrated voice activity detection with optional result streaming~~
+- ~~Device capability helper exposing available transcribers and locales~~
 
 ---
 
@@ -56,67 +62,9 @@ public struct TranscriptionConfiguration {
 }
 ```
 
-## 2. Voice Activity Detection (VAD)
+## 2. Custom Language Models
 
-### 2.1 Integrated Speech Detection
-
-**Current State:** Not implemented.
-
-**Opportunity:** Add `SpeechDetector` module to enable voice-activated transcription and save power:
-
-```swift
-public struct SpeechDetectorConfiguration {
-    public enum SensitivityLevel {
-        case low      // Forgiving, allows more non-speech
-        case medium   // Recommended for most use cases
-        case high     // Aggressive, strict speech detection
-    }
-    
-    public var sensitivityLevel: SensitivityLevel = .medium
-    public var enableResultReporting: Bool = false
-}
-
-extension SpeechSession {
-    public func enableVoiceActivation(
-        configuration: SpeechDetectorConfiguration = .init()
-    ) async throws
-    
-    public func disableVoiceActivation() async
-}
-```
-
-**Benefits:**
-- Power savings by not transcribing silence
-- Better UX in noisy environments
-- Automatic speech presence detection
-
-### 2.2 VAD Result Streaming
-
-**Opportunity:** Stream VAD detection events:
-
-```swift
-public struct VoiceActivityEvent: Sendable {
-    public let speechDetected: Bool
-    public let timeRange: CMTimeRange
-    public let isFinal: Bool
-}
-
-extension SpeechSession {
-    public func startVoiceActivityDetection() 
-        -> AsyncThrowingStream<VoiceActivityEvent, Error>
-}
-```
-
-**Use Cases:**
-- Visual feedback when speech is detected
-- Analytics on speech vs silence ratio
-- Automatic segmentation
-
----
-
-## 3. Custom Language Models
-
-### 3.1 Custom Vocabulary Training
+### 2.1 Custom Vocabulary Training
 
 **Current State:** Only basic contextual strings are supported.
 
@@ -137,7 +85,7 @@ extension SpeechSession {
 }
 ```
 
-### 3.2 Language Model Training API
+### 2.2 Language Model Training API
 
 **Opportunity:** Provide high-level API for creating custom models:
 
@@ -179,7 +127,7 @@ public final class LanguageModelTrainer {
 - Gaming voice commands (game-specific vocabulary)
 - Name-heavy apps (contact names, place names)
 
-### 3.3 Domain-Specific Presets
+### 2.3 Domain-Specific Presets
 
 **Opportunity:** Provide pre-built language models for common domains:
 
@@ -202,9 +150,9 @@ extension SpeechSession {
 
 ---
 
-## 4. Advanced Context Management
+## 3. Advanced Context Management
 
-### 4.1 Structured Context API
+### 3.1 Structured Context API
 
 **Current State:** Basic contextual strings dictionary.
 
@@ -236,7 +184,7 @@ extension SpeechSession {
 }
 ```
 
-### 4.2 Dynamic Context Updates
+### 3.2 Dynamic Context Updates
 
 **Opportunity:** Update context mid-transcription:
 
@@ -268,9 +216,9 @@ extension SpeechSession {
 
 ---
 
-## 5. Audio File Transcription
+## 4. Audio File Transcription
 
-### 5.1 File-Based Transcription
+### 4.1 File-Based Transcription
 
 **Current State:** Only live microphone capture is supported.
 
@@ -304,7 +252,7 @@ public struct TimedSegment {
 }
 ```
 
-### 5.2 Batch File Processing
+### 4.2 Batch File Processing
 
 **Opportunity:** Process multiple audio files efficiently:
 
@@ -328,7 +276,7 @@ extension SpeechSession {
 }
 ```
 
-### 5.3 Audio Format Support
+### 4.3 Audio Format Support
 
 **Opportunity:** Document and handle various audio formats:
 
@@ -352,9 +300,9 @@ extension SpeechSession {
 
 ---
 
-## 6. DictationTranscriber Support
+## 5. DictationTranscriber Support
 
-### 6.1 Automatic Transcriber Selection
+### 5.1 Automatic Transcriber Selection
 
 **Current State:** Only `SpeechTranscriber` is used.
 
@@ -377,29 +325,11 @@ extension SpeechSession {
 }
 ```
 
-### 6.2 Device Capability Detection
-
-**Opportunity:** Provide device capability information:
-
-```swift
-public struct DeviceCapabilities {
-    public let supportsSpeechTranscriber: Bool
-    public let supportsDictationTranscriber: Bool
-    public let supportedLocales: [Locale]
-    public let installedLocales: [Locale]
-    public let maxReservedLocales: Int
-}
-
-extension SpeechSession {
-    public static func deviceCapabilities() async -> DeviceCapabilities
-}
-```
-
 ---
 
-## 7. Advanced SpeechAnalyzer Features
+## 6. Advanced SpeechAnalyzer Features
 
-### 7.1 Analyzer Preheating
+### 6.1 Analyzer Preheating
 
 **Current State:** Lazy initialization on first use.
 
@@ -420,7 +350,7 @@ extension SpeechSession {
 - Better user experience in time-sensitive apps
 - Predictable performance
 
-### 7.2 Volatile Range Monitoring
+### 6.2 Volatile Range Monitoring
 
 **Opportunity:** Expose analyzer volatile range:
 
@@ -441,7 +371,7 @@ extension SpeechSession {
 - Track transcription progress
 - Synchronize with audio playback
 
-### 7.3 Manual Finalization Control
+### 6.3 Manual Finalization Control
 
 **Opportunity:** Allow manual control over result finalization:
 
@@ -460,7 +390,7 @@ extension SpeechSession {
 - Chapter markers in long-form audio
 - Forced "catch-up" if analyzer lags
 
-### 7.4 Model Retention Options
+### 6.4 Model Retention Options
 
 **Opportunity:** Control model caching behavior:
 
@@ -479,7 +409,7 @@ extension SpeechSession {
 }
 ```
 
-### 7.5 Priority Control
+### 6.5 Priority Control
 
 **Opportunity:** Set processing priority:
 
@@ -496,9 +426,9 @@ extension SpeechSession {
 
 ---
 
-## 8. Multi-Module Analysis
+## 7. Multi-Module Analysis
 
-### 8.1 Parallel Module Support
+### 7.1 Parallel Module Support
 
 **Current State:** Single transcriber module.
 
@@ -523,7 +453,7 @@ extension SpeechSession {
 - Multiple locales at once
 - Transcription + custom analysis
 
-### 8.2 Module Result Coordination
+### 7.2 Module Result Coordination
 
 **Opportunity:** Coordinate results from multiple modules:
 
@@ -543,9 +473,9 @@ extension SpeechSession {
 
 ---
 
-## 9. Session Control & Lifecycle
+## 8. Session Control & Lifecycle
 
-### 9.1 Session State Management
+### 8.1 Session State Management
 
 **Current State:** Boolean `isTranscribing` flag.
 
@@ -567,7 +497,7 @@ extension SpeechSession {
 }
 ```
 
-### 9.2 Graceful Shutdown
+### 8.2 Graceful Shutdown
 
 **Opportunity:** Control finalization on stop:
 
@@ -585,7 +515,7 @@ extension SpeechSession {
 }
 ```
 
-### 9.3 Session Reuse & Reset
+### 8.3 Session Reuse & Reset
 
 **Opportunity:** Efficiently reuse sessions:
 
@@ -603,9 +533,9 @@ extension SpeechSession {
 
 ---
 
-## 10. Result Enhancements
+## 9. Result Enhancements
 
-### 10.1 Result Alternatives UI
+### 9.1 Result Alternatives UI
 
 **Current State:** Alternatives are available but not exposed in UI.
 
@@ -623,7 +553,7 @@ public struct TranscriptionEditorView: View {
 }
 ```
 
-### 10.2 Confidence-Based Styling
+### 9.2 Confidence-Based Styling
 
 **Opportunity:** Automatically style text based on confidence:
 
@@ -638,7 +568,7 @@ public struct ConfidenceStyler {
 }
 ```
 
-### 10.3 Time-Synced Playback
+### 9.3 Time-Synced Playback
 
 **Current State:** Demo app has basic playback highlighting.
 
@@ -652,7 +582,7 @@ public struct TimeSyncedTranscriptionView: View {
 }
 ```
 
-### 10.4 Result Export Formats
+### 9.4 Result Export Formats
 
 **Opportunity:** Export transcriptions in various formats:
 
@@ -673,9 +603,9 @@ extension TranscriptionResult {
 
 ---
 
-## 11. UI & Developer Experience
+## 10. UI & Developer Experience
 
-### 11.1 SwiftUI Components Library
+### 10.1 SwiftUI Components Library
 
 **Opportunity:** Pre-built UI components:
 
@@ -714,7 +644,7 @@ public struct AudioWaveformView: View {
 }
 ```
 
-### 11.2 Accessibility Features
+### 10.2 Accessibility Features
 
 **Opportunity:** Built-in accessibility:
 
@@ -730,7 +660,7 @@ extension SpeechSession {
 }
 ```
 
-### 11.3 Developer Debugging
+### 10.3 Developer Debugging
 
 **Opportunity:** Debugging and diagnostics tools:
 
@@ -753,9 +683,9 @@ extension SpeechSession {
 
 ---
 
-## 12. Performance & Optimization
+## 11. Performance & Optimization
 
-### 12.1 Buffer Management
+### 11.1 Buffer Management
 
 **Opportunity:** Configurable buffer sizes and strategies:
 
@@ -778,7 +708,7 @@ extension SpeechSession {
 }
 ```
 
-### 12.2 Memory Management
+### 11.2 Memory Management
 
 **Opportunity:** Memory usage controls:
 
@@ -794,7 +724,7 @@ extension SpeechSession {
 }
 ```
 
-### 12.3 Network Usage Control
+### 11.3 Network Usage Control
 
 **Opportunity:** Control model downloads:
 
@@ -812,9 +742,9 @@ extension SpeechSession {
 
 ---
 
-## 13. Audio Pipeline Features
+## 12. Audio Pipeline Features
 
-### 13.1 Audio Preprocessing
+### 12.1 Audio Preprocessing
 
 **Opportunity:** Optional audio enhancement:
 
@@ -831,7 +761,7 @@ extension SpeechSession {
 }
 ```
 
-### 13.2 Multi-Channel Support
+### 12.2 Multi-Channel Support
 
 **Opportunity:** Handle stereo and multi-channel audio:
 
@@ -847,7 +777,7 @@ extension SpeechSession {
 }
 ```
 
-### 13.3 Audio Routing
+### 12.3 Audio Routing
 
 **Current State:** Basic audio input monitoring.
 
@@ -865,9 +795,9 @@ extension SpeechSession {
 
 ---
 
-## 14. Error Handling & Diagnostics
+## 13. Error Handling & Diagnostics
 
-### 14.1 Rich Error Information
+### 13.1 Rich Error Information
 
 **Opportunity:** More detailed error types:
 
@@ -887,7 +817,7 @@ public enum DetailedSpeechError: Error {
 }
 ```
 
-### 14.2 Error Recovery
+### 13.2 Error Recovery
 
 **Opportunity:** Automatic error recovery:
 
@@ -904,7 +834,7 @@ extension SpeechSession {
 }
 ```
 
-### 14.3 Health Monitoring
+### 13.3 Health Monitoring
 
 **Opportunity:** Session health checks:
 
@@ -930,9 +860,9 @@ extension SpeechSession {
 
 ---
 
-## 15. Testing & Quality
+## 14. Testing & Quality
 
-### 15.1 Mock Session for Testing
+### 14.1 Mock Session for Testing
 
 **Opportunity:** Testing utilities:
 
@@ -949,7 +879,7 @@ public final class MockSpeechSession: SpeechSession {
 }
 ```
 
-### 15.2 Transcription Quality Metrics
+### 14.2 Transcription Quality Metrics
 
 **Opportunity:** Quality measurement:
 
@@ -967,7 +897,7 @@ extension TranscriptionResult {
 }
 ```
 
-### 15.3 Performance Benchmarking
+### 14.3 Performance Benchmarking
 
 **Opportunity:** Built-in benchmarking:
 
