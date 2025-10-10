@@ -1,6 +1,7 @@
 import Foundation
 import AVFoundation
 import Speech
+import OSLog
 
 // MARK: - SpeechSession
 
@@ -38,6 +39,65 @@ import Speech
 ///   to the main actor before touching analyzer state.
 @MainActor
 public final class SpeechSession {
+
+    // MARK: - Logging
+
+    /// Logging levels supported by `SpeechSession`.
+    public enum LogLevel: CaseIterable, Sendable, Hashable {
+        case off
+        case error
+        case notice
+        case info
+        case debug
+
+        var rank: Int {
+            switch self {
+            case .off: return 0
+            case .error: return 1
+            case .notice: return 2
+            case .info: return 3
+            case .debug: return 4
+            }
+        }
+
+        public var displayName: String {
+            switch self {
+            case .off: return "Off"
+            case .error: return "Error"
+            case .notice: return "Notice"
+            case .info: return "Info"
+            case .debug: return "Debug"
+            }
+        }
+    }
+
+    private static let logger = Logger(subsystem: "com.auralkit.speech", category: "SpeechSession")
+
+    /// Global logging level for all `SpeechSession` instances. Defaults to `.off`.
+    public static var logging: LogLevel = .off
+
+    static func log(_ message: @autoclosure () -> String, level: LogLevel) {
+        guard shouldLog(level) else { return }
+        let text = message()
+
+        switch level {
+        case .off:
+            break
+        case .error:
+            logger.error("\(text, privacy: .public)")
+        case .notice:
+            logger.notice("\(text, privacy: .public)")
+        case .info:
+            logger.info("\(text, privacy: .public)")
+        case .debug:
+            logger.debug("\(text, privacy: .public)")
+        }
+    }
+
+    private static func shouldLog(_ level: LogLevel) -> Bool {
+        if logging == .off { return false }
+        return level.rank <= logging.rank
+    }
 
     // MARK: - Status
 
@@ -253,7 +313,7 @@ public final class SpeechSession {
         isSpeechDetected = true
 
         if let error {
-            print("Speech detector monitoring failed: \(error.localizedDescription)")
+            Self.log("Speech detector monitoring failed: \(error.localizedDescription)", level: .error)
         }
     }
 

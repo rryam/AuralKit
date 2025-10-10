@@ -29,7 +29,7 @@ extension SpeechSession {
                 do {
                     try self.processAudioBuffer(bufferCopy)
                 } catch {
-                    print("Audio processing error: \(error.localizedDescription)")
+                    Self.log("Audio processing error: \(error.localizedDescription)", level: .error)
                 }
             }
         }
@@ -92,7 +92,7 @@ extension SpeechSession {
         do {
             try await reset()
         } catch {
-            print("Failed to reset audio engine after route change: \(error.localizedDescription)")
+            Self.log("Failed to reset audio engine after route change: \(error.localizedDescription)", level: .error)
         }
 
         publishCurrentAudioInputInfo()
@@ -102,7 +102,7 @@ extension SpeechSession {
         do {
             try await reset()
         } catch {
-            print("Failed to reset audio engine after configuration change: \(error.localizedDescription)")
+            Self.log("Failed to reset audio engine after configuration change: \(error.localizedDescription)", level: .error)
         }
 
         publishCurrentAudioInputInfo()
@@ -123,7 +123,7 @@ extension SpeechSession {
             let info = try AudioInputInfo.current()
             audioInputConfigurationContinuation?.yield(info)
         } catch {
-            print("Failed to obtain audio input details: \(error.localizedDescription)")
+            Self.log("Failed to obtain audio input details: \(error.localizedDescription)", level: .error)
             audioInputConfigurationContinuation?.yield(nil)
         }
 #endif
