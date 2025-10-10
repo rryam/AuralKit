@@ -391,8 +391,6 @@ public final class SpeechSession: @unchecked Sendable {
         isAudioStreaming = false
     }
     
-#if os(iOS) || os(macOS)
-    /// Sets up platform-specific notifications for audio route/configuration changes.
     private func setupAudioConfigurationObservers() {
 #if os(iOS)
         routeChangeObserver = NotificationCenter.default.addObserver(
@@ -400,15 +398,18 @@ public final class SpeechSession: @unchecked Sendable {
             object: nil,
             queue: .main
         ) { [weak self] notification in
-            guard let self else { return }
             guard let userInfo = notification.userInfo,
                   let reasonValue = userInfo[AVAudioSessionRouteChangeReasonKey] as? UInt,
                   let reason = AVAudioSession.RouteChangeReason(rawValue: reasonValue) else {
                 return
             }
 
-            Task {
-                await self.handleRouteChange(reason, notification: notification)
+            let previousPortType = (userInfo[AVAudioSessionRouteChangePreviousRouteKey] as? AVAudioSessionRouteDescription)?
+                .inputs.first?.portType
+
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                await self.handleRouteChange(reason, previousPortType: previousPortType)
             }
         }
 #elseif os(macOS)
@@ -417,20 +418,17 @@ public final class SpeechSession: @unchecked Sendable {
             object: audioEngine,
             queue: .main
         ) { [weak self] _ in
-            guard let self else { return }
-            Task {
+            Task { @MainActor [weak self] in
+                guard let self else { return }
                 await self.handleEngineConfigurationChange()
             }
         }
 #endif
     }
-#endif
 
 #if os(iOS)
-    private func handleRouteChange(_ reason: AVAudioSession.RouteChangeReason, notification: Notification) async {
+    private func handleRouteChange(_ reason: AVAudioSession.RouteChangeReason, previousPortType: AVAudioSession.Port?) async {
         let session = AVAudioSession.sharedInstance()
-        let previousRoute = notification.userInfo?[AVAudioSessionRouteChangePreviousRouteKey] as? AVAudioSessionRouteDescription
-        let previousPortType = previousRoute?.inputs.first?.portType
         let currentPortType = session.currentRoute.inputs.first?.portType
 
         guard previousPortType != currentPortType else {
