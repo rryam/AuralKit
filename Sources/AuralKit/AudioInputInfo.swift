@@ -137,28 +137,6 @@ public extension AudioInputInfo {
         )
     }
 
-    private init(
-        portName: String,
-        portIcon: String,
-        uid: String,
-        channels: [ChannelInfo],
-        portType: AVAudioSession.Port,
-        hasHardwareVoiceCallProcessing: Bool,
-        dataSources: [DataSourceInfo]?,
-        selectedDataSource: DataSourceInfo?,
-        preferredDataSource: DataSourceInfo?
-    ) {
-        self.portName = portName
-        self.portIcon = portIcon
-        self.uid = uid
-        self.channels = channels
-        self.portType = portType
-        self.hasHardwareVoiceCallProcessing = hasHardwareVoiceCallProcessing
-        self.dataSources = dataSources
-        self.selectedDataSource = selectedDataSource
-        self.preferredDataSource = preferredDataSource
-    }
-
     private static func iconName(for port: AVAudioSessionPortDescription) -> String {
         let normalizedName = port.portName.lowercased()
         let type = port.portType
