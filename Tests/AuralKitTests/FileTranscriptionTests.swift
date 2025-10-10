@@ -1,29 +1,33 @@
-import XCTest
+import Testing
 import AVFoundation
 @testable import AuralKit
 
-final class FileTranscriptionTests: XCTestCase {
+@Suite("File transcription")
+struct FileTranscriptionTests {
+
+    @Test("transcribe throws audioFileNotFound for missing file")
     @MainActor
-    func testTranscribeMissingFileThrowsNotFound() async {
+    func transcribeMissingFileThrowsNotFound() async {
         let session = SpeechSession()
         let missingURL = URL(fileURLWithPath: "/tmp/not-real-")
 
         do {
             _ = try await session.transcribe(audioFile: missingURL)
-            XCTFail("Expected audioFileNotFound error")
+            Issue.record("Expected audioFileNotFound error")
         } catch let error as SpeechSessionError {
             guard case let .audioFileNotFound(url) = error else {
-                XCTFail("Unexpected error: \(error)")
+                Issue.record("Unexpected error: \(error)")
                 return
             }
-            XCTAssertEqual(url, missingURL)
+            #expect(url == missingURL)
         } catch {
-            XCTFail("Unexpected error: \(error)")
+            Issue.record("Unexpected error: \(error)")
         }
     }
 
+    @Test("transcribe rejects audio exceeding maximum duration")
     @MainActor
-    func testTranscribeRejectsAudioExceedingMaximumDuration() async throws {
+    func transcribeRejectsAudioExceedingMaximumDuration() async throws {
         let tempURL = try createSilenceAudioFile(duration: 2.0)
         defer { try? FileManager.default.removeItem(at: tempURL) }
 
@@ -32,16 +36,16 @@ final class FileTranscriptionTests: XCTestCase {
 
         do {
             _ = try await session.transcribe(audioFile: tempURL, options: options)
-            XCTFail("Expected audioFileTooLong error")
+            Issue.record("Expected audioFileTooLong error")
         } catch let error as SpeechSessionError {
             guard case let .audioFileTooLong(maximum, actual) = error else {
-                XCTFail("Unexpected error: \(error)")
+                Issue.record("Unexpected error: \(error)")
                 return
             }
-            XCTAssertEqual(maximum, 1.0, accuracy: 0.01)
-            XCTAssertGreaterThan(actual, maximum)
+            #expect((maximum - 1.0).magnitude < 0.01)
+            #expect(actual > maximum)
         } catch {
-            XCTFail("Unexpected error: \(error)")
+            Issue.record("Unexpected error: \(error)")
         }
     }
 
