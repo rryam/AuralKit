@@ -161,6 +161,10 @@ extension SpeechSession {
         let task = recognizerTask
         recognizerTask = nil
 
+        let ingestionTask = fileIngestionTask
+        fileIngestionTask = nil
+        ingestionTask?.cancel()
+
         if cancelRecognizer {
             if Self.shouldLog(.debug) {
                 Self.logger.debug("Cancelling recognizer task")

@@ -211,6 +211,7 @@ public final class SpeechSession {
     // Stream state management
     var continuation: AsyncThrowingStream<SpeechTranscriber.Result, Error>.Continuation?
     var recognizerTask: Task<Void, Never>?
+    var fileIngestionTask: Task<Void, Never>?
     var streamingActive = false
 
     // Notification Handling

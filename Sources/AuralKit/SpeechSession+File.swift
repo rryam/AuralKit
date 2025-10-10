@@ -108,14 +108,31 @@ private extension SpeechSession {
     ) async {
         do {
             let validation = try validateAudioFile(at: audioFileURL, maxDuration: options.maxDuration)
+            try await ensureSpeechRecognitionAuthorizationForFile()
             try await setUpFilePipeline(
                 with: streamContinuation,
                 contextualStrings: options.contextualStrings
             )
-            try feedAudioFile(validation, progressHandler: progressHandler)
+            let handler = progressHandler
+            fileIngestionTask = Task<Void, Never> { [weak self] in
+                guard let self else { return }
+                defer {
+                    Task { @MainActor [weak self] in
+                        self?.fileIngestionTask = nil
+                    }
+                }
 
-            if let progressHandler {
-                progressHandler(1.0)
+                do {
+                    try await self.feedAudioFile(validation, progressHandler: handler)
+
+                    if let handler {
+                        await MainActor.run {
+                            handler(1.0)
+                        }
+                    }
+                } catch {
+                    await self.finishWithStartupError(error)
+                }
             }
         } catch {
             if Self.shouldLog(.error) {
@@ -201,18 +218,19 @@ private extension SpeechSession {
     func feedAudioFile(
         _ payload: (file: AVAudioFile, totalFrames: AVAudioFramePosition),
         progressHandler: ((Double) -> Void)?
-    ) throws {
+    ) async throws {
         var processedFrames: AVAudioFramePosition = 0
         let frameCapacity: AVAudioFrameCount = 4096
         let file = payload.file
         let totalFrames = payload.totalFrames
         let format = file.processingFormat
 
+        guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameCapacity) else {
+            throw SpeechSessionError.conversionBufferCreationFailed
+        }
+
         while processedFrames < totalFrames {
             if Task.isCancelled { break }
-            guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameCapacity) else {
-                throw SpeechSessionError.conversionBufferCreationFailed
-            }
 
             let framesRemaining = AVAudioFrameCount(totalFrames - processedFrames)
             let framesToRead = min(frameCapacity, framesRemaining)
@@ -228,25 +246,48 @@ private extension SpeechSession {
             if buffer.frameLength == 0 {
                 break
             }
-
-            do {
-                try processAudioBuffer(buffer)
-            } catch {
-                throw error
-            }
+            try processAudioBuffer(buffer)
 
             processedFrames += AVAudioFramePosition(buffer.frameLength)
 
             if let progressHandler, totalFrames > 0 {
                 let progress = min(1.0, max(0.0, Double(processedFrames) / Double(totalFrames)))
-                progressHandler(progress)
+                await MainActor.run {
+                    progressHandler(progress)
+                }
             }
         }
 
         inputBuilder?.finish()
     }
 
-    func finishFileTranscription(with error: Error) async {
-        await finishWithStartupError(error)
+    func ensureSpeechRecognitionAuthorizationForFile() async throws {
+        switch SFSpeechRecognizer.authorizationStatus() {
+        case .authorized:
+            if Self.shouldLog(.info) {
+                Self.logger.info("Speech recognition permission already authorized for file transcription")
+            }
+            return
+        case .notDetermined:
+            if Self.shouldLog(.notice) {
+                Self.logger.notice("Requesting speech recognition permission for file transcription")
+            }
+            let granted = await withCheckedContinuation { continuation in
+                SFSpeechRecognizer.requestAuthorization { status in
+                    continuation.resume(returning: status == .authorized)
+                }
+            }
+            if !granted {
+                if Self.shouldLog(.error) {
+                    Self.logger.error("Speech recognition permission denied for file transcription")
+                }
+                throw SpeechSessionError.speechRecognitionPermissionDenied
+            }
+        default:
+            if Self.shouldLog(.error) {
+                Self.logger.error("Speech recognition permission unavailable for file transcription")
+            }
+            throw SpeechSessionError.speechRecognitionPermissionDenied
+        }
     }
 }
