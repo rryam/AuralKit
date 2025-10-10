@@ -126,15 +126,14 @@ struct TranscriptionView: View {
 #endif
         }
         .onChange(of: presetChoice) { _, newChoice in
-            Task {
-                await session.stopTranscribing()
-                await MainActor.run {
-                    isTranscribing = false
-                    finalText = ""
-                    partialText = ""
-                    error = nil
-                    session = makeSession(for: newChoice)
-                }
+            Task { @MainActor in
+                let previousSession = session
+                session = makeSession(for: newChoice)
+                isTranscribing = false
+                finalText = ""
+                partialText = ""
+                error = nil
+                await previousSession.stopTranscribing()
             }
         }
     }
@@ -170,11 +169,7 @@ struct TranscriptionView: View {
     }
 
     private func makeSession(for choice: DemoTranscriberPreset) -> SpeechSession {
-        if let preset = choice.preset {
-            return SpeechSession(preset: preset)
-        } else {
-            return SpeechSession()
-        }
+        SpeechSession(preset: choice.preset)
     }
 }
 
