@@ -27,27 +27,19 @@ extension SpeechSession {
 
         var modules: [any SpeechModule] = []
 
-        if supportsVoiceActivation, let configuration = voiceActivationConfiguration {
+        if let configuration = voiceActivationConfiguration {
             let detector = SpeechDetector(
                 detectionOptions: configuration.detectionOptions,
                 reportResults: configuration.reportResults
             )
             speechDetector = detector
             _ = prepareSpeechDetectorResultsStream(reportResults: configuration.reportResults)
-            if let detectorModule = detector as? any SpeechModule {
-                modules.append(detectorModule)
-            } else {
-                speechDetector = nil
-                tearDownSpeechDetectorStream()
-                voiceActivationConfiguration = nil
-                print("SpeechDetector does not conform to SpeechModule on this platform; voice activation disabled.")
-            }
+            let detectorModule: any SpeechModule = detector
+            modules.append(detectorModule)
         } else {
             speechDetector = nil
             tearDownSpeechDetectorStream()
-            if voiceActivationConfiguration != nil && !supportsVoiceActivation {
-                voiceActivationConfiguration = nil
-            }
+            voiceActivationConfiguration = nil
         }
 
         modules.append(transcriber)

@@ -177,7 +177,7 @@ public final class SpeechSession {
     }
 
     func startSpeechDetectorMonitoring() {
-        guard supportsVoiceActivation, let detector = speechDetector else { return }
+        guard let detector = speechDetector else { return }
 
         speechDetectorResultsTask?.cancel()
         speechDetectorResultsTask = Task<Void, Never> { [weak self] in
@@ -223,22 +223,6 @@ public final class SpeechSession {
         if let error {
             print("Speech detector monitoring failed: \(error.localizedDescription)")
         }
-    }
-
-    var supportsVoiceActivation: Bool {
-#if os(iOS)
-        if #available(iOS 26, *) {
-            return true
-        }
-        return false
-#elseif os(macOS)
-        if #available(macOS 15, *) {
-            return true
-        }
-        return false
-#else
-        return false
-#endif
     }
 
     // MARK: - Init
@@ -335,16 +319,12 @@ public final class SpeechSession {
         voiceActivationConfiguration != nil
     }
 
+    /// Configure optional voice activation. Updates take effect the next time a transcription
+    /// pipeline is started; callers should stop and restart an active session for changes to apply.
     public func configureVoiceActivation(
         detectionOptions: SpeechDetector.DetectionOptions = .init(sensitivityLevel: .medium),
         reportResults: Bool = false
     ) {
-        guard supportsVoiceActivation else {
-            voiceActivationConfiguration = nil
-            tearDownSpeechDetectorStream()
-            return
-        }
-
         voiceActivationConfiguration = VoiceActivationConfiguration(
             detectionOptions: detectionOptions,
             reportResults: reportResults
