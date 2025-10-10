@@ -18,6 +18,7 @@ AuralKit is a simple, lightweight Swift wrapper for speech-to-text transcription
 - Configurable voice activation (VAD) with optional detector result streaming
 - Audio input monitoring for device route changes on iOS and macOS
 - Async streams for lifecycle status, audio inputs, and transcription results
+- Device capability helper to inspect available transcribers and locales
 - SwiftUI-friendly API that mirrors Apple's sample project design
 
 ## Table of Contents
@@ -35,6 +36,7 @@ AuralKit is a simple, lightweight Swift wrapper for speech-to-text transcription
   - [Status Updates](#status-updates)
   - [Tracking Audio Input Changes](#tracking-audio-input-changes)
   - [Voice Activation (VAD)](#voice-activation-vad)
+  - [Device Capabilities](#device-capabilities)
 - [Demo App](#demo-app)
 - [Architecture Overview](#architecture-overview)
 - [API Reference](#api-reference)
@@ -367,6 +369,23 @@ for try await result in session.startTranscribing() {
 - Inspect `isSpeechDetected` for the most recent detector state, or call `disableVoiceActivation()` to revert to continuous transcription.
 
 > **Requirements:** Voice activation is available on iOS 26.1+ and macOS 26.1+ where `SpeechDetector` conforms to `SpeechModule`.
+
+### Device Capabilities
+
+Check the active device’s recognition support up front so you can tailor UI and feature availability:
+
+```swift
+let capabilities = await SpeechSession.deviceCapabilities()
+
+if capabilities.supportsDictationTranscriber {
+    // Offer a dictation-optimized mode when supported.
+}
+
+let supportedIdentifiers = capabilities.supportedLocales.map { $0.identifier(.bcp47) }
+print("Supports up to \(capabilities.maxReservedLocales) reserved locales")
+```
+
+Use the returned metadata to populate locale pickers, display download guidance, or gracefully disable transcription when models are unavailable.
 
 ## Architecture Overview
 
