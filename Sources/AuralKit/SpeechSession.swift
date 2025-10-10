@@ -30,7 +30,14 @@ import Speech
 ///
 /// Call `stopTranscribing()` to end capture and unwind the stream. The same instance may be reused
 /// for subsequent transcription sessions.
-public final class SpeechSession: @unchecked Sendable {
+///
+/// Concurrency notes:
+/// - `SpeechSession` is isolated to the main actor so engine/configuration mutations happen on a
+///   single thread.
+/// - Audio buffers arrive on Core Audio's render thread, so the tap copies each buffer and hops back
+///   to the main actor before touching analyzer state.
+@MainActor
+public final class SpeechSession {
     
     // MARK: - Default Configuration
     
@@ -69,23 +76,23 @@ public final class SpeechSession: @unchecked Sendable {
 
     // MARK: - Properties
 
-    private let permissionsManager = PermissionsManager()
-    private let converter = BufferConverter()
-    private let modelManager = ModelManager()
+    let permissionsManager = PermissionsManager()
+    let converter = BufferConverter()
+    let modelManager = ModelManager()
 
-    private lazy var audioEngine = AVAudioEngine()
-    private var isAudioStreaming = false
+    lazy var audioEngine = AVAudioEngine()
+    var isAudioStreaming = false
 
-    private let locale: Locale
-    private let reportingOptions: Set<SpeechTranscriber.ReportingOption>
-    private let attributeOptions: Set<SpeechTranscriber.ResultAttributeOption>
+    let locale: Locale
+    let reportingOptions: Set<SpeechTranscriber.ReportingOption>
+    let attributeOptions: Set<SpeechTranscriber.ResultAttributeOption>
     
 #if os(iOS)
-    private let audioConfig: AudioSessionConfiguration
+    let audioConfig: AudioSessionConfiguration
 #endif
 
 #if os(iOS) || os(macOS)
-    private var audioInputConfigurationContinuation: AsyncStream<AudioInputInfo?>.Continuation?
+    var audioInputConfigurationContinuation: AsyncStream<AudioInputInfo?>.Continuation?
     public private(set) lazy var audioInputConfigurationStream: AsyncStream<AudioInputInfo?> = {
         AsyncStream { [weak self] continuation in
             self?.audioInputConfigurationContinuation = continuation
@@ -94,19 +101,19 @@ public final class SpeechSession: @unchecked Sendable {
 #endif
     
     // Transcriber components
-    private var transcriber: SpeechTranscriber?
-    private var analyzer: SpeechAnalyzer?
-    private var inputSequence: AsyncStream<AnalyzerInput>?
-    private var inputBuilder: AsyncStream<AnalyzerInput>.Continuation?
-    private var analyzerFormat: AVAudioFormat?
+    var transcriber: SpeechTranscriber?
+    var analyzer: SpeechAnalyzer?
+    var inputSequence: AsyncStream<AnalyzerInput>?
+    var inputBuilder: AsyncStream<AnalyzerInput>.Continuation?
+    var analyzerFormat: AVAudioFormat?
     
     // Stream state management
-    private var continuation: AsyncThrowingStream<SpeechTranscriber.Result, Error>.Continuation?
-    private var recognizerTask: Task<Void, Never>?
-    private var streamingActive = false
+    var continuation: AsyncThrowingStream<SpeechTranscriber.Result, Error>.Continuation?
+    var recognizerTask: Task<Void, Never>?
+    var streamingActive = false
 
     // Notification Handling
-    private var routeChangeObserver: NSObjectProtocol?
+    var routeChangeObserver: NSObjectProtocol?
 
     // MARK: - Init
 
@@ -164,6 +171,7 @@ public final class SpeechSession: @unchecked Sendable {
     }
 #endif
 
+    @MainActor
     deinit {
 #if os(iOS) || os(macOS)
         if let observer = routeChangeObserver {
@@ -224,22 +232,25 @@ public final class SpeechSession: @unchecked Sendable {
     public func startTranscribing(
         contextualStrings: [AnalysisContext.ContextualStringsTag: [String]]? = nil
     ) -> AsyncThrowingStream<SpeechTranscriber.Result, Error> {
-        let (stream, continuation) = AsyncThrowingStream<SpeechTranscriber.Result, Error>.makeStream()
+        let (stream, newContinuation) = AsyncThrowingStream<SpeechTranscriber.Result, Error>.makeStream()
 
-        continuation.onTermination = { [weak self] _ in
-            Task {
-                await self?.cleanup(cancelRecognizer: true)
+        newContinuation.onTermination = { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                await self.cleanup(cancelRecognizer: true)
             }
         }
 
-        Task {
-            if self.continuation != nil || recognizerTask != nil || streamingActive {
-                continuation.finish(throwing: SpeechSessionError.recognitionStreamSetupFailed)
-                return
-            }
+        guard continuation == nil, recognizerTask == nil, streamingActive == false else {
+            newContinuation.finish(throwing: SpeechSessionError.recognitionStreamSetupFailed)
+            return stream
+        }
 
-            self.continuation = continuation
-            await startPipeline(with: continuation, contextualStrings: contextualStrings)
+        continuation = newContinuation
+
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            await self.startPipeline(with: newContinuation, contextualStrings: contextualStrings)
         }
 
         return stream
@@ -279,290 +290,4 @@ public final class SpeechSession: @unchecked Sendable {
         await finishStream(error: nil)
     }
 
-    // MARK: - Private helpers
-
-    private func startPipeline(
-        with continuation: AsyncThrowingStream<SpeechTranscriber.Result, Error>.Continuation,
-        contextualStrings: [AnalysisContext.ContextualStringsTag: [String]]? = nil
-    ) async {
-        do {
-            try await permissionsManager.ensurePermissions()
-
-#if os(iOS)
-            try await MainActor.run {
-                let audioSession = AVAudioSession.sharedInstance()
-                try audioSession.setCategory(audioConfig.category, mode: audioConfig.mode, options: audioConfig.options)
-                try audioSession.setActive(true)
-            }
-#endif
-#if os(iOS) || os(macOS)
-            publishCurrentAudioInputInfo()
-#endif
-
-            let transcriber = try await setUpTranscriber(contextualStrings: contextualStrings)
-
-            recognizerTask = Task<Void, Never> { [weak self] in
-                guard let self else { return }
-
-                do {
-                    for try await result in transcriber.results {
-                        continuation.yield(result)
-                    }
-                    await self.finishFromRecognizerTask(error: nil)
-                } catch is CancellationError {
-                    // Cancellation handled by cleanup logic
-                } catch {
-                    await self.finishFromRecognizerTask(error: error)
-                }
-            }
-
-            try startAudioStreaming()
-
-            streamingActive = true
-        } catch {
-            await finishWithStartupError(error)
-        }
-    }
-
-    private func finishWithStartupError(_ error: Error) async {
-        await cleanup(cancelRecognizer: true)
-        await finishStream(error: error)
-    }
-
-    private func finishFromRecognizerTask(error: Error?) async {
-        await cleanup(cancelRecognizer: false)
-        await finishStream(error: error)
-    }
-
-    private func cleanup(cancelRecognizer: Bool) async {
-        let task = recognizerTask
-        recognizerTask = nil
-        
-        if cancelRecognizer {
-            task?.cancel()
-        }
-
-        streamingActive = false
-        stopAudioStreaming()
-        await stopTranscriberAndCleanup()
-    }
-
-    private func finishStream(error: Error?) async {
-        guard let cont = continuation else { return }
-        continuation = nil
-
-        if let error {
-            cont.finish(throwing: error)
-        } else {
-            cont.finish()
-        }
-    }
-    
-    // MARK: - Audio Streaming
-
-    private func startAudioStreaming() throws {
-        guard !isAudioStreaming else {
-            throw SpeechSessionError.recognitionStreamSetupFailed
-        }
-
-        audioEngine.inputNode.removeTap(onBus: 0)
-
-        let inputFormat = audioEngine.inputNode.outputFormat(forBus: 0)
-
-        audioEngine.inputNode.installTap(onBus: 0,
-                                         bufferSize: 4096,
-                                         format: inputFormat) { [weak self] buffer, _ in
-            guard let self else { return }
-            do {
-                try self.processAudioBuffer(buffer)
-            } catch {
-                // Audio processing error - ignore and continue
-            }
-        }
-
-        audioEngine.prepare()
-        try audioEngine.start()
-        isAudioStreaming = true
-    }
-    
-    private func stopAudioStreaming() {
-        guard isAudioStreaming else { return }
-        audioEngine.stop()
-        isAudioStreaming = false
-    }
-    
-    private func setupAudioConfigurationObservers() {
-#if os(iOS)
-        routeChangeObserver = NotificationCenter.default.addObserver(
-            forName: AVAudioSession.routeChangeNotification,
-            object: nil,
-            queue: .main
-        ) { [weak self] notification in
-            guard let userInfo = notification.userInfo,
-                  let reasonValue = userInfo[AVAudioSessionRouteChangeReasonKey] as? UInt,
-                  let reason = AVAudioSession.RouteChangeReason(rawValue: reasonValue) else {
-                return
-            }
-
-            let previousPortType = (userInfo[AVAudioSessionRouteChangePreviousRouteKey] as? AVAudioSessionRouteDescription)?
-                .inputs.first?.portType
-
-            Task { @MainActor [weak self] in
-                guard let self else { return }
-                await self.handleRouteChange(reason, previousPortType: previousPortType)
-            }
-        }
-#elseif os(macOS)
-        routeChangeObserver = NotificationCenter.default.addObserver(
-            forName: .AVAudioEngineConfigurationChange,
-            object: audioEngine,
-            queue: .main
-        ) { [weak self] _ in
-            Task { @MainActor [weak self] in
-                guard let self else { return }
-                await self.handleEngineConfigurationChange()
-            }
-        }
-#endif
-    }
-
-#if os(iOS)
-    private func handleRouteChange(_ reason: AVAudioSession.RouteChangeReason, previousPortType: AVAudioSession.Port?) async {
-        let session = AVAudioSession.sharedInstance()
-        let currentPortType = session.currentRoute.inputs.first?.portType
-
-        guard previousPortType != currentPortType else {
-            return
-        }
-
-        do {
-            try await reset()
-        } catch {
-            print("Failed to reset audio engine after route change: \(error.localizedDescription)")
-        }
-
-        publishCurrentAudioInputInfo()
-    }
-#elseif os(macOS)
-    private func handleEngineConfigurationChange() async {
-        do {
-            try await reset()
-        } catch {
-            print("Failed to reset audio engine after configuration change: \(error.localizedDescription)")
-        }
-
-        publishCurrentAudioInputInfo()
-    }
-#endif
-    
-#if os(iOS) || os(macOS)
-    private func publishCurrentAudioInputInfo() {
-#if os(iOS)
-        let audioSession = AVAudioSession.sharedInstance()
-        if let input = audioSession.currentRoute.inputs.first {
-            audioInputConfigurationContinuation?.yield(AudioInputInfo(from: input))
-        } else {
-            audioInputConfigurationContinuation?.yield(nil)
-        }
-#elseif os(macOS)
-        do {
-            let info = try AudioInputInfo.current()
-            audioInputConfigurationContinuation?.yield(info)
-        } catch {
-            print("Failed to obtain audio input details: \(error.localizedDescription)")
-            audioInputConfigurationContinuation?.yield(nil)
-        }
-#endif
-    }
-#endif
-    
-    private func reset() async throws {
-        let wasStreaming = isAudioStreaming
-
-        if wasStreaming {
-            audioEngine.inputNode.removeTap(onBus: 0)
-        }
-
-        audioEngine.stop()
-        audioEngine.reset()
-        isAudioStreaming = false
-
-        guard wasStreaming else { return }
-        try startAudioStreaming()
-    }
-    
-    // MARK: - Transcriber Setup and Management
-    
-    /// Set up the transcriber with the configured locale and options
-    private func setUpTranscriber(
-        contextualStrings: [AnalysisContext.ContextualStringsTag: [String]]? = nil
-    ) async throws -> SpeechTranscriber {
-        transcriber = SpeechTranscriber(
-            locale: locale,
-            transcriptionOptions: [],
-            reportingOptions: reportingOptions,
-            attributeOptions: attributeOptions
-        )
-
-        guard let transcriber else {
-            throw SpeechSessionError.recognitionStreamSetupFailed
-        }
-
-        analyzer = SpeechAnalyzer(modules: [transcriber])
-
-        try await modelManager.ensureModel(transcriber: transcriber, locale: locale)
-
-        // Set up analysis context with contextual strings if provided
-        if let contextualStrings, !contextualStrings.isEmpty, let analyzer {
-            let analysisContext = AnalysisContext()
-            for (tag, strings) in contextualStrings {
-                analysisContext.contextualStrings[tag] = strings
-            }
-            do {
-                try await analyzer.setContext(analysisContext)
-            } catch {
-                throw SpeechSessionError.contextSetupFailed(error)
-            }
-        }
-
-        analyzerFormat = await SpeechAnalyzer.bestAvailableAudioFormat(compatibleWith: [transcriber])
-        (inputSequence, inputBuilder) = AsyncStream<AnalyzerInput>.makeStream()
-
-        guard let inputSequence else { return transcriber }
-
-        try await analyzer?.start(inputSequence: inputSequence)
-
-        return transcriber
-    }
-
-    /// Process audio buffer synchronously (for use in callbacks)
-    private func processAudioBuffer(_ buffer: AVAudioPCMBuffer) throws {
-        guard let inputBuilder, let analyzerFormat else {
-            throw SpeechSessionError.invalidAudioDataType
-        }
-
-        let converted = try converter.convertBuffer(buffer, to: analyzerFormat)
-        let input = AnalyzerInput(buffer: converted)
-        inputBuilder.yield(input)
-    }
-
-    /// Stop transcribing and clean up
-    private func stopTranscriberAndCleanup() async {
-        inputBuilder?.finish()
-        
-        do {
-            try await analyzer?.finalizeAndFinishThroughEndOfInput()
-        } catch {
-            // Finalization failed, but we still need to clean up resources
-            // Log for debugging but don't propagate since stop() is best-effort cleanup
-        }
-
-        await modelManager.releaseLocales()
-
-        inputBuilder = nil
-        inputSequence = nil
-        analyzerFormat = nil
-        analyzer = nil
-        transcriber = nil
-    }
 }
