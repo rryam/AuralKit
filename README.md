@@ -382,7 +382,10 @@ if capabilities.supportsDictationTranscriber {
 }
 
 let supportedIdentifiers = capabilities.supportedLocales.map { $0.identifier(.bcp47) }
-print("Supports up to \(capabilities.maxReservedLocales) reserved locales")
+print("Supports up to \(capabilities.maxReservedLocales) reserved locales: \(supportedIdentifiers)")
+
+let dictationIdentifiers = capabilities.supportedDictationLocales.map { $0.identifier(.bcp47) }
+print("Dictation transcriber supports: \(dictationIdentifiers)")
 ```
 
 Use the returned metadata to populate locale pickers, display download guidance, or gracefully disable transcription when models are unavailable.

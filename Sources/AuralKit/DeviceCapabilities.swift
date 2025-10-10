@@ -5,6 +5,7 @@ public struct DeviceCapabilities: Sendable {
     public let supportsSpeechTranscriber: Bool
     public let supportsDictationTranscriber: Bool
     public let supportedLocales: [Locale]
+    public let supportedDictationLocales: [Locale]
     public let installedLocales: [Locale]
     public let maxReservedLocales: Int
 
@@ -12,12 +13,14 @@ public struct DeviceCapabilities: Sendable {
         supportsSpeechTranscriber: Bool,
         supportsDictationTranscriber: Bool,
         supportedLocales: [Locale],
+        supportedDictationLocales: [Locale],
         installedLocales: [Locale],
         maxReservedLocales: Int
     ) {
         self.supportsSpeechTranscriber = supportsSpeechTranscriber
         self.supportsDictationTranscriber = supportsDictationTranscriber
         self.supportedLocales = supportedLocales
+        self.supportedDictationLocales = supportedDictationLocales
         self.installedLocales = installedLocales
         self.maxReservedLocales = maxReservedLocales
     }
@@ -41,6 +44,7 @@ extension SpeechSession {
             supportsSpeechTranscriber: supportsSpeechTranscriber,
             supportsDictationTranscriber: supportsDictationTranscriber,
             supportedLocales: supportedLocales,
+            supportedDictationLocales: dictationLocales,
             installedLocales: installedLocales,
             maxReservedLocales: AssetInventory.maximumReservedLocales
         )
