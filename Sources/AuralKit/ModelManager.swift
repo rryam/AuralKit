@@ -35,7 +35,16 @@ class ModelManager: @unchecked Sendable {
 
     /// Download the model if needed
     private func downloadIfNeeded(for module: SpeechTranscriber) async throws {
-        if let downloader = try await AssetInventory.assetInstallationRequest(supporting: [module]) {
+        try await downloadAssetsIfNeeded(for: [module])
+    }
+
+    func ensureAssets(for modules: [any SpeechModule]) async throws {
+        guard !modules.isEmpty else { return }
+        try await downloadAssetsIfNeeded(for: modules)
+    }
+
+    private func downloadAssetsIfNeeded(for modules: [any SpeechModule]) async throws {
+        if let downloader = try await AssetInventory.assetInstallationRequest(supporting: modules) {
             currentDownloadProgress = downloader.progress
             do {
                 try await downloader.downloadAndInstall()

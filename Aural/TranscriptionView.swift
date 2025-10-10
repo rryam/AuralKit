@@ -1,5 +1,6 @@
 import SwiftUI
 import AuralKit
+import Speech
 
 /// Minimal example showing how easy SpeechSession is to use
 struct TranscriptionView: View {
@@ -13,20 +14,52 @@ struct TranscriptionView: View {
     @State private var status: SpeechSession.Status = .idle
     @State private var error: String?
     @State private var transcriptionTask: Task<Void, Never>?
+    @State private var enableVAD: Bool = false
+    @State private var vadSensitivity: SpeechDetector.SensitivityLevel = .medium
+    @State private var isSpeechDetected: Bool = true
 
     var body: some View {
         NavigationStack {
             VStack(spacing: 32) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Transcriber Preset")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Picker("Transcriber Preset", selection: $presetChoice) {
-                        ForEach(DemoTranscriberPreset.allCases) { option in
-                            Text(option.displayName).tag(option)
+                VStack(alignment: .leading, spacing: 16) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Transcriber Preset")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Picker("Transcriber Preset", selection: $presetChoice) {
+                            ForEach(DemoTranscriberPreset.allCases) { option in
+                                Text(option.displayName).tag(option)
+                            }
+                        }
+                        .pickerStyle(.menu)
+                    }
+                    
+                    Divider()
+                    
+                    VStack(alignment: .leading, spacing: 8) {
+                        Toggle("Voice Activity Detection", isOn: $enableVAD)
+                            .font(.subheadline)
+                        
+                        if enableVAD {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Sensitivity Level")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                Picker("Sensitivity", selection: $vadSensitivity) {
+                                    Text("Low").tag(SpeechDetector.SensitivityLevel.low)
+                                    Text("Medium").tag(SpeechDetector.SensitivityLevel.medium)
+                                    Text("High").tag(SpeechDetector.SensitivityLevel.high)
+                                }
+                                .pickerStyle(.segmented)
+                                
+                                Text("Speech detected: \(isSpeechDetected ? "Yes" : "No")")
+                                    .font(.caption)
+                                    .foregroundStyle(isSpeechDetected ? .green : .orange)
+                                    .padding(.top, 4)
+                            }
+                            .padding(.leading, 8)
                         }
                     }
-                    .pickerStyle(.menu)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal)
@@ -136,6 +169,37 @@ struct TranscriptionView: View {
                 for await newStatus in session.statusStream {
                     status = newStatus
                 }
+            }
+            .task(id: ObjectIdentifier(session)) {
+                guard enableVAD else { return }
+                guard let stream = session.speechDetectorResultsStream else { return }
+                for await result in stream {
+                    withAnimation {
+                        isSpeechDetected = result.speechDetected
+                    }
+                }
+            }
+        }
+        .onChange(of: enableVAD) { _, newValue in
+            Task { @MainActor in
+                if newValue {
+                    session.configureVoiceActivation(
+                        detectionOptions: .init(sensitivityLevel: vadSensitivity),
+                        reportResults: true
+                    )
+                } else {
+                    session.disableVoiceActivation()
+                }
+                isSpeechDetected = true
+            }
+        }
+        .onChange(of: vadSensitivity) { _, newLevel in
+            guard enableVAD else { return }
+            Task { @MainActor in
+                session.configureVoiceActivation(
+                    detectionOptions: .init(sensitivityLevel: newLevel),
+                    reportResults: true
+                )
             }
         }
         .onChange(of: presetChoice) { _, newChoice in
@@ -269,7 +333,14 @@ struct TranscriptionView: View {
     }
 
     private func makeSession(for choice: DemoTranscriberPreset) -> SpeechSession {
-        SpeechSession(preset: choice.preset)
+        let newSession = SpeechSession(preset: choice.preset)
+        if enableVAD {
+            newSession.configureVoiceActivation(
+                detectionOptions: .init(sensitivityLevel: vadSensitivity),
+                reportResults: true
+            )
+        }
+        return newSession
     }
 }
 

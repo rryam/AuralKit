@@ -5,6 +5,41 @@ import Speech
 @MainActor
 extension SpeechSession {
 
+    // MARK: - Permissions
+
+    /// Check if all required permissions are granted
+    func ensurePermissions() async throws {
+        // Check microphone permission (iOS & macOS)
+        switch AVCaptureDevice.authorizationStatus(for: .audio) {
+        case .authorized:
+            break
+        case .notDetermined:
+            let granted = await AVCaptureDevice.requestAccess(for: .audio)
+            if !granted {
+                throw SpeechSessionError.microphonePermissionDenied
+            }
+        default:
+            throw SpeechSessionError.microphonePermissionDenied
+        }
+
+        // Check speech recognition permission
+        switch SFSpeechRecognizer.authorizationStatus() {
+        case .authorized:
+            return
+        case .notDetermined:
+            let granted = await withCheckedContinuation { continuation in
+                SFSpeechRecognizer.requestAuthorization { status in
+                    continuation.resume(returning: status == .authorized)
+                }
+            }
+            if !granted {
+                throw SpeechSessionError.speechRecognitionPermissionDenied
+            }
+        default:
+            throw SpeechSessionError.speechRecognitionPermissionDenied
+        }
+    }
+
     // MARK: - Pipeline Orchestration
 
     func startPipeline(
@@ -12,7 +47,7 @@ extension SpeechSession {
         contextualStrings: [AnalysisContext.ContextualStringsTag: [String]]? = nil
     ) async {
         do {
-            try await permissionsManager.ensurePermissions()
+            try await ensurePermissions()
 
 #if os(iOS)
             try await MainActor.run {

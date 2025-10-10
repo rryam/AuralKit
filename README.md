@@ -11,6 +11,38 @@ AuralKit is a simple, lightweight Swift wrapper for speech-to-text transcription
 
 **Public API**: `SpeechSession` - A clean, session-based interface for speech transcription.
 
+## Features
+
+- End-to-end streaming pipeline built on `SpeechTranscriber` and `SpeechAnalyzer`
+- Automatic locale model installation with progress reporting
+- Configurable voice activation (VAD) with optional detector result streaming
+- Audio input monitoring for device route changes on iOS and macOS
+- Async streams for lifecycle status, audio inputs, and transcription results
+- SwiftUI-friendly API that mirrors Apple's sample project design
+
+## Table of Contents
+
+- [Features](#features)
+- [Acknowledgements](#acknowledgements)
+- [Quick Start](#quick-start)
+- [Installation](#installation)
+  - [Swift Package Manager](#swift-package-manager)
+- [Usage](#usage)
+  - [Simple Transcription](#simple-transcription)
+  - [Partial Results](#partial-results)
+- [Session Observability](#session-observability)
+  - [Monitoring Model Downloads](#monitoring-model-downloads)
+  - [Status Updates](#status-updates)
+  - [Tracking Audio Input Changes](#tracking-audio-input-changes)
+  - [Voice Activation (VAD)](#voice-activation-vad)
+- [Demo App](#demo-app)
+- [Architecture Overview](#architecture-overview)
+- [API Reference](#api-reference)
+- [Permissions](#permissions)
+- [Requirements](#requirements)
+- [Contributing](#contributing)
+- [License](#license)
+
 ## Acknowledgements
 
 This project would not have been possible without Apple's excellent sample code. The implementation is heavily inspired by [Bringing advanced speech-to-text capabilities to your app](https://developer.apple.com/documentation/Speech/bringing-advanced-speech-to-text-capabilities-to-your-app), which shows how to add live speech-to-text transcription with `SpeechAnalyzer`.
@@ -235,20 +267,6 @@ struct ContentView: View {
 
 The `TranscriptionManager` in the demo app adds language selection, history tracking, and export.
 
-### Monitoring Model Downloads
-
-When a locale has not been installed yet, AuralKit automatically downloads the appropriate speech model. You can observe download progress through the `modelDownloadProgress` property:
-
-```swift
-let session = SpeechSession(locale: Locale(identifier: "ja-JP"))
-
-if let progress = await session.modelDownloadProgress {
-    print("Downloading model: \(progress.fractionCompleted * 100)%")
-}
-```
-
-You can use this progress to a `ProgressView` for visual feedback.
-
 ### Error Handling
 
 AuralKit surfaces detailed `SpeechSessionError` values so you can present actionable messaging:
@@ -272,6 +290,92 @@ do {
     // Handle unexpected errors
 }
 ```
+
+## Session Observability
+
+### Monitoring Model Downloads
+
+When a locale has not been installed yet, AuralKit automatically downloads the appropriate speech model. You can observe download progress through the `modelDownloadProgress` property:
+
+```swift
+let session = SpeechSession(locale: Locale(identifier: "ja-JP"))
+
+if let progress = await session.modelDownloadProgress {
+    print("Downloading model: \(progress.fractionCompleted * 100)%")
+}
+```
+
+Bind this progress to a `ProgressView` or custom HUD to keep users informed during large downloads.
+
+### Status Updates
+
+Lifecycle state changes flow through `statusStream`, making it easy to mirror session status in UI:
+
+```swift
+let session = SpeechSession()
+
+Task {
+    for await status in session.statusStream {
+        print("Session status:", status)
+    }
+}
+```
+
+The `status` property always holds the most recent value—for example, `status == .paused` when the pipeline is temporarily halted.
+
+### Tracking Audio Input Changes
+
+On iOS and macOS, subscribe to `audioInputConfigurationStream` to react whenever the active microphone changes (e.g., headphones connected/disconnected):
+
+```swift
+Task {
+    for await info in session.audioInputConfigurationStream {
+        guard let info else { continue }
+        print("Active input:", info.portName)
+    }
+}
+```
+
+Use the emitted metadata to refresh UI or reconfigure audio routing when needed.
+
+### Voice Activation (VAD)
+
+Voice activation uses Apple’s on-device Voice Activity Detection (VAD) to pause the analyzer during silence, saving power in long-running sessions:
+
+```swift
+let session = SpeechSession()
+session.configureVoiceActivation(
+    detectionOptions: .init(sensitivityLevel: .medium),
+    reportResults: true
+)
+
+Task {
+    if let detectorStream = session.speechDetectorResultsStream {
+        for await detection in detectorStream {
+            print("Speech detected:", detection.speechDetected)
+        }
+    }
+}
+
+for try await result in session.startTranscribing() {
+    // Handle results
+}
+```
+
+- Tune `detectionOptions.sensitivityLevel` (`.low`, `.medium`, `.high`) to balance accuracy and power savings.
+- When `reportResults` is `false`, AuralKit still skips silence but keeps the detector stream `nil`.
+- Inspect `isSpeechDetected` for the most recent detector state, or call `disableVoiceActivation()` to revert to continuous transcription.
+
+> **Requirements:** Voice activation is available on iOS 26.1+ and macOS 26.1+ where `SpeechDetector` conforms to `SpeechModule`.
+
+## Architecture Overview
+
+- **SpeechSession** – Main entry point exposed to apps; coordinates permission checks, audio engine lifecycle, and async streams.
+- **SpeechSession+Pipeline** – Handles permissions, audio session activation, stream wiring, and orderly teardown of the pipeline.
+- **SpeechSession+Transcriber** – Builds the analyzer graph, installs optional modules like `SpeechDetector`, and feeds audio buffers into the analyzer.
+- **ModelManager** – Ensures locale models and supplemental assets are present, tracks download progress, and releases reserved locales on teardown.
+- **BufferConverter** – Mirrors Apple’s sample to convert tap buffers into analyzer-compatible `AVAudioPCMBuffer`s without blocking real-time threads.
+- **SpeechDetector Integration** – Opt-in module that provides VAD power savings and optional detection result streaming on supported OS releases.
 
 ## API Reference
 

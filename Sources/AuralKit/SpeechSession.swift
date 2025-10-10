@@ -87,7 +87,6 @@ public final class SpeechSession {
 
     // MARK: - Properties
 
-    let permissionsManager = PermissionsManager()
     let converter = BufferConverter()
     let modelManager = ModelManager()
 
@@ -99,16 +98,7 @@ public final class SpeechSession {
     let reportingOptions: Set<SpeechTranscriber.ReportingOption>
     let attributeOptions: Set<SpeechTranscriber.ResultAttributeOption>
 
-    /// Current lifecycle status for the session.
-    public private(set) var status: Status = .idle
     private var statusContinuation: AsyncStream<Status>.Continuation?
-    public private(set) lazy var statusStream: AsyncStream<Status> = {
-        AsyncStream<Status> { [weak self] continuation in
-            guard let self else { return }
-            continuation.yield(self.status)
-            self.statusContinuation = continuation
-        }
-    }()
     
 #if os(iOS)
     let audioConfig: AudioSessionConfiguration
@@ -116,19 +106,65 @@ public final class SpeechSession {
 
 #if os(iOS) || os(macOS)
     var audioInputConfigurationContinuation: AsyncStream<AudioInputInfo?>.Continuation?
+#endif
+    
+    // Transcriber components
+    var transcriber: SpeechTranscriber?
+    var speechDetector: SpeechDetector?
+    var analyzer: SpeechAnalyzer?
+    var inputSequence: AsyncStream<AnalyzerInput>?
+    var inputBuilder: AsyncStream<AnalyzerInput>.Continuation?
+    var analyzerFormat: AVAudioFormat?
+    var voiceActivationConfiguration: VoiceActivationConfiguration?
+
+    // MARK: - Public Observables
+
+    /// Current lifecycle status for the session.
+    public private(set) var status: Status = .idle
+
+    /// Async stream that emits lifecycle status updates, beginning with the current status.
+    public private(set) lazy var statusStream: AsyncStream<Status> = {
+        AsyncStream<Status> { [weak self] continuation in
+            guard let self else { return }
+            continuation.yield(self.status)
+            self.statusContinuation = continuation
+        }
+    }()
+
+#if os(iOS) || os(macOS)
+    /// Stream that delivers `AudioInputInfo` updates whenever the active audio input changes.
     public private(set) lazy var audioInputConfigurationStream: AsyncStream<AudioInputInfo?> = {
         AsyncStream { [weak self] continuation in
             self?.audioInputConfigurationContinuation = continuation
         }
     }()
 #endif
-    
-    // Transcriber components
-    var transcriber: SpeechTranscriber?
-    var analyzer: SpeechAnalyzer?
-    var inputSequence: AsyncStream<AnalyzerInput>?
-    var inputBuilder: AsyncStream<AnalyzerInput>.Continuation?
-    var analyzerFormat: AVAudioFormat?
+
+    /// Stream of speech detector results when voice activation reporting is enabled; `nil` otherwise.
+    public private(set) var speechDetectorResultsStream: AsyncStream<SpeechDetector.Result>?
+
+    /// Reflects the speech detector's most recent state; defaults to `true` when monitoring is inactive.
+    public private(set) var isSpeechDetected: Bool = true
+
+    /// Progress of the ongoing model download, if any.
+    ///
+    /// Poll or observe this property to drive UI such as `ProgressView`. The value is non-nil only
+    /// while a locale model is downloading.
+    ///
+    /// ```swift
+    /// let session = SpeechSession()
+    /// if let progress = session.modelDownloadProgress {
+    ///     print("Downloading: \(progress.fractionCompleted * 100)%")
+    /// }
+    /// ```
+    public var modelDownloadProgress: Progress? {
+        modelManager.currentDownloadProgress
+    }
+
+    /// Returns `true` when voice activation has been configured for the session.
+    public var isVoiceActivationEnabled: Bool {
+        voiceActivationConfiguration != nil
+    }
     
     // Stream state management
     var continuation: AsyncThrowingStream<SpeechTranscriber.Result, Error>.Continuation?
@@ -137,6 +173,89 @@ public final class SpeechSession {
 
     // Notification Handling
     var routeChangeObserver: NSObjectProtocol?
+
+    // Voice activation state
+    var speechDetectorResultsContinuation: AsyncStream<SpeechDetector.Result>.Continuation?
+    var speechDetectorResultsTask: Task<Void, Never>?
+
+    struct VoiceActivationConfiguration {
+        let detectionOptions: SpeechDetector.DetectionOptions
+        let reportResults: Bool
+    }
+
+    func prepareSpeechDetectorResultsStream(reportResults: Bool) -> AsyncStream<SpeechDetector.Result>.Continuation? {
+        guard reportResults else {
+            tearDownSpeechDetectorStream()
+            return nil
+        }
+
+        if let existing = speechDetectorResultsContinuation {
+            return existing
+        }
+
+        let (stream, continuation) = AsyncStream<SpeechDetector.Result>.makeStream()
+        speechDetectorResultsStream = stream
+        speechDetectorResultsContinuation = continuation
+        return continuation
+    }
+
+    func tearDownSpeechDetectorStream() {
+        speechDetectorResultsTask?.cancel()
+        speechDetectorResultsTask = nil
+        speechDetectorResultsContinuation?.finish()
+        speechDetectorResultsContinuation = nil
+        speechDetectorResultsStream = nil
+        isSpeechDetected = true
+    }
+
+    func startSpeechDetectorMonitoring() {
+        guard let detector = speechDetector else { return }
+
+        speechDetectorResultsTask?.cancel()
+        speechDetectorResultsTask = Task<Void, Never> { [weak self] in
+            guard let self else { return }
+            do {
+                for try await result in detector.results {
+                    await MainActor.run {
+                        self.handleSpeechDetectorResult(result)
+                    }
+                }
+            } catch {
+                let finalError = (error as? CancellationError) != nil ? nil : error
+                await MainActor.run {
+                    self.handleSpeechDetectorStreamCompletion(error: finalError)
+                }
+                return
+            }
+
+            await MainActor.run {
+                self.handleSpeechDetectorStreamCompletion(error: nil)
+            }
+        }
+    }
+
+    @MainActor
+    func handleSpeechDetectorResult(_ result: SpeechDetector.Result) {
+        isSpeechDetected = result.speechDetected
+        speechDetectorResultsContinuation?.yield(result)
+    }
+
+    @MainActor
+    func handleSpeechDetectorStreamCompletion(error: Error?) {
+        defer { speechDetectorResultsTask = nil }
+
+        if let continuation = speechDetectorResultsContinuation {
+            continuation.finish()
+        }
+
+        speechDetectorResultsContinuation = nil
+        speechDetectorResultsStream = nil
+        isSpeechDetected = true
+
+        if let error {
+            print("Speech detector monitoring failed: \(error.localizedDescription)")
+        }
+    }
 
     // MARK: - Init
 
@@ -211,22 +330,55 @@ public final class SpeechSession {
         statusContinuation?.finish()
     }
 
-    /// Progress of the ongoing model download, if any.
+    // MARK: - Public API
+
+    /// Configure optional voice activation to reduce power consumption during transcription.
     ///
-    /// Poll or observe this property to drive UI such as `ProgressView`. The value is non-nil only
-    /// while a locale model is downloading.
+    /// Voice activation uses a Voice Activity Detection (VAD) model to identify speech and skip
+    /// processing silent audio segments, saving power. However, there is a tradeoff: if the model
+    /// drops audio that actually contains speech, transcription accuracy may suffer.
     ///
-    /// ```swift
-    /// let session = SpeechSession()
-    /// if let progress = session.modelDownloadProgress {
-    ///     print("Downloading: \(progress.fractionCompleted * 100)%")
-    /// }
-    /// ```
-    public var modelDownloadProgress: Progress? {
-        modelManager.currentDownloadProgress
+    /// - Important: Updates take effect the next time a transcription pipeline is started.
+    ///   Stop and restart an active session for changes to apply.
+    ///
+    /// - Note: For use cases with a lot of silence, it may be tempting to always enable voice
+    ///   activation. Evaluate the power savings against potential accuracy loss for your specific
+    ///   context. The `sensitivityLevel` controls how aggressive the VAD model will be:
+    ///   - `.low`: More forgiving, less likely to drop speech but uses more power
+    ///   - `.medium`: Recommended for most use cases (default)
+    ///   - `.high`: More aggressive, saves more power but may drop speech
+    ///
+    /// - Parameters:
+    ///   - detectionOptions: Configuration for the VAD model. Defaults to
+    ///     `.init(sensitivityLevel: .medium)`, which is recommended for most use cases.
+    ///   - reportResults: When `true`, enables the `speechDetectorResultsStream` to report
+    ///     moment-to-moment VAD results. When `false` (default), VAD operates as a silent
+    ///     power optimization without reporting individual detection events.
+    public func configureVoiceActivation(
+        detectionOptions: SpeechDetector.DetectionOptions = .init(sensitivityLevel: .medium),
+        reportResults: Bool = false
+    ) {
+        voiceActivationConfiguration = VoiceActivationConfiguration(
+            detectionOptions: detectionOptions,
+            reportResults: reportResults
+        )
+
+        isSpeechDetected = true
+        if reportResults {
+            _ = prepareSpeechDetectorResultsStream(reportResults: true)
+        } else {
+            tearDownSpeechDetectorStream()
+        }
     }
 
-    // MARK: - Public API
+    /// Disable voice activation and tear down any active detector streams.
+    ///
+    /// After calling this method, the session will process all audio without power-saving
+    /// voice activity detection. Changes take effect on the next transcription start.
+    public func disableVoiceActivation() {
+        voiceActivationConfiguration = nil
+        tearDownSpeechDetectorStream()
+    }
 
     /// Start streaming live microphone audio to the speech analyzer.
     ///
