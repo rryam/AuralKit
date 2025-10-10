@@ -5,6 +5,7 @@ import Testing
 struct AuralKitTests {
 
     @Test("Model download progress starts nil")
+    @MainActor
     func testInitialDownloadProgressIsNil() {
         let kit = SpeechSession()
         #expect(kit.modelDownloadProgress == nil)
