@@ -133,32 +133,17 @@ struct PresetSelectorView: View {
             Text("Preset:")
                 .foregroundStyle(.secondary)
             Spacer()
-            Menu {
+            Picker("Preset", selection: $manager.selectedPreset) {
                 ForEach(DemoTranscriberPreset.allCases) { option in
-                    Button {
-                        manager.selectedPreset = option
-                    } label: {
-                        HStack {
-                            Text(option.displayName)
-                            if option == manager.selectedPreset {
-                                Image(systemName: "checkmark")
-                            }
-                        }
-                    }
+                    Text(option.displayName).tag(option)
                 }
-            } label: {
-                HStack {
-                    Text(manager.selectedPreset.displayName)
-                        .foregroundStyle(.primary)
-                    Image(systemName: "chevron.down")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 6)
-                .background(Color.gray.opacity(0.1))
-                .cornerRadius(8)
             }
+            .pickerStyle(.menu)
+            .labelsHidden()
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .background(Color.gray.opacity(0.1))
+            .cornerRadius(8)
         }
         .padding(.horizontal)
     }
