@@ -118,11 +118,8 @@ struct TranscriptionView: View {
             }
 #endif
             .task {
-                let stream = await MainActor.run { session.statusStream }
-                for await newStatus in stream {
-                    await MainActor.run {
-                        status = newStatus
-                    }
+                for await newStatus in session.statusStream {
+                    status = newStatus
                 }
             }
         }
@@ -135,17 +132,15 @@ struct TranscriptionView: View {
         case .preparing:
             handleStopAction()
         case .transcribing:
-            Task {
+            Task { @MainActor in
                 await session.pauseTranscribing()
             }
         case .paused:
-            Task {
+            Task { @MainActor in
                 do {
                     try await session.resumeTranscribing()
                 } catch {
-                    await MainActor.run {
-                        self.error = error.localizedDescription
-                    }
+                    self.error = error.localizedDescription
                 }
             }
         case .stopping:
@@ -154,11 +149,9 @@ struct TranscriptionView: View {
     }
 
     private func handleStopAction() {
-        Task {
+        Task { @MainActor in
             await session.stopTranscribing()
-            await MainActor.run {
-                self.partialText = ""
-            }
+            self.partialText = ""
         }
         transcriptionTask?.cancel()
         transcriptionTask = nil
@@ -170,27 +163,21 @@ struct TranscriptionView: View {
         partialText = ""
 
         transcriptionTask?.cancel()
-        transcriptionTask = Task {
+        transcriptionTask = Task { @MainActor in
             do {
                 for try await result in session.startTranscribing() {
-                    await MainActor.run {
-                        result.apply(
-                            to: &finalText,
-                            partialText: &partialText
-                        )
-                    }
+                    result.apply(
+                        to: &finalText,
+                        partialText: &partialText
+                    )
                 }
             } catch is CancellationError {
                 // Ignore cancellations triggered by stop action
             } catch {
-                await MainActor.run {
-                    self.error = error.localizedDescription
-                }
+                self.error = error.localizedDescription
             }
-            await MainActor.run {
-                self.partialText = ""
-                self.transcriptionTask = nil
-            }
+            self.partialText = ""
+            self.transcriptionTask = nil
         }
     }
 

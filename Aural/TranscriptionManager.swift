@@ -44,38 +44,28 @@ class TranscriptionManager {
         speechSession = session
         observeStatus(from: session)
 
-        transcriptionTask = Task {
+        transcriptionTask = Task { @MainActor in
             do {
                 for try await result in session.startTranscribing() {
-                    await MainActor.run {
-                        self.handleTranscriptionResult(result)
-                    }
+                    self.handleTranscriptionResult(result)
                 }
-                await MainActor.run {
-                    self.finishSession()
-                }
+                self.finishSession()
             } catch is CancellationError {
-                await MainActor.run {
-                    self.cleanupSession()
-                }
+                self.cleanupSession()
             } catch {
-                await MainActor.run {
-                    self.error = error.localizedDescription
-                    self.finishSession()
-                }
+                self.error = error.localizedDescription
+                self.finishSession()
             }
         }
     }
-    
+
     private func observeStatus(from session: SpeechSession) {
         statusTask?.cancel()
-        statusTask = Task { [weak self] in
+        statusTask = Task { @MainActor [weak self] in
             guard let self else { return }
-            let stream = await MainActor.run { session.statusStream }
+            let stream = session.statusStream
             for await newStatus in stream {
-                await MainActor.run {
-                    self.status = newStatus
-                }
+                self.status = newStatus
             }
         }
     }
@@ -107,14 +97,14 @@ class TranscriptionManager {
     
     func stopTranscription() {
         guard status != .idle, status != .stopping else { return }
-        Task {
+        Task { @MainActor in
             await self.speechSession?.stopTranscribing()
         }
     }
 
     func pauseTranscription() {
         guard status == .transcribing else { return }
-        Task {
+        Task { @MainActor in
             await self.speechSession?.pauseTranscribing()
         }
     }
@@ -122,14 +112,12 @@ class TranscriptionManager {
     func resumeTranscription() {
         guard status == .paused else { return }
         error = nil
-        Task {
+        Task { @MainActor in
             do {
                 try await self.speechSession?.resumeTranscribing()
             } catch {
-                await MainActor.run {
-                    self.error = error.localizedDescription
-                    self.finishSession()
-                }
+                self.error = error.localizedDescription
+                self.finishSession()
             }
         }
     }
