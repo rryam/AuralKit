@@ -19,6 +19,7 @@
 		A2FB95CAD1BF5DBCD361C98E /* HistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36DA87A814E38A68FCF9B447 /* HistoryView.swift */; };
 		A366B14BFB62C78FE83B0C26 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 31E3959D0929A5287D1A624F /* Assets.xcassets */; };
 		A99E9DD346893ADEFEA3AC16 /* AdvancedTranscriptionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93DA3314E337533E7CA3A549 /* AdvancedTranscriptionView.swift */; };
+		D66893C30CF588D12F9D23E5 /* DemoTranscriberPreset.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5B2F0C0F8B6B8DA6D39BAA86 /* DemoTranscriberPreset.swift */; };
 		DB8A20E9F2DE59FD40D99E66 /* TranscriptionManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3BF79E9BB137291A06A75678 /* TranscriptionManager.swift */; };
 /* End PBXBuildFile section */
 
@@ -32,6 +33,7 @@
 		3BF79E9BB137291A06A75678 /* TranscriptionManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptionManager.swift; sourceTree = "<group>"; };
 		43AD4C3CAAA551B20034E2A3 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		5A9426C3785CBCC445AC3E57 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		5B2F0C0F8B6B8DA6D39BAA86 /* DemoTranscriberPreset.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DemoTranscriberPreset.swift; sourceTree = "<group>"; };
 		7E646A2CBF5CB0DA6AC615F7 /* Aural.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Aural.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		93DA3314E337533E7CA3A549 /* AdvancedTranscriptionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdvancedTranscriptionView.swift; sourceTree = "<group>"; };
 		9C80FC8B2BE7097ED045651C /* TranscriptionDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptionDetailView.swift; sourceTree = "<group>"; };
@@ -77,6 +79,7 @@
 				31E3959D0929A5287D1A624F /* Assets.xcassets */,
 				E753F8F18224F7CC8AF5408E /* AuralApp.swift */,
 				43AD4C3CAAA551B20034E2A3 /* ContentView.swift */,
+				5B2F0C0F8B6B8DA6D39BAA86 /* DemoTranscriberPreset.swift */,
 				36DA87A814E38A68FCF9B447 /* HistoryView.swift */,
 				5A9426C3785CBCC445AC3E57 /* Info.plist */,
 				075E14F26905E59928194CCC /* NoiseShader.metal */,
@@ -182,6 +185,7 @@
 				953322660A1A1A62C0260615 /* SettingsView.swift in Sources */,
 				700F97EB1758FA8AF4B964F7 /* TopGradientView.swift in Sources */,
 				4B9C3E3D05F65E65D03EBA4D /* TranscriptionDetailView.swift in Sources */,
+				D66893C30CF588D12F9D23E5 /* DemoTranscriberPreset.swift in Sources */,
 				DB8A20E9F2DE59FD40D99E66 /* TranscriptionManager.swift in Sources */,
 				0D32F9DC5EEA1C53DE8D13B0 /* TranscriptionView.swift in Sources */,
 			);

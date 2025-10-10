@@ -125,23 +125,28 @@ struct TranscriptionView: View {
             }
 #endif
         }
-        .onChange(of: presetChoice) { _, newChoice in
+        .onChange(of: presetChoice) { _, _ in
             Task { @MainActor in
-                let previousSession = session
-                session = makeSession(for: newChoice)
-                isTranscribing = false
+                let activeSession = session
+
+                if isTranscribing {
+                    await activeSession.stopTranscribing()
+                    isTranscribing = false
+                }
+
+                session = makeSession(for: presetChoice)
                 finalText = ""
                 partialText = ""
                 error = nil
-                await previousSession.stopTranscribing()
             }
         }
     }
 
     func toggleTranscription() {
         if isTranscribing {
-            Task {
-                await session.stopTranscribing()
+            let currentSession = session
+            Task { @MainActor in
+                await currentSession.stopTranscribing()
                 isTranscribing = false
                 partialText = ""
             }
@@ -151,14 +156,18 @@ struct TranscriptionView: View {
             finalText = ""
             partialText = ""
 
-            Task {
+            let activeSession = session
+
+            Task { @MainActor in
                 do {
-                    for try await result in session.startTranscribing() {
+                    for try await result in activeSession.startTranscribing() {
                         result.apply(
                             to: &finalText,
                             partialText: &partialText
                         )
                     }
+                } catch is CancellationError {
+                    // Expected when stopping the session; ignore.
                 } catch {
                     self.error = error.localizedDescription
                 }

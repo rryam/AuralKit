@@ -14,7 +14,9 @@ class TranscriptionManager {
     var selectedPreset: DemoTranscriberPreset = .manual {
         didSet {
             if oldValue != selectedPreset, isTranscribing {
-                stopTranscription()
+                Task { [weak self] in
+                    await self?.stopTranscription()
+                }
             }
         }
     }
@@ -54,6 +56,10 @@ class TranscriptionManager {
                     await MainActor.run {
                         handleTranscriptionResult(result)
                     }
+                }
+            } catch is CancellationError {
+                await MainActor.run {
+                    self.isTranscribing = false
                 }
             } catch let error as NSError {
                 await MainActor.run {
@@ -95,15 +101,24 @@ class TranscriptionManager {
         return String(format: "%d:%02d.%02d", minutes, remainingSeconds, milliseconds)
     }
     
-    func stopTranscription() {
+    func stopTranscription() async {
         guard isTranscribing else { return }
-        
+
         transcriptionTask?.cancel()
-        Task {
-            await speechSession?.stopTranscribing()
+        let activeSession = speechSession
+
+        if let activeSession {
+            await activeSession.stopTranscribing()
         }
+
+        if let transcriptionTask {
+            await transcriptionTask.value
+        }
+
+        transcriptionTask = nil
+        speechSession = nil
         isTranscribing = false
-        
+
         if !currentTranscript.isEmpty {
             let record = TranscriptionRecord(
                 id: UUID(),
@@ -115,11 +130,16 @@ class TranscriptionManager {
             )
             transcriptionHistory.insert(record, at: 0)
         }
+
+        volatileText = ""
+        currentTimeRange = ""
     }
     
     func toggleTranscription() {
         if isTranscribing {
-            stopTranscription()
+            Task {
+                await stopTranscription()
+            }
         } else {
             startTranscription()
         }
