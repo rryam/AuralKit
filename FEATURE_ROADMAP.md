@@ -26,55 +26,7 @@ A comprehensive analysis of potential features and enhancements based on iOS 26+
 
 ## 1. Core Transcription Features
 
-### 1.1 Multiple Transcriber Presets
-
-**Current State:** AuralKit uses a fixed configuration for `SpeechTranscriber`.
-
-**Opportunity:** Expose all available presets to users:
-
-```swift
-// SpeechTranscriber presets:
-- .transcription                           // Basic, accurate transcription
-- .transcriptionWithAlternatives           // With editing suggestions
-- .timeIndexedTranscriptionWithAlternatives // With source audio cross-reference
-- .progressiveTranscription                // Immediate live audio
-- .timeIndexedProgressiveTranscription     // Live with time-codes
-
-// DictationTranscriber presets:
-- .phrase                                  // Short phrase without punctuation
-- .shortDictation                         // ~1 minute of audio
-- .progressiveShortDictation              // Immediate ~1 minute transcription
-- .longDictation                          // More than 1 minute
-- .progressiveLongDictation               // Immediate lengthy audio
-- .timeIndexedLongDictation               // Lengthy with time indexing
-```
-
-**Implementation:**
-```swift
-public enum TranscriberPreset: Sendable {
-    case transcription
-    case transcriptionWithAlternatives
-    case timeIndexedTranscriptionWithAlternatives
-    case progressiveTranscription
-    case timeIndexedProgressiveTranscription
-    
-    // DictationTranscriber presets
-    case phrase
-    case shortDictation
-    case progressiveShortDictation
-    case longDictation
-    case progressiveLongDictation
-    case timeIndexedLongDictation
-}
-
-// Usage:
-let session = SpeechSession(
-    locale: .current,
-    preset: .timeIndexedProgressiveTranscription
-)
-```
-
-### 1.2 Fine-Grained Transcription Options
+### 1.1 Fine-Grained Transcription Options
 
 **Current State:** Default options are used.
 
@@ -1040,10 +992,9 @@ extension SpeechSession {
 
 ### High Priority (Immediate Value)
 
-1. **Multiple Transcriber Presets** - Easy win, exposes existing framework capabilities
-2. **Audio File Transcription** - Huge use case expansion
-3. **Voice Activity Detection** - Power savings and better UX
-5. **SwiftUI Components Library** - Accelerate developer adoption
+1. **Audio File Transcription** - Huge use case expansion
+2. **Voice Activity Detection** - Power savings and better UX
+3. **SwiftUI Components Library** - Accelerate developer adoption
 
 ### Medium Priority (Enhanced Functionality)
 
@@ -1065,7 +1016,6 @@ extension SpeechSession {
 ## Implementation Phases
 
 ### Phase 1: Foundation (v2.0)
-- Multiple transcriber presets
 - Audio file transcription
 - Enhanced error handling
 - Basic SwiftUI components
