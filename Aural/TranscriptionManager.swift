@@ -117,7 +117,6 @@ class TranscriptionManager {
                 try await self.speechSession?.resumeTranscribing()
             } catch {
                 self.error = error.localizedDescription
-                self.finishSession()
             }
         }
     }

@@ -104,28 +104,6 @@ public struct TranscriptionConfiguration {
 }
 ```
 
-### 1.3 Pause & Resume Transcription
-
-**Current State:** Only start/stop is supported.
-
-**Opportunity:** Allow pausing without losing transcription state:
-
-```swift
-extension SpeechSession {
-    public func pauseTranscribing() async
-    public func resumeTranscribing() async throws
-    
-    public var isPaused: Bool { get }
-}
-```
-
-**Use Cases:**
-- Meeting apps: pause during breaks, resume after
-- Voice memo apps: pause between thoughts
-- Dictation apps: pause for editing, resume for more input
-
----
-
 ## 2. Voice Activity Detection (VAD)
 
 ### 2.1 Integrated Speech Detection
@@ -1065,7 +1043,6 @@ extension SpeechSession {
 1. **Multiple Transcriber Presets** - Easy win, exposes existing framework capabilities
 2. **Audio File Transcription** - Huge use case expansion
 3. **Voice Activity Detection** - Power savings and better UX
-4. **Pause/Resume** - Common user request
 5. **SwiftUI Components Library** - Accelerate developer adoption
 
 ### Medium Priority (Enhanced Functionality)
@@ -1089,7 +1066,6 @@ extension SpeechSession {
 
 ### Phase 1: Foundation (v2.0)
 - Multiple transcriber presets
-- Pause/resume support
 - Audio file transcription
 - Enhanced error handling
 - Basic SwiftUI components
