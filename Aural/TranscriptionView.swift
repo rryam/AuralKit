@@ -17,6 +17,7 @@ struct TranscriptionView: View {
     @State private var enableVAD: Bool = false
     @State private var vadSensitivity: SpeechDetector.SensitivityLevel = .medium
     @State private var isSpeechDetected: Bool = true
+    @State private var logLevel: SpeechSession.LogLevel = SpeechSession.logging
 
     var body: some View {
         NavigationStack {
@@ -59,6 +60,21 @@ struct TranscriptionView: View {
                             }
                             .padding(.leading, 8)
                         }
+                    }
+
+                    Divider()
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Logging Level")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+
+                        Picker("Logging Level", selection: $logLevel) {
+                            ForEach(SpeechSession.LogLevel.allCases, id: \.self) { level in
+                                Text(level.displayName).tag(level)
+                            }
+                        }
+                        .pickerStyle(.segmented)
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -201,6 +217,9 @@ struct TranscriptionView: View {
                     reportResults: true
                 )
             }
+        }
+        .onChange(of: logLevel) { _, newValue in
+            SpeechSession.logging = newValue
         }
         .onChange(of: presetChoice) { _, newChoice in
             Task { @MainActor in

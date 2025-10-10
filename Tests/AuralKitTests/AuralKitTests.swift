@@ -37,4 +37,16 @@ struct AuralKitTests {
         #expect(kit.speechDetectorResultsStream == nil)
         #expect(kit.isSpeechDetected == true)
     }
+
+    @Test("Logging level can be configured globally")
+    @MainActor
+    func testLoggingLevelConfiguration() {
+        let originalLevel = SpeechSession.logging
+        SpeechSession.logging = .off
+
+        SpeechSession.logging = .debug
+        #expect(SpeechSession.logging == .debug)
+
+        SpeechSession.logging = originalLevel
+    }
 }
