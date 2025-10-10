@@ -12,37 +12,53 @@ extension SpeechSession {
         // Check microphone permission (iOS & macOS)
         switch AVCaptureDevice.authorizationStatus(for: .audio) {
         case .authorized:
-            Self.log("Microphone permission already authorized", level: .info)
+            if Self.shouldLog(.info) {
+                Self.logger.info("Microphone permission already authorized")
+            }
         case .notDetermined:
-            Self.log("Requesting microphone permission", level: .notice)
+            if Self.shouldLog(.notice) {
+                Self.logger.notice("Requesting microphone permission")
+            }
             let granted = await AVCaptureDevice.requestAccess(for: .audio)
             if !granted {
-                Self.log("Microphone permission denied", level: .error)
+                if Self.shouldLog(.error) {
+                    Self.logger.error("Microphone permission denied")
+                }
                 throw SpeechSessionError.microphonePermissionDenied
             }
         default:
-            Self.log("Microphone permission unavailable", level: .error)
+            if Self.shouldLog(.error) {
+                Self.logger.error("Microphone permission unavailable")
+            }
             throw SpeechSessionError.microphonePermissionDenied
         }
 
         // Check speech recognition permission
         switch SFSpeechRecognizer.authorizationStatus() {
         case .authorized:
-            Self.log("Speech recognition permission already authorized", level: .info)
+            if Self.shouldLog(.info) {
+                Self.logger.info("Speech recognition permission already authorized")
+            }
             return
         case .notDetermined:
-            Self.log("Requesting speech recognition permission", level: .notice)
+            if Self.shouldLog(.notice) {
+                Self.logger.notice("Requesting speech recognition permission")
+            }
             let granted = await withCheckedContinuation { continuation in
                 SFSpeechRecognizer.requestAuthorization { status in
                     continuation.resume(returning: status == .authorized)
                 }
             }
             if !granted {
-                Self.log("Speech recognition permission denied", level: .error)
+                if Self.shouldLog(.error) {
+                    Self.logger.error("Speech recognition permission denied")
+                }
                 throw SpeechSessionError.speechRecognitionPermissionDenied
             }
         default:
-            Self.log("Speech recognition permission unavailable", level: .error)
+            if Self.shouldLog(.error) {
+                Self.logger.error("Speech recognition permission unavailable")
+            }
             throw SpeechSessionError.speechRecognitionPermissionDenied
         }
     }
@@ -54,7 +70,9 @@ extension SpeechSession {
         contextualStrings: [AnalysisContext.ContextualStringsTag: [String]]? = nil
     ) async {
         do {
-            Self.log("Starting pipeline setup", level: .notice)
+            if Self.shouldLog(.notice) {
+                Self.logger.notice("Starting pipeline setup")
+            }
             try await ensurePermissions()
 
 #if os(iOS)
@@ -69,7 +87,9 @@ extension SpeechSession {
 #endif
 
             let transcriber = try await setUpTranscriber(contextualStrings: contextualStrings)
-            Self.log("Transcriber prepared with modules", level: .info)
+            if Self.shouldLog(.info) {
+                Self.logger.info("Transcriber prepared with modules")
+            }
 
             recognizerTask = Task<Void, Never> { [weak self] in
                 guard let self else { return }
@@ -78,13 +98,19 @@ extension SpeechSession {
                     for try await result in transcriber.results {
                         streamContinuation.yield(result)
                     }
-                    Self.log("Recognizer task completed without error", level: .notice)
+                    if Self.shouldLog(.notice) {
+                        Self.logger.notice("Recognizer task completed without error")
+                    }
                     await self.finishFromRecognizerTask(error: nil)
                 } catch is CancellationError {
-                    Self.log("Recognizer task cancelled", level: .debug)
+                    if Self.shouldLog(.debug) {
+                        Self.logger.debug("Recognizer task cancelled")
+                    }
                     // Cancellation handled by cleanup logic
                 } catch {
-                    Self.log("Recognizer task failed: \(error.localizedDescription)", level: .error)
+                    if Self.shouldLog(.error) {
+                        Self.logger.error("Recognizer task failed: \(error.localizedDescription, privacy: .public)")
+                    }
                     await self.finishFromRecognizerTask(error: error)
                 }
             }
@@ -93,15 +119,21 @@ extension SpeechSession {
 
             streamingActive = true
             setStatus(.transcribing)
-            Self.log("Pipeline started and streaming active", level: .info)
+            if Self.shouldLog(.info) {
+                Self.logger.info("Pipeline started and streaming active")
+            }
         } catch {
-            Self.log("Pipeline setup failed: \(error.localizedDescription)", level: .error)
+            if Self.shouldLog(.error) {
+                Self.logger.error("Pipeline setup failed: \(error.localizedDescription, privacy: .public)")
+            }
             await finishWithStartupError(error)
         }
     }
 
     func finishWithStartupError(_ error: Error) async {
-        Self.log("Finishing due to startup error: \(error.localizedDescription)", level: .error)
+        if Self.shouldLog(.error) {
+            Self.logger.error("Finishing due to startup error: \(error.localizedDescription, privacy: .public)")
+        }
         prepareForStop()
         await cleanup(cancelRecognizer: true)
         await finishStream(error: error)
@@ -109,9 +141,13 @@ extension SpeechSession {
 
     func finishFromRecognizerTask(error: Error?) async {
         if let error {
-            Self.log("Finishing from recognizer with error: \(error.localizedDescription)", level: .error)
+            if Self.shouldLog(.error) {
+                Self.logger.error("Finishing from recognizer with error: \(error.localizedDescription, privacy: .public)")
+            }
         } else {
-            Self.log("Finishing from recognizer without error", level: .notice)
+            if Self.shouldLog(.notice) {
+                Self.logger.notice("Finishing from recognizer without error")
+            }
         }
         prepareForStop()
         await cleanup(cancelRecognizer: false)
@@ -119,12 +155,16 @@ extension SpeechSession {
     }
 
     func cleanup(cancelRecognizer: Bool) async {
-        Self.log("Cleanup started (cancelRecognizer: \(cancelRecognizer))", level: .debug)
+        if Self.shouldLog(.debug) {
+            Self.logger.debug("Cleanup started (cancelRecognizer: \(cancelRecognizer, privacy: .public))")
+        }
         let task = recognizerTask
         recognizerTask = nil
 
         if cancelRecognizer {
-            Self.log("Cancelling recognizer task", level: .debug)
+            if Self.shouldLog(.debug) {
+                Self.logger.debug("Cancelling recognizer task")
+            }
             task?.cancel()
         }
 
@@ -132,7 +172,9 @@ extension SpeechSession {
         stopAudioStreaming()
         await stopTranscriberAndCleanup()
         setStatus(.idle)
-        Self.log("Cleanup completed", level: .debug)
+        if Self.shouldLog(.debug) {
+            Self.logger.debug("Cleanup completed")
+        }
     }
 
     func finishStream(error: Error?) async {
@@ -140,10 +182,14 @@ extension SpeechSession {
         continuation = nil
 
         if let error {
-            Self.log("Finishing stream with error: \(error.localizedDescription)", level: .error)
+            if Self.shouldLog(.error) {
+                Self.logger.error("Finishing stream with error: \(error.localizedDescription, privacy: .public)")
+            }
             cont.finish(throwing: error)
         } else {
-            Self.log("Finishing stream successfully", level: .notice)
+            if Self.shouldLog(.notice) {
+                Self.logger.notice("Finishing stream successfully")
+            }
             cont.finish()
         }
     }

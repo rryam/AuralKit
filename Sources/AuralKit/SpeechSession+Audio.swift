@@ -11,7 +11,9 @@ extension SpeechSession {
             throw SpeechSessionError.recognitionStreamSetupFailed
         }
 
-        Self.log("Starting audio streaming", level: .debug)
+        if Self.shouldLog(.debug) {
+            Self.logger.debug("Starting audio streaming")
+        }
         audioEngine.inputNode.removeTap(onBus: 0)
 
         let inputFormat = audioEngine.inputNode.outputFormat(forBus: 0)
@@ -30,7 +32,9 @@ extension SpeechSession {
                 do {
                     try self.processAudioBuffer(bufferCopy)
                 } catch {
-                    Self.log("Audio processing error: \(error.localizedDescription)", level: .error)
+                    if Self.shouldLog(.error) {
+                        Self.logger.error("Audio processing error: \(error.localizedDescription, privacy: .public)")
+                    }
                 }
             }
         }
@@ -38,12 +42,16 @@ extension SpeechSession {
         audioEngine.prepare()
         try audioEngine.start()
         isAudioStreaming = true
-        Self.log("Audio streaming started", level: .debug)
+        if Self.shouldLog(.debug) {
+            Self.logger.debug("Audio streaming started")
+        }
     }
 
     func stopAudioStreaming() {
         guard isAudioStreaming else { return }
-        Self.log("Stopping audio streaming", level: .debug)
+        if Self.shouldLog(.debug) {
+            Self.logger.debug("Stopping audio streaming")
+        }
         audioEngine.stop()
         isAudioStreaming = false
     }
@@ -95,7 +103,9 @@ extension SpeechSession {
         do {
             try await reset()
         } catch {
-            Self.log("Failed to reset audio engine after route change: \(error.localizedDescription)", level: .error)
+            if Self.shouldLog(.error) {
+                Self.logger.error("Failed to reset audio engine after route change: \(error.localizedDescription, privacy: .public)")
+            }
         }
 
         publishCurrentAudioInputInfo()
@@ -105,7 +115,9 @@ extension SpeechSession {
         do {
             try await reset()
         } catch {
-            Self.log("Failed to reset audio engine after configuration change: \(error.localizedDescription)", level: .error)
+            if Self.shouldLog(.error) {
+                Self.logger.error("Failed to reset audio engine after configuration change: \(error.localizedDescription, privacy: .public)")
+            }
         }
 
         publishCurrentAudioInputInfo()
@@ -117,23 +129,33 @@ extension SpeechSession {
 #if os(iOS)
         let audioSession = AVAudioSession.sharedInstance()
         if let input = audioSession.currentRoute.inputs.first {
-            Self.log("Publishing audio input info for port: \(input.portName)", level: .info)
+            if Self.shouldLog(.info) {
+                Self.logger.info("Publishing audio input info for port: \(input.portName, privacy: .public)")
+            }
             audioInputConfigurationContinuation?.yield(AudioInputInfo(from: input))
         } else {
-            Self.log("No active audio input detected", level: .debug)
+            if Self.shouldLog(.debug) {
+                Self.logger.debug("No active audio input detected")
+            }
             audioInputConfigurationContinuation?.yield(nil)
         }
 #elseif os(macOS)
         do {
             let info = try AudioInputInfo.current()
             if let info {
-                Self.log("Publishing audio input info for port: \(info.portName)", level: .info)
+                if Self.shouldLog(.info) {
+                    Self.logger.info("Publishing audio input info for port: \(info.portName, privacy: .public)")
+                }
             } else {
-                Self.log("No active audio input detected", level: .debug)
+                if Self.shouldLog(.debug) {
+                    Self.logger.debug("No active audio input detected")
+                }
             }
             audioInputConfigurationContinuation?.yield(info)
         } catch {
-            Self.log("Failed to obtain audio input details: \(error.localizedDescription)", level: .error)
+            if Self.shouldLog(.error) {
+                Self.logger.error("Failed to obtain audio input details: \(error.localizedDescription, privacy: .public)")
+            }
             audioInputConfigurationContinuation?.yield(nil)
         }
 #endif
@@ -141,7 +163,9 @@ extension SpeechSession {
 #endif
 
     func reset() async throws {
-        Self.log("Resetting audio engine", level: .debug)
+        if Self.shouldLog(.debug) {
+            Self.logger.debug("Resetting audio engine")
+        }
         let wasStreaming = isAudioStreaming
 
         if wasStreaming {
@@ -154,6 +178,8 @@ extension SpeechSession {
 
         guard wasStreaming else { return }
         try startAudioStreaming()
-        Self.log("Audio engine reset complete", level: .debug)
+        if Self.shouldLog(.debug) {
+            Self.logger.debug("Audio engine reset complete")
+        }
     }
 }

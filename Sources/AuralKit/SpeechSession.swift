@@ -71,30 +71,12 @@ public final class SpeechSession {
         }
     }
 
-    private static let logger = Logger(subsystem: "com.auralkit.speech", category: "SpeechSession")
+    internal static let logger = Logger(subsystem: "com.auralkit.speech", category: "SpeechSession")
 
     /// Global logging level for all `SpeechSession` instances. Defaults to `.off`.
     public static var logging: LogLevel = .off
 
-    static func log(_ message: @autoclosure () -> String, level: LogLevel) {
-        guard shouldLog(level) else { return }
-        let text = message()
-
-        switch level {
-        case .off:
-            break
-        case .error:
-            logger.error("\(text, privacy: .public)")
-        case .notice:
-            logger.notice("\(text, privacy: .public)")
-        case .info:
-            logger.info("\(text, privacy: .public)")
-        case .debug:
-            logger.debug("\(text, privacy: .public)")
-        }
-    }
-
-    private static func shouldLog(_ level: LogLevel) -> Bool {
+    internal static func shouldLog(_ level: LogLevel) -> Bool {
         if logging == .off { return false }
         return level.rank <= logging.rank
     }
@@ -256,7 +238,9 @@ public final class SpeechSession {
         let (stream, continuation) = AsyncStream<SpeechDetector.Result>.makeStream()
         speechDetectorResultsStream = stream
         speechDetectorResultsContinuation = continuation
-        Self.log("Prepared speech detector results stream", level: .debug)
+        if Self.shouldLog(.debug) {
+            Self.logger.debug("Prepared speech detector results stream")
+        }
         return continuation
     }
 
@@ -267,14 +251,18 @@ public final class SpeechSession {
         speechDetectorResultsContinuation = nil
         speechDetectorResultsStream = nil
         isSpeechDetected = true
-        Self.log("Speech detector stream torn down", level: .debug)
+        if Self.shouldLog(.debug) {
+            Self.logger.debug("Speech detector stream torn down")
+        }
     }
 
     func startSpeechDetectorMonitoring() {
         guard let detector = speechDetector else { return }
 
         speechDetectorResultsTask?.cancel()
-        Self.log("Starting speech detector monitoring", level: .debug)
+        if Self.shouldLog(.debug) {
+            Self.logger.debug("Starting speech detector monitoring")
+        }
         speechDetectorResultsTask = Task<Void, Never> { [weak self] in
             guard let self else { return }
             do {
@@ -294,7 +282,9 @@ public final class SpeechSession {
             await MainActor.run {
                 self.handleSpeechDetectorStreamCompletion(error: nil)
             }
-            Self.log("Speech detector monitoring completed", level: .notice)
+            if Self.shouldLog(.notice) {
+                Self.logger.notice("Speech detector monitoring completed")
+            }
         }
     }
 
@@ -302,7 +292,9 @@ public final class SpeechSession {
     func handleSpeechDetectorResult(_ result: SpeechDetector.Result) {
         isSpeechDetected = result.speechDetected
         speechDetectorResultsContinuation?.yield(result)
-        Self.log("Speech detector result: speechDetected=\(result.speechDetected)", level: .debug)
+        if Self.shouldLog(.debug) {
+            Self.logger.debug("Speech detector result: speechDetected=\(result.speechDetected, privacy: .public)")
+        }
     }
 
     @MainActor
@@ -318,9 +310,13 @@ public final class SpeechSession {
         isSpeechDetected = true
 
         if let error {
-            Self.log("Speech detector monitoring failed: \(error.localizedDescription)", level: .error)
+            if Self.shouldLog(.error) {
+                Self.logger.error("Speech detector monitoring failed: \(error.localizedDescription, privacy: .public)")
+            }
         } else {
-            Self.log("Speech detector monitoring stopped", level: .notice)
+            if Self.shouldLog(.notice) {
+                Self.logger.notice("Speech detector monitoring stopped")
+            }
         }
     }
 
@@ -425,7 +421,10 @@ public final class SpeechSession {
         detectionOptions: SpeechDetector.DetectionOptions = .init(sensitivityLevel: .medium),
         reportResults: Bool = false
     ) {
-        Self.log("Configuring voice activation (sensitivity: \(detectionOptions.sensitivityLevel), reportResults: \(reportResults))", level: .info)
+        if Self.shouldLog(.info) {
+            let sensitivityDescription = String(describing: detectionOptions.sensitivityLevel)
+            Self.logger.info("Configuring voice activation (sensitivity: \(sensitivityDescription, privacy: .public), reportResults: \(reportResults, privacy: .public))")
+        }
         voiceActivationConfiguration = VoiceActivationConfiguration(
             detectionOptions: detectionOptions,
             reportResults: reportResults
@@ -444,7 +443,9 @@ public final class SpeechSession {
     /// After calling this method, the session will process all audio without power-saving
     /// voice activity detection. Changes take effect on the next transcription start.
     public func disableVoiceActivation() {
-        Self.log("Disabling voice activation", level: .info)
+        if Self.shouldLog(.info) {
+            Self.logger.info("Disabling voice activation")
+        }
         voiceActivationConfiguration = nil
         tearDownSpeechDetectorStream()
     }
@@ -576,7 +577,12 @@ public final class SpeechSession {
 extension SpeechSession {
     func setStatus(_ newStatus: Status) {
         guard status != newStatus else { return }
-        Self.log("Status transition: \(status) -> \(newStatus)", level: .notice)
+        let previousStatus = status
+        if Self.shouldLog(.notice) {
+            let previousDescription = String(describing: previousStatus)
+            let newDescription = String(describing: newStatus)
+            Self.logger.notice("Status transition: \(previousDescription, privacy: .public) -> \(newDescription, privacy: .public)")
+        }
         status = newStatus
         statusContinuation?.yield(newStatus)
     }
@@ -586,7 +592,10 @@ extension SpeechSession {
         case .idle, .stopping:
             break
         default:
-            Self.log("Preparing for stop from status: \(status)", level: .debug)
+            if Self.shouldLog(.debug) {
+                let currentDescription = String(describing: status)
+                Self.logger.debug("Preparing for stop from status: \(currentDescription, privacy: .public)")
+            }
             setStatus(.stopping)
         }
     }
