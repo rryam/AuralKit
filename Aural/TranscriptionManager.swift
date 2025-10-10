@@ -58,9 +58,7 @@ class TranscriptionManager {
                     }
                 }
             } catch is CancellationError {
-                await MainActor.run {
-                    self.isTranscribing = false
-                }
+                // Cancellation is expected when stopping the session.
             } catch let error as NSError {
                 await MainActor.run {
                     self.error = error.localizedDescription

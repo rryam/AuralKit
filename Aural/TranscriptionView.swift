@@ -131,7 +131,6 @@ struct TranscriptionView: View {
 
                 if isTranscribing {
                     await activeSession.stopTranscribing()
-                    isTranscribing = false
                 }
 
                 session = makeSession(for: presetChoice)
@@ -147,8 +146,6 @@ struct TranscriptionView: View {
             let currentSession = session
             Task { @MainActor in
                 await currentSession.stopTranscribing()
-                isTranscribing = false
-                partialText = ""
             }
         } else {
             isTranscribing = true
