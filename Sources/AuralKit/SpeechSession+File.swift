@@ -84,14 +84,13 @@ public extension SpeechSession {
         options: FileTranscriptionOptions = .init(),
         progressHandler: ((Double) -> Void)? = nil
     ) async throws -> FileTranscriptionResult {
-        var finalResults: [SpeechTranscriber.Result] = []
         let stream = streamTranscription(from: audioFile, options: options, progressHandler: progressHandler)
-
-        for try await result in stream {
+        let accumulator: @Sendable (inout [SpeechTranscriber.Result], SpeechTranscriber.Result) -> Void = { results, result in
             if result.isFinal {
-                finalResults.append(result)
+                results.append(result)
             }
         }
+        let finalResults = try await stream.reduce(into: [SpeechTranscriber.Result](), accumulator)
 
         return FileTranscriptionResult(finalResults: finalResults)
     }
@@ -108,7 +107,7 @@ private extension SpeechSession {
     ) async {
         do {
             let validation = try validateAudioFile(at: audioFileURL, maxDuration: options.maxDuration)
-            try await ensureSpeechRecognitionAuthorizationForFile()
+            try await ensureSpeechRecognitionAuthorization(context: "for file transcription")
             try await setUpFilePipeline(
                 with: streamContinuation,
                 contextualStrings: options.contextualStrings
@@ -261,33 +260,4 @@ private extension SpeechSession {
         inputBuilder?.finish()
     }
 
-    func ensureSpeechRecognitionAuthorizationForFile() async throws {
-        switch SFSpeechRecognizer.authorizationStatus() {
-        case .authorized:
-            if Self.shouldLog(.info) {
-                Self.logger.info("Speech recognition permission already authorized for file transcription")
-            }
-            return
-        case .notDetermined:
-            if Self.shouldLog(.notice) {
-                Self.logger.notice("Requesting speech recognition permission for file transcription")
-            }
-            let granted = await withCheckedContinuation { continuation in
-                SFSpeechRecognizer.requestAuthorization { status in
-                    continuation.resume(returning: status == .authorized)
-                }
-            }
-            if !granted {
-                if Self.shouldLog(.error) {
-                    Self.logger.error("Speech recognition permission denied for file transcription")
-                }
-                throw SpeechSessionError.speechRecognitionPermissionDenied
-            }
-        default:
-            if Self.shouldLog(.error) {
-                Self.logger.error("Speech recognition permission unavailable for file transcription")
-            }
-            throw SpeechSessionError.speechRecognitionPermissionDenied
-        }
-    }
 }
