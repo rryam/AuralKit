@@ -5,49 +5,76 @@
 //  Created by Ifrit on 10/8/25.
 //
 
+import Foundation
+import AudioToolbox
+
+#if os(iOS)
 import AVFoundation
+#elseif os(macOS)
+import AVFAudio
+import CoreAudio
+#endif
 
 public struct AudioInputInfo: Sendable, CustomStringConvertible {
-    public let portType: AVAudioSession.Port
     public let portName: String
     public let portIcon: String
     public let uid: String
-    public let hasHardwareVoiceCallProcessing: Bool
     public let channels: [ChannelInfo]
+
+#if os(iOS)
+    public let portType: AVAudioSession.Port
+    public let hasHardwareVoiceCallProcessing: Bool
     public let dataSources: [DataSourceInfo]?
     public let selectedDataSource: DataSourceInfo?
     public let preferredDataSource: DataSourceInfo?
+#elseif os(macOS)
+    public let manufacturer: String?
+    public let nominalSampleRate: Double?
+#endif
 
     public var description: String {
-        var desc = """
-        AudioInputInfo:
-        \(portName) (\(portType.rawValue))
-        UID: \(uid)
-        Hardware Voice Processing: \(hasHardwareVoiceCallProcessing ? "✓" : "✗")
-        """
+        var lines = [
+            "AudioInputInfo:",
+            "\(portName)",
+            "UID: \(uid)"
+        ]
 
         if !channels.isEmpty {
-            desc += "\nChannels: \(channels.count)"
+            lines.append("Channels: \(channels.count)")
             for channel in channels {
-                desc += "\n  • \(channel.channelName) (ch \(channel.channelNumber))"
+                lines.append("  • \(channel.channelName) (ch \(channel.channelNumber))")
             }
         }
 
+#if os(iOS)
+        lines.append("Port Type: \(portType.rawValue)")
+        lines.append("Hardware Voice Processing: \(hasHardwareVoiceCallProcessing ? "✓" : "✗")")
+
         if let selectedDataSource {
-            desc += "\nData Source: \(selectedDataSource.dataSourceName)"
+            var dataSourceLine = "Data Source: \(selectedDataSource.dataSourceName)"
             if let location = selectedDataSource.location {
-                desc += " (\(location.rawValue))"
+                dataSourceLine += " (\(location.rawValue))"
             }
+            lines.append(dataSourceLine)
+
             if let pattern = selectedDataSource.selectedPolarPattern {
-                desc += "\n  Polar Pattern: \(pattern.rawValue)"
+                lines.append("  Polar Pattern: \(pattern.rawValue)")
             }
         }
 
         if let dataSources, dataSources.count > 1 {
-            desc += "\nAvailable Sources: \(dataSources.count)"
+            lines.append("Available Sources: \(dataSources.count)")
         }
+#elseif os(macOS)
+        if let manufacturer, !manufacturer.isEmpty {
+            lines.append("Manufacturer: \(manufacturer)")
+        }
+        if let nominalSampleRate {
+            lines.append("Sample Rate: \(String(format: "%.0f Hz", nominalSampleRate))")
+        }
+#endif
 
-        return desc
+        return lines.joined(separator: "\n")
     }
 
     public struct ChannelInfo: Sendable {
@@ -56,7 +83,8 @@ public struct AudioInputInfo: Sendable, CustomStringConvertible {
         public let owningPortUID: String
         public let channelLabel: AudioChannelLabel
     }
-    
+
+#if os(iOS)
     public struct DataSourceInfo: Sendable {
         public let dataSourceID: NSNumber
         public let dataSourceName: String
@@ -66,14 +94,16 @@ public struct AudioInputInfo: Sendable, CustomStringConvertible {
         public let selectedPolarPattern: AVAudioSession.PolarPattern?
         public let preferredPolarPattern: AVAudioSession.PolarPattern?
     }
-    
-    public init(from portDescription: AVAudioSessionPortDescription) {
-        self.portType = portDescription.portType
-        self.portName = portDescription.portName
-        self.portIcon = AudioInputInfo.audioPortToIcon(portDescription)
-        self.uid = portDescription.uid
-        self.hasHardwareVoiceCallProcessing = portDescription.hasHardwareVoiceCallProcessing
-        self.channels = portDescription.channels?.map { channel in
+#endif
+}
+
+#if os(iOS)
+public extension AudioInputInfo {
+    init(from portDescription: AVAudioSessionPortDescription) {
+        let portType = portDescription.portType
+        let portName = portDescription.portName
+        let uid = portDescription.uid
+        let channels = portDescription.channels?.map { channel -> ChannelInfo in
             ChannelInfo(
                 channelName: channel.channelName,
                 channelNumber: channel.channelNumber,
@@ -94,32 +124,58 @@ public struct AudioInputInfo: Sendable, CustomStringConvertible {
             )
         }
 
-        self.dataSources = portDescription.dataSources?.map(dataSourceMapper)
-        self.selectedDataSource = portDescription.selectedDataSource.map(dataSourceMapper)
-        self.preferredDataSource = portDescription.preferredDataSource.map(dataSourceMapper)
+        self.init(
+            portName: portName,
+            portIcon: AudioInputInfo.iconName(for: portDescription),
+            uid: uid,
+            channels: channels,
+            portType: portType,
+            hasHardwareVoiceCallProcessing: portDescription.hasHardwareVoiceCallProcessing,
+            dataSources: portDescription.dataSources?.map(dataSourceMapper),
+            selectedDataSource: portDescription.selectedDataSource.map(dataSourceMapper),
+            preferredDataSource: portDescription.preferredDataSource.map(dataSourceMapper)
+        )
     }
-}
 
-// UI Helper
-extension AudioInputInfo {
-#if os(iOS)
-    private static func audioPortToIcon(_ port: AVAudioSessionPortDescription) -> String {
-        let portName = port.portName.lowercased()
-        let portType = port.portType
-        
-        if portName.contains("pro") {
+    private init(
+        portName: String,
+        portIcon: String,
+        uid: String,
+        channels: [ChannelInfo],
+        portType: AVAudioSession.Port,
+        hasHardwareVoiceCallProcessing: Bool,
+        dataSources: [DataSourceInfo]?,
+        selectedDataSource: DataSourceInfo?,
+        preferredDataSource: DataSourceInfo?
+    ) {
+        self.portName = portName
+        self.portIcon = portIcon
+        self.uid = uid
+        self.channels = channels
+        self.portType = portType
+        self.hasHardwareVoiceCallProcessing = hasHardwareVoiceCallProcessing
+        self.dataSources = dataSources
+        self.selectedDataSource = selectedDataSource
+        self.preferredDataSource = preferredDataSource
+    }
+
+    private static func iconName(for port: AVAudioSessionPortDescription) -> String {
+        let normalizedName = port.portName.lowercased()
+        let type = port.portType
+
+        if normalizedName.contains("pro") {
             return "airpods.pro"
-        } else if portName.contains("max") {
+        } else if normalizedName.contains("max") {
             return "airpods.max"
-        } else if portName.contains("airpods") {
+        } else if normalizedName.contains("airpods") {
             return "airpods"
         }
-        
-        switch portType {
+
+        switch type {
         case .bluetoothA2DP, .bluetoothHFP, .bluetoothLE:
-            if portName.contains("beats") {
+            if normalizedName.contains("beats") {
                 return "beats.headphones"
-            } else if portName.contains("headphone") || portName.contains("headset") {
+            } else if normalizedName.contains("headphone") || normalizedName.contains("headset") {
                 return "headphones"
             } else {
                 return "airpods.gen4"
@@ -136,5 +192,159 @@ extension AudioInputInfo {
             return "mic"
         }
     }
-#endif
 }
+#elseif os(macOS)
+public extension AudioInputInfo {
+    enum AudioInputInfoError: Error, LocalizedError {
+        case audioHardwareError(OSStatus, selector: AudioObjectPropertySelector)
+
+        public var errorDescription: String? {
+            switch self {
+            case let .audioHardwareError(status, selector):
+                return "Audio hardware error \(status) for selector \(selector)"
+            }
+        }
+    }
+
+    static func current() throws -> AudioInputInfo? {
+        guard let deviceID = try defaultInputDeviceID() else {
+            return nil
+        }
+
+        return try AudioInputInfo(deviceID: deviceID)
+    }
+
+    private init(deviceID: AudioObjectID) throws {
+        let uid = try Self.copyStringProperty(selector: kAudioDevicePropertyDeviceUID, scope: kAudioObjectPropertyScopeGlobal, deviceID: deviceID) ?? "\(deviceID)"
+        let name = try Self.copyStringProperty(selector: kAudioDevicePropertyDeviceNameCFString, scope: kAudioObjectPropertyScopeGlobal, deviceID: deviceID) ?? "Unknown Device"
+        let manufacturer = try Self.copyStringProperty(selector: kAudioDevicePropertyDeviceManufacturerCFString, scope: kAudioObjectPropertyScopeGlobal, deviceID: deviceID)
+        let nominalSampleRate = try Self.nominalSampleRate(for: deviceID)
+        let channelCount = try Self.inputChannelCount(for: deviceID)
+
+        let channelInfos = (0..<channelCount).map { index in
+            ChannelInfo(
+                channelName: "Input \(index + 1)",
+                channelNumber: index + 1,
+                owningPortUID: uid,
+                channelLabel: kAudioChannelLabel_Unknown
+            )
+        }
+
+        self.portName = name
+        self.portIcon = Self.iconName(for: name)
+        self.uid = uid
+        self.channels = channelInfos
+        self.manufacturer = manufacturer
+        self.nominalSampleRate = nominalSampleRate
+    }
+
+    private static func defaultInputDeviceID() throws -> AudioObjectID? {
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDefaultInputDevice,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var deviceID = AudioObjectID(0)
+        var dataSize = UInt32(MemoryLayout<AudioObjectID>.size)
+        let status = AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &dataSize, &deviceID)
+        guard status == noErr else {
+            throw AudioInputInfoError.audioHardwareError(status, selector: address.mSelector)
+        }
+
+        return deviceID == kAudioObjectUnknown ? nil : deviceID
+    }
+
+    private static func copyStringProperty(
+        selector: AudioObjectPropertySelector,
+        scope: AudioObjectPropertyScope,
+        deviceID: AudioObjectID
+    ) throws -> String? {
+        var address = AudioObjectPropertyAddress(
+            mSelector: selector,
+            mScope: scope,
+            mElement: kAudioObjectPropertyElementMain
+        )
+
+        var dataSize: UInt32 = 0
+        var status = AudioObjectGetPropertyDataSize(deviceID, &address, 0, nil, &dataSize)
+        if status != noErr {
+            throw AudioInputInfoError.audioHardwareError(status, selector: selector)
+        }
+
+        guard dataSize > 0 else {
+            return nil
+        }
+
+        var value: CFString?
+        status = withUnsafeMutablePointer(to: &value) { pointer in
+            AudioObjectGetPropertyData(deviceID, &address, 0, nil, &dataSize, pointer)
+        }
+        if status != noErr {
+            throw AudioInputInfoError.audioHardwareError(status, selector: selector)
+        }
+
+        return value as String?
+    }
+
+    private static func nominalSampleRate(for deviceID: AudioObjectID) throws -> Double? {
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioDevicePropertyNominalSampleRate,
+            mScope: kAudioDevicePropertyScopeInput,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var value = Double(0)
+        var dataSize = UInt32(MemoryLayout<Double>.size)
+        let status = AudioObjectGetPropertyData(deviceID, &address, 0, nil, &dataSize, &value)
+        if status != noErr {
+            throw AudioInputInfoError.audioHardwareError(status, selector: address.mSelector)
+        }
+        return value
+    }
+
+    private static func inputChannelCount(for deviceID: AudioObjectID) throws -> Int {
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioDevicePropertyStreamConfiguration,
+            mScope: kAudioDevicePropertyScopeInput,
+            mElement: kAudioObjectPropertyElementMain
+        )
+
+        var dataSize: UInt32 = 0
+        var status = AudioObjectGetPropertyDataSize(deviceID, &address, 0, nil, &dataSize)
+        if status != noErr {
+            throw AudioInputInfoError.audioHardwareError(status, selector: address.mSelector)
+        }
+
+        guard dataSize > 0 else {
+            return 0
+        }
+
+        let bufferPointer = UnsafeMutableRawPointer.allocate(byteCount: Int(dataSize), alignment: MemoryLayout<AudioBufferList>.alignment)
+        defer { bufferPointer.deallocate() }
+
+        status = AudioObjectGetPropertyData(deviceID, &address, 0, nil, &dataSize, bufferPointer)
+        if status != noErr {
+            throw AudioInputInfoError.audioHardwareError(status, selector: address.mSelector)
+        }
+
+        let audioBufferList = bufferPointer.bindMemory(to: AudioBufferList.self, capacity: 1)
+        var totalChannels = 0
+        for audioBuffer in UnsafeMutableAudioBufferListPointer(audioBufferList) {
+            totalChannels += Int(audioBuffer.mNumberChannels)
+        }
+
+        return totalChannels
+    }
+
+    private static func iconName(for name: String) -> String {
+        let normalized = name.lowercased()
+        if normalized.contains("usb") {
+            return "cable.connector"
+        } else if normalized.contains("headset") || normalized.contains("headphone") {
+            return "headphones"
+        } else if normalized.contains("bluetooth") {
+            return "wave.3.left"
+        }
+        return "mic"
+    }
+}
+#endif

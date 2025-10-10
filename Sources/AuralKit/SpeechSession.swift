@@ -82,6 +82,9 @@ public final class SpeechSession: @unchecked Sendable {
     
 #if os(iOS)
     private let audioConfig: AudioSessionConfiguration
+#endif
+
+#if os(iOS) || os(macOS)
     private var audioInputConfigurationContinuation: AsyncStream<AudioInputInfo?>.Continuation?
     public private(set) lazy var audioInputConfigurationStream: AsyncStream<AudioInputInfo?> = {
         AsyncStream { [weak self] continuation in
@@ -128,7 +131,9 @@ public final class SpeechSession: @unchecked Sendable {
 #if os(iOS)
         self.audioConfig = AudioSessionConfiguration.default
 #endif
-        setupRouteChangeNotification()
+#if os(iOS) || os(macOS)
+        setupAudioConfigurationObservers()
+#endif
     }
 
 #if os(iOS)
@@ -153,12 +158,14 @@ public final class SpeechSession: @unchecked Sendable {
         self.reportingOptions = reportingOptions
         self.attributeOptions = attributeOptions
         self.audioConfig = audioConfig
-        setupRouteChangeNotification()
+#if os(iOS) || os(macOS)
+        setupAudioConfigurationObservers()
+#endif
     }
 #endif
 
     deinit {
-#if os(iOS)
+#if os(iOS) || os(macOS)
         if let observer = routeChangeObserver {
             NotificationCenter.default.removeObserver(observer)
         }
@@ -286,10 +293,10 @@ public final class SpeechSession: @unchecked Sendable {
                 let audioSession = AVAudioSession.sharedInstance()
                 try audioSession.setCategory(audioConfig.category, mode: audioConfig.mode, options: audioConfig.options)
                 try audioSession.setActive(true)
-                if let input = audioSession.currentRoute.inputs.first {
-                    audioInputConfigurationContinuation?.yield(AudioInputInfo(from: input))
-                }
             }
+#endif
+#if os(iOS) || os(macOS)
+            publishCurrentAudioInputInfo()
 #endif
 
             let transcriber = try await setUpTranscriber(contextualStrings: contextualStrings)
@@ -383,9 +390,10 @@ public final class SpeechSession: @unchecked Sendable {
         audioEngine.stop()
         isAudioStreaming = false
     }
-        
-    /// Sets up audio route change notification listener
-    private func setupRouteChangeNotification() {
+    
+#if os(iOS) || os(macOS)
+    /// Sets up platform-specific notifications for audio route/configuration changes.
+    private func setupAudioConfigurationObservers() {
 #if os(iOS)
         routeChangeObserver = NotificationCenter.default.addObserver(
             forName: AVAudioSession.routeChangeNotification,
@@ -398,38 +406,90 @@ public final class SpeechSession: @unchecked Sendable {
                   let reason = AVAudioSession.RouteChangeReason(rawValue: reasonValue) else {
                 return
             }
-            let session = AVAudioSession.sharedInstance()
-            if let previousRoute = userInfo[AVAudioSessionRouteChangePreviousRouteKey] as? AVAudioSessionRouteDescription,
-               !previousRoute.inputs.isEmpty,
-               previousRoute.inputs.first?.portType != session.currentRoute.inputs.first?.portType,
-               let currentInput = session.currentRoute.inputs.first {
-                Task {
-                    await self.handleRouteChange(reason)
-                    self.audioInputConfigurationContinuation?.yield(AudioInputInfo(from: currentInput))
-                }
+
+            Task {
+                await self.handleRouteChange(reason, notification: notification)
+            }
+        }
+#elseif os(macOS)
+        routeChangeObserver = NotificationCenter.default.addObserver(
+            forName: .AVAudioEngineConfigurationChange,
+            object: audioEngine,
+            queue: .main
+        ) { [weak self] _ in
+            guard let self else { return }
+            Task {
+                await self.handleEngineConfigurationChange()
             }
         }
 #endif
     }
+#endif
 
 #if os(iOS)
-    private func handleRouteChange(_ reason: AVAudioSession.RouteChangeReason) async {
+    private func handleRouteChange(_ reason: AVAudioSession.RouteChangeReason, notification: Notification) async {
+        let session = AVAudioSession.sharedInstance()
+        let previousRoute = notification.userInfo?[AVAudioSessionRouteChangePreviousRouteKey] as? AVAudioSessionRouteDescription
+        let previousPortType = previousRoute?.inputs.first?.portType
+        let currentPortType = session.currentRoute.inputs.first?.portType
+
+        guard previousPortType != currentPortType else {
+            return
+        }
+
         do {
             try await reset()
         } catch {
-            // Handle reset failure - could emit this through a separate error stream
             print("Failed to reset audio engine after route change: \(error.localizedDescription)")
         }
+
+        publishCurrentAudioInputInfo()
+    }
+#elseif os(macOS)
+    private func handleEngineConfigurationChange() async {
+        do {
+            try await reset()
+        } catch {
+            print("Failed to reset audio engine after configuration change: \(error.localizedDescription)")
+        }
+
+        publishCurrentAudioInputInfo()
+    }
+#endif
+    
+#if os(iOS) || os(macOS)
+    private func publishCurrentAudioInputInfo() {
+#if os(iOS)
+        let audioSession = AVAudioSession.sharedInstance()
+        if let input = audioSession.currentRoute.inputs.first {
+            audioInputConfigurationContinuation?.yield(AudioInputInfo(from: input))
+        } else {
+            audioInputConfigurationContinuation?.yield(nil)
+        }
+#elseif os(macOS)
+        do {
+            let info = try AudioInputInfo.current()
+            audioInputConfigurationContinuation?.yield(info)
+        } catch {
+            print("Failed to obtain audio input details: \(error.localizedDescription)")
+            audioInputConfigurationContinuation?.yield(nil)
+        }
+#endif
     }
 #endif
     
     private func reset() async throws {
+        let wasStreaming = isAudioStreaming
+
+        if wasStreaming {
+            audioEngine.inputNode.removeTap(onBus: 0)
+        }
+
         audioEngine.stop()
-        audioEngine.inputNode.removeTap(onBus: 0)
         audioEngine.reset()
-        let shouldContinue: Bool = isAudioStreaming
         isAudioStreaming = false
-        guard shouldContinue else { return }
+
+        guard wasStreaming else { return }
         try startAudioStreaming()
     }
     

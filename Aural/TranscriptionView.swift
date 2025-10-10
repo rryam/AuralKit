@@ -6,7 +6,9 @@ struct TranscriptionView: View {
     @State private var session = SpeechSession()
     @State private var finalText: AttributedString = ""
     @State private var partialText: AttributedString = ""
+#if os(iOS)
     @State private var micInput: AudioInputInfo?
+#endif
     @State private var isTranscribing = false
     @State private var error: String?
 
@@ -77,6 +79,7 @@ struct TranscriptionView: View {
             .frame(maxWidth: .infinity)
             .background(TopGradientView())
             .navigationTitle("Aural")
+#if os(iOS)
             .toolbar {
                 if !String(finalText.characters).isEmpty {
                     ToolbarItem(placement: .topBarTrailing) {
@@ -85,7 +88,7 @@ struct TranscriptionView: View {
                         }
                     }
                 }
-                
+
                 ToolbarItem(placement: .topBarLeading) {
                     Button {
                         // show more information about the mic
@@ -105,6 +108,7 @@ struct TranscriptionView: View {
                     }
                 }
             }
+#endif
         }
     }
 
