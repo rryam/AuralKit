@@ -121,6 +121,7 @@ including `converter.primeMethod = .none`. Ask for explicit approval before edit
 Before opening a PR (or completing an automated change):
 
 - [ ] Swift build succeeds locally (`swift build` and `swift test`).
+- [ ] Run SwiftLint with strict checks (`swiftlint lint --strict`).
 - [ ] Demo app builds for both macOS and an iOS Simulator target if relevant code changes.
 - [ ] Route-change handling remains platform-aware (`#if os(iOS)` vs `#if os(macOS)`).
 - [ ] `AttributedString` usage is preserved throughout the speech pipeline.
