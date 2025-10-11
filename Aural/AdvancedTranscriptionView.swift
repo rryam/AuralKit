@@ -109,8 +109,12 @@ struct LanguageSelectorView: View {
                 }
             } label: {
                 HStack {
-                    Text(manager.selectedLocale.localizedString(forIdentifier: manager.selectedLocale.identifier) ?? manager.selectedLocale.identifier)
-                        .foregroundStyle(.primary)
+                    Text(
+                        manager.selectedLocale.localizedString(
+                            forIdentifier: manager.selectedLocale.identifier
+                        ) ?? manager.selectedLocale.identifier
+                    )
+                    .foregroundStyle(.primary)
                     Image(systemName: "chevron.down")
                         .font(.caption)
                         .foregroundStyle(.secondary)

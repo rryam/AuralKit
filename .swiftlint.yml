@@ -1,0 +1,40 @@
+# SwiftLint Configuration for AuralKit
+
+# Exclude generated build artifacts and dependencies
+excluded:
+  - .build
+  - .swiftpm
+  - DerivedData
+  - Build
+  - build
+
+# Generated files are already excluded via .build directory exclusion
+
+# Disable rules that are problematic for generated code
+disabled_rules:
+  - trailing_comma # Can be useful in some contexts
+
+# Configure line length (slightly more lenient)
+line_length:
+  warning: 120
+  error: 200
+
+# File length limits
+file_length:
+  warning: 400
+  error: 500
+
+# Type body length
+type_body_length:
+  warning: 250
+  error: 300
+
+# Function body length
+function_body_length:
+  warning: 50
+  error: 75
+
+# Cyclomatic complexity
+cyclomatic_complexity:
+  warning: 10
+  error: 15

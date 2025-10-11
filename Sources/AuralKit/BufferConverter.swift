@@ -13,7 +13,8 @@ class BufferConverter: @unchecked Sendable {
 
         if converter == nil || converter?.outputFormat != format {
             converter = AVAudioConverter(from: inputFormat, to: format)
-            converter?.primeMethod = .none // Sacrifice quality of first samples in order to avoid any timestamp drift from source
+            // Sacrifice quality of first samples to avoid timestamp drift from source
+            converter?.primeMethod = .none
         }
 
         guard let converter else {
@@ -23,7 +24,10 @@ class BufferConverter: @unchecked Sendable {
         let sampleRateRatio = converter.outputFormat.sampleRate / converter.inputFormat.sampleRate
         let scaledInputFrameLength = Double(buffer.frameLength) * sampleRateRatio
         let frameCapacity = AVAudioFrameCount(scaledInputFrameLength.rounded(.up))
-        guard let conversionBuffer = AVAudioPCMBuffer(pcmFormat: converter.outputFormat, frameCapacity: frameCapacity) else {
+        guard let conversionBuffer = AVAudioPCMBuffer(
+            pcmFormat: converter.outputFormat,
+            frameCapacity: frameCapacity
+        ) else {
             throw SpeechSessionError.conversionBufferCreationFailed
         }
 
@@ -34,8 +38,9 @@ class BufferConverter: @unchecked Sendable {
         }
         let bufferState = BufferState()
 
-        let status = converter.convert(to: conversionBuffer, error: &nsError) { packetCount, inputStatusPointer in
-            defer { bufferState.processed = true } // This closure can be called multiple times, but it only offers a single buffer.
+        let status = converter.convert(to: conversionBuffer, error: &nsError) { _, inputStatusPointer in
+            // This closure can be called multiple times, but it only offers a single buffer.
+            defer { bufferState.processed = true }
             inputStatusPointer.pointee = bufferState.processed ? .noDataNow : .haveData
             return bufferState.processed ? nil : buffer
         }

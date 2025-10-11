@@ -84,8 +84,15 @@ public extension SpeechSession {
         options: FileTranscriptionOptions = .init(),
         progressHandler: (@Sendable (Double) -> Void)? = nil
     ) async throws -> FileTranscriptionResult {
-        let stream = streamTranscription(from: audioFile, options: options, progressHandler: progressHandler)
-        let accumulator: @Sendable (inout [SpeechTranscriber.Result], SpeechTranscriber.Result) -> Void = { results, result in
+        let stream = streamTranscription(
+            from: audioFile,
+            options: options,
+            progressHandler: progressHandler
+        )
+        let accumulator: @Sendable (
+            inout [SpeechTranscriber.Result],
+            SpeechTranscriber.Result
+        ) -> Void = { results, result in
             if result.isFinal {
                 results.append(result)
             }
@@ -203,7 +210,9 @@ private extension SpeechSession {
                     }
                 } catch {
                     if Self.shouldLog(.error) {
-                        Self.logger.error("File recognizer task failed: \(error.localizedDescription, privacy: .public)")
+                        Self.logger.error(
+                            "File recognizer task failed: \(error.localizedDescription, privacy: .public)"
+                        )
                     }
                     await self.finishFromRecognizerTask(error: error)
                 }

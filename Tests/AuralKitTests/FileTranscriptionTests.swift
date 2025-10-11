@@ -55,12 +55,20 @@ struct FileTranscriptionTests {
             .appendingPathExtension("caf")
 
         guard let format = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 1) else {
-            throw NSError(domain: "FileTranscriptionTests", code: 1, userInfo: [NSLocalizedDescriptionKey: "Failed to create audio format"])
+            throw NSError(
+                domain: "FileTranscriptionTests",
+                code: 1,
+                userInfo: [NSLocalizedDescriptionKey: "Failed to create audio format"]
+            )
         }
 
         let frameCount = AVAudioFrameCount(duration * sampleRate)
         guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameCount) else {
-            throw NSError(domain: "FileTranscriptionTests", code: 2, userInfo: [NSLocalizedDescriptionKey: "Failed to create buffer"])
+            throw NSError(
+                domain: "FileTranscriptionTests",
+                code: 2,
+                userInfo: [NSLocalizedDescriptionKey: "Failed to create buffer"]
+            )
         }
 
         buffer.frameLength = frameCount

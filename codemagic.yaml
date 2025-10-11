@@ -26,6 +26,12 @@ workflows:
       - name: Download Metal Toolchain
         script: |
           xcodebuild -downloadComponent MetalToolchain
+      - name: Install SwiftLint
+        script: |
+          brew install swiftlint
+      - name: Run SwiftLint
+        script: |
+          swiftlint --strict
       - name: Build Swift Package
         script: |
           swift build

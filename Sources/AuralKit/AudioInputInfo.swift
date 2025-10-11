@@ -139,8 +139,17 @@ public extension AudioInputInfo {
 
     private static func iconName(for port: AVAudioSessionPortDescription) -> String {
         let normalizedName = port.portName.lowercased()
-        let type = port.portType
 
+        // Check for specific device names first
+        if let specificIcon = specificDeviceIcon(for: normalizedName) {
+            return specificIcon
+        }
+
+        // Fall back to port type
+        return iconForPortType(port.portType, normalizedName: normalizedName)
+    }
+
+    private static func specificDeviceIcon(for normalizedName: String) -> String? {
         if normalizedName.contains("pro") {
             return "airpods.pro"
         } else if normalizedName.contains("max") {
@@ -148,16 +157,13 @@ public extension AudioInputInfo {
         } else if normalizedName.contains("airpods") {
             return "airpods"
         }
+        return nil
+    }
 
+    private static func iconForPortType(_ type: AVAudioSession.Port, normalizedName: String) -> String {
         switch type {
         case .bluetoothA2DP, .bluetoothHFP, .bluetoothLE:
-            if normalizedName.contains("beats") {
-                return "beats.headphones"
-            } else if normalizedName.contains("headphone") || normalizedName.contains("headset") {
-                return "headphones"
-            } else {
-                return "airpods.gen4"
-            }
+            return bluetoothDeviceIcon(for: normalizedName)
         case .builtInMic:
             return "mic"
         case .headsetMic:
@@ -168,6 +174,16 @@ public extension AudioInputInfo {
             return "music.microphone"
         default:
             return "mic"
+        }
+    }
+
+    private static func bluetoothDeviceIcon(for normalizedName: String) -> String {
+        if normalizedName.contains("beats") {
+            return "beats.headphones"
+        } else if normalizedName.contains("headphone") || normalizedName.contains("headset") {
+            return "headphones"
+        } else {
+            return "airpods.gen4"
         }
     }
 }
@@ -193,9 +209,21 @@ public extension AudioInputInfo {
     }
 
     private init(deviceID: AudioObjectID) throws {
-        let uid = try Self.copyStringProperty(selector: kAudioDevicePropertyDeviceUID, scope: kAudioObjectPropertyScopeGlobal, deviceID: deviceID) ?? "\(deviceID)"
-        let name = try Self.copyStringProperty(selector: kAudioDevicePropertyDeviceNameCFString, scope: kAudioObjectPropertyScopeGlobal, deviceID: deviceID) ?? "Unknown Device"
-        let manufacturer = try Self.copyStringProperty(selector: kAudioDevicePropertyDeviceManufacturerCFString, scope: kAudioObjectPropertyScopeGlobal, deviceID: deviceID)
+        let uid = try Self.copyStringProperty(
+            selector: kAudioDevicePropertyDeviceUID,
+            scope: kAudioObjectPropertyScopeGlobal,
+            deviceID: deviceID
+        ) ?? "\(deviceID)"
+        let name = try Self.copyStringProperty(
+            selector: kAudioDevicePropertyDeviceNameCFString,
+            scope: kAudioObjectPropertyScopeGlobal,
+            deviceID: deviceID
+        ) ?? "Unknown Device"
+        let manufacturer = try Self.copyStringProperty(
+            selector: kAudioDevicePropertyDeviceManufacturerCFString,
+            scope: kAudioObjectPropertyScopeGlobal,
+            deviceID: deviceID
+        )
         let nominalSampleRate = try Self.nominalSampleRate(for: deviceID)
         let channelCount = try Self.inputChannelCount(for: deviceID)
 
@@ -224,7 +252,14 @@ public extension AudioInputInfo {
         )
         var deviceID = AudioObjectID(0)
         var dataSize = UInt32(MemoryLayout<AudioObjectID>.size)
-        let status = AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &dataSize, &deviceID)
+        let status = AudioObjectGetPropertyData(
+            AudioObjectID(kAudioObjectSystemObject),
+            &address,
+            0,
+            nil,
+            &dataSize,
+            &deviceID
+        )
         guard status == noErr else {
             throw AudioInputInfoError.audioHardwareError(status, selector: address.mSelector)
         }
@@ -287,16 +322,28 @@ public extension AudioInputInfo {
         )
 
         var dataSize: UInt32 = 0
-        var status = AudioObjectGetPropertyDataSize(deviceID, &address, 0, nil, &dataSize)
+        var status = AudioObjectGetPropertyDataSize(
+            deviceID,
+            &address,
+            0,
+            nil,
+            &dataSize
+        )
         if status != noErr {
-            throw AudioInputInfoError.audioHardwareError(status, selector: address.mSelector)
+            throw AudioInputInfoError.audioHardwareError(
+                status,
+                selector: address.mSelector
+            )
         }
 
         guard dataSize > 0 else {
             return 0
         }
 
-        let bufferPointer = UnsafeMutableRawPointer.allocate(byteCount: Int(dataSize), alignment: MemoryLayout<AudioBufferList>.alignment)
+        let bufferPointer = UnsafeMutableRawPointer.allocate(
+            byteCount: Int(dataSize),
+            alignment: MemoryLayout<AudioBufferList>.alignment
+        )
         defer { bufferPointer.deallocate() }
 
         status = AudioObjectGetPropertyData(deviceID, &address, 0, nil, &dataSize, bufferPointer)

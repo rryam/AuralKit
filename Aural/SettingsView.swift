@@ -5,7 +5,7 @@ import Speech
 struct SettingsView: View {
     @Bindable var manager: TranscriptionManager
     @State private var showingAbout = false
-    
+
     var body: some View {
         NavigationStack {
             Form {
@@ -20,16 +20,20 @@ struct SettingsView: View {
                         }
                     }
                 }
-                
+
                 Section("Default Language") {
                     HStack {
                         Text("Language")
                         Spacer()
-                        Text(manager.selectedLocale.localizedString(forIdentifier: manager.selectedLocale.identifier) ?? manager.selectedLocale.identifier)
-                            .foregroundStyle(.secondary)
+                        Text(
+                            manager.selectedLocale.localizedString(
+                                forIdentifier: manager.selectedLocale.identifier
+                            ) ?? manager.selectedLocale.identifier
+                        )
+                        .foregroundStyle(.secondary)
                     }
                 }
-                
+
                 Section("About") {
                     Button {
                         showingAbout = true
@@ -43,7 +47,7 @@ struct SettingsView: View {
                         }
                     }
                     .foregroundStyle(.primary)
-                    
+
                     Link(destination: URL(string: "https://github.com/rryam/AuralKit")!) {
                         HStack {
                             Label("View on GitHub", systemImage: "link")
@@ -53,7 +57,7 @@ struct SettingsView: View {
                         }
                     }
                 }
-                
+
                 Section {
                     VStack(spacing: 8) {
                         Text("AuralKit Demo")

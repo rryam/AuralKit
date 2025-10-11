@@ -38,7 +38,7 @@ class TranscriptionManager {
     var isTranscribing: Bool {
         status == .transcribing
     }
-    
+
     func startTranscription() {
         guard status == .idle else { return }
 
@@ -92,7 +92,7 @@ class TranscriptionManager {
             }
         }
     }
-    
+
     private func formatTime(_ time: CMTime) -> String {
         let seconds = time.seconds
         let minutes = Int(seconds / 60)
@@ -100,7 +100,7 @@ class TranscriptionManager {
         let milliseconds = Int((seconds.truncatingRemainder(dividingBy: 1)) * 100)
         return String(format: "%d:%02d.%02d", minutes, remainingSeconds, milliseconds)
     }
-    
+
     func stopTranscription() {
         guard status != .idle, status != .stopping else { return }
         Task { @MainActor in
@@ -145,11 +145,11 @@ class TranscriptionManager {
     func toggleTranscription() {
         primaryAction()
     }
-    
+
     func clearHistory() {
         transcriptionHistory.removeAll()
     }
-    
+
     func deleteRecord(_ record: TranscriptionRecord) {
         transcriptionHistory.removeAll { $0.id == record.id }
     }
@@ -188,11 +188,11 @@ struct TranscriptionRecord: Identifiable, Codable {
     let timestamp: Date
     let alternatives: [String]
     let timeRange: String
-    
+
     var locale: Locale {
         Locale(identifier: localeIdentifier)
     }
-    
+
     init(id: UUID, text: String, locale: Locale, timestamp: Date, alternatives: [String] = [], timeRange: String = "") {
         self.id = id
         self.text = text

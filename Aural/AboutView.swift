@@ -2,7 +2,7 @@ import SwiftUI
 
 struct AboutView: View {
     @Environment(\.dismiss) var dismiss
-    
+
     var body: some View {
         NavigationStack {
             ScrollView {
@@ -16,29 +16,29 @@ struct AboutView: View {
                                 startPoint: .topLeading,
                                 endPoint: .bottomTrailing
                             ))
-                        
+
                         Text("AuralKit")
                             .font(.largeTitle)
                             .bold()
-                        
+
                         Text("Simple Speech-to-Text for iOS & macOS")
                             .font(.headline)
                             .foregroundStyle(.secondary)
                     }
                     .frame(maxWidth: .infinity)
                     .padding(.vertical)
-                    
+
                     // Features
                     VStack(alignment: .leading, spacing: 16) {
                         Text("Features")
                             .font(.headline)
-                        
+
                         FeatureRow(
                             icon: "checkmark.circle.fill",
                             title: "Simple API",
                             description: "Just a few lines to start transcribing"
                         )
-                                                
+
                         FeatureRow(
                             icon: "bolt.fill",
                             title: "Real-time Results",
@@ -46,13 +46,13 @@ struct AboutView: View {
                         )
                     }
                     .padding(.horizontal)
-                    
+
                     // Code Example
                     VStack(alignment: .leading, spacing: 12) {
                         Text("How Simple?")
                             .font(.headline)
                             .padding(.horizontal)
-                        
+
                         Text("""
                         ```swift
                         for try await result in AuralKit.transcribe() {
@@ -66,7 +66,7 @@ struct AboutView: View {
                         .cornerRadius(12)
                         .padding(.horizontal)
                     }
-                    
+
                     // Links
                     VStack(spacing: 12) {
                         Link(destination: URL(string: "https://github.com/rryam/AuralKit")!) {
@@ -81,7 +81,7 @@ struct AboutView: View {
                             .foregroundStyle(.white)
                             .cornerRadius(12)
                         }
-                        
+
                         Link(destination: URL(string: "https://github.com/rryam/AuralKit/issues")!) {
                             HStack {
                                 Image(systemName: "exclamationmark.bubble")
@@ -96,7 +96,7 @@ struct AboutView: View {
                         }
                     }
                     .padding(.horizontal)
-                    
+
                     // Footer
                     Text("Made with SwiftUI")
                         .font(.caption)
@@ -125,14 +125,14 @@ struct FeatureRow: View {
     let icon: String
     let title: String
     let description: String
-    
+
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
             Image(systemName: icon)
                 .font(.title2)
                 .foregroundStyle(.indigo)
                 .frame(width: 30)
-            
+
             VStack(alignment: .leading, spacing: 4) {
                 Text(title)
                     .font(.subheadline)
@@ -141,7 +141,7 @@ struct FeatureRow: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
-            
+
             Spacer()
         }
     }

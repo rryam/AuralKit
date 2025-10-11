@@ -8,8 +8,10 @@ public extension SpeechSessionError {
                                      comment: "Error when microphone permission is not granted")
 
         case .speechRecognitionPermissionDenied:
-            return NSLocalizedString("Speech recognition permission denied. Please grant speech recognition access in Settings.",
-                                     comment: "Error when speech recognition permission is not granted")
+            return NSLocalizedString(
+                "Speech recognition permission denied. Please grant speech recognition access in Settings.",
+                comment: "Error when speech recognition permission is not granted"
+            )
 
         case .unsupportedLocale(let locale):
             return String(format: NSLocalizedString("The locale '%@' is not supported by SpeechAnalyzer.",
@@ -34,9 +36,13 @@ public extension SpeechSessionError {
 
         case .audioConversionFailed(let underlyingError):
             if let underlyingError {
-                return String(format: NSLocalizedString("Audio conversion failed: %@",
-                                                       comment: "Error when audio conversion fails with underlying error"),
-                              underlyingError.localizedDescription)
+                return String(
+                    format: NSLocalizedString(
+                        "Audio conversion failed: %@",
+                        comment: "Error when audio conversion fails with underlying error"
+                    ),
+                    underlyingError.localizedDescription
+                )
             }
             return NSLocalizedString("Audio conversion failed.",
                                      comment: "Error when audio conversion fails")
@@ -54,15 +60,24 @@ public extension SpeechSessionError {
         case .audioFileTooLong(let maximum, let actual):
             let maximumFormatted = String(format: "%.2f", maximum)
             let actualFormatted = String(format: "%.2f", actual)
-            return String(format: NSLocalizedString("Audio file duration (%@ seconds) exceeds the allowed limit of %@ seconds.",
-                                                   comment: "Error when audio file is longer than permitted"),
-                          actualFormatted, maximumFormatted)
+            return String(
+                format: NSLocalizedString(
+                    "Audio file duration (%@ seconds) exceeds the allowed limit of %@ seconds.",
+                    comment: "Error when audio file is longer than permitted"
+                ),
+                actualFormatted,
+                maximumFormatted
+            )
 
         case .audioFileReadFailed(let underlyingError):
             if let underlyingError {
-                return String(format: NSLocalizedString("Failed to read audio file: %@",
-                                                       comment: "Error when reading audio file fails with underlying error"),
-                              underlyingError.localizedDescription)
+                return String(
+                    format: NSLocalizedString(
+                        "Failed to read audio file: %@",
+                        comment: "Error when reading audio file fails with underlying error"
+                    ),
+                    underlyingError.localizedDescription
+                )
             }
             return NSLocalizedString("Failed to read audio file.",
                                      comment: "Error when reading audio file fails")
@@ -73,9 +88,13 @@ public extension SpeechSessionError {
 
         case .modelDownloadFailed(let underlyingError):
             if let underlyingError {
-                return String(format: NSLocalizedString("Speech model download failed: %@",
-                                                       comment: "Error when speech model download fails with underlying error"),
-                              underlyingError.localizedDescription)
+                return String(
+                    format: NSLocalizedString(
+                        "Speech model download failed: %@",
+                        comment: "Error when speech model download fails with underlying error"
+                    ),
+                    underlyingError.localizedDescription
+                )
             }
             return NSLocalizedString("Speech model download failed.",
                                      comment: "Generic model download failure")
@@ -130,56 +149,75 @@ public extension SpeechSessionError {
                                      comment: "Failure reason when audio file reading fails")
 
         case .modelDownloadNoInternet:
-            return NSLocalizedString("The device is offline, so the required speech model could not be downloaded.",
-                                     comment: "Failure reason when model download lacks internet")
+            return NSLocalizedString(
+                "The device is offline, so the required speech model could not be downloaded.",
+                comment: "Failure reason when model download lacks internet"
+            )
 
         case .modelDownloadFailed:
             return NSLocalizedString("The speech model could not be downloaded.",
                                      comment: "Failure reason when model download fails")
 
         case .contextSetupFailed:
-            return NSLocalizedString("Unable to configure the speech analyzer with the provided contextual strings.",
-                                     comment: "Failure reason when context setup fails")
+            return NSLocalizedString(
+                "Unable to configure the speech analyzer with the provided contextual strings.",
+                comment: "Failure reason when context setup fails"
+            )
         }
     }
 
     var recoverySuggestion: String? {
         switch self {
         case .microphonePermissionDenied:
-            return NSLocalizedString("Go to Settings > Privacy & Security > Microphone and enable access for this app.",
-                                     comment: "Recovery suggestion for microphone permission error")
+            return NSLocalizedString(
+                "Go to Settings > Privacy & Security > Microphone and enable access for this app.",
+                comment: "Recovery suggestion for microphone permission error"
+            )
 
         case .speechRecognitionPermissionDenied:
-            return NSLocalizedString("Go to Settings > Privacy & Security > Speech Recognition and enable access for this app.",
-                                     comment: "Recovery suggestion for speech recognition permission error")
+            return NSLocalizedString(
+                "Go to Settings > Privacy & Security > Speech Recognition and enable access for this app.",
+                comment: "Recovery suggestion for speech recognition permission error"
+            )
 
         case .unsupportedLocale:
             return NSLocalizedString("Try selecting a different language or check if the language pack is installed.",
                                      comment: "Recovery suggestion for unsupported locale error")
 
         case .recognitionStreamSetupFailed:
-            return NSLocalizedString("Try restarting the app or check your device's speech recognition capabilities.",
-                                     comment: "Recovery suggestion for recognition stream setup error")
+            return NSLocalizedString(
+                "Try restarting the app or check your device's speech recognition capabilities.",
+                comment: "Recovery suggestion for recognition stream setup error"
+            )
 
-        case .invalidAudioDataType, .bufferConverterCreationFailed, .conversionBufferCreationFailed, .audioConversionFailed:
-            return NSLocalizedString("Try recording audio again or check your device's microphone.",
-                                     comment: "Recovery suggestion for audio processing errors")
+        case .invalidAudioDataType, .bufferConverterCreationFailed,
+             .conversionBufferCreationFailed, .audioConversionFailed:
+            return NSLocalizedString(
+                "Try recording audio again or check your device's microphone.",
+                comment: "Recovery suggestion for audio processing errors"
+            )
 
         case .audioFileNotFound:
-            return NSLocalizedString("Verify the file path and ensure the audio asset is bundled with the app or accessible on disk.",
-                                     comment: "Recovery suggestion for missing audio file")
+            return NSLocalizedString(
+                "Verify the file path and ensure the audio asset is bundled with the app or accessible on disk.",
+                comment: "Recovery suggestion for missing audio file"
+            )
 
         case .audioFileUnsupportedFormat:
-            return NSLocalizedString("Export the audio as linear PCM (for example WAV or CAF) or another supported format and try again.",
-                                     comment: "Recovery suggestion for unsupported audio format")
+            return NSLocalizedString(
+                "Export the audio as linear PCM (for example WAV or CAF) or another supported format and try again.",
+                comment: "Recovery suggestion for unsupported audio format"
+            )
 
         case .audioFileTooLong:
             return NSLocalizedString("Trim the audio file or increase the allowed duration before retrying.",
                                      comment: "Recovery suggestion for lengthy audio file")
 
         case .audioFileReadFailed:
-            return NSLocalizedString("Ensure the file is not corrupted and that the app has permission to read it, then try again.",
-                                     comment: "Recovery suggestion when audio file reading fails")
+            return NSLocalizedString(
+                "Ensure the file is not corrupted and that the app has permission to read it, then try again.",
+                comment: "Recovery suggestion when audio file reading fails"
+            )
 
         case .modelDownloadNoInternet:
             return NSLocalizedString("Connect to the internet and try downloading the speech model again.",

@@ -4,7 +4,7 @@ import AuralKit
 struct HistoryView: View {
     @Bindable var manager: TranscriptionManager
     @State private var searchText = ""
-    
+
     var filteredHistory: [TranscriptionRecord] {
         if searchText.isEmpty {
             return manager.transcriptionHistory
@@ -14,13 +14,13 @@ struct HistoryView: View {
             }
         }
     }
-    
+
     var body: some View {
         NavigationStack {
             Group {
                 if manager.transcriptionHistory.isEmpty {
-                    ContentUnavailableView("No Transcriptions Yet", 
-                                         systemImage: "text.quote", 
+                    ContentUnavailableView("No Transcriptions Yet",
+                                         systemImage: "text.quote",
                                          description: Text("Your transcription history will appear here"))
                 } else {
                     List {
@@ -30,21 +30,25 @@ struct HistoryView: View {
                             } label: {
                                 VStack(alignment: .leading, spacing: 8) {
                                     HStack {
-                                        Text(record.locale.localizedString(forIdentifier: record.locale.identifier) ?? record.locale.identifier)
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
+                                        Text(
+                                            record.locale.localizedString(
+                                                forIdentifier: record.locale.identifier
+                                            ) ?? record.locale.identifier
+                                        )
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
                                             .padding(.horizontal, 8)
                                             .padding(.vertical, 2)
                                             .background(Color.indigo.opacity(0.1))
                                             .cornerRadius(4)
 
                                         Spacer()
-                                        
+
                                         Text(record.timestamp, style: .relative)
                                             .font(.caption)
                                             .foregroundStyle(.secondary)
                                     }
-                                    
+
                                     Text(record.text)
                                         .lineLimit(3)
                                         .font(.body)

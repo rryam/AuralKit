@@ -30,18 +30,8 @@ import Speech
 ///
 /// Call `stopTranscribing()` to end capture and unwind the stream. The same instance may be reused
 /// for subsequent transcription sessions.
-///
-/// Concurrency notes:
-/// - `SpeechSession` is isolated to the main actor so engine/configuration mutations happen on a
-///   single thread.
-/// - Audio buffers arrive on Core Audio's render thread, so the tap copies each buffer and hops back
-///   to the main actor before touching analyzer state.
 @MainActor
 public final class SpeechSession {
-
-    // MARK: - Logging
-
-    // MARK: - Status
 
     /// Discrete lifecycle stages for a speech transcription session.
     public enum Status: Equatable, Sendable {
@@ -51,7 +41,7 @@ public final class SpeechSession {
         case paused
         case stopping
     }
-    
+
     // MARK: - Properties
 
     let converter = BufferConverter()
@@ -66,7 +56,7 @@ public final class SpeechSession {
     let attributeOptions: Set<SpeechTranscriber.ResultAttributeOption>
 
     var statusContinuation: AsyncStream<Status>.Continuation?
-    
+
 #if os(iOS)
     let audioConfig: AudioSessionConfiguration
 #endif
@@ -74,7 +64,7 @@ public final class SpeechSession {
 #if os(iOS) || os(macOS)
     var audioInputConfigurationContinuation: AsyncStream<AudioInputInfo?>.Continuation?
 #endif
-    
+
     // Transcriber components
     var transcriber: SpeechTranscriber?
     var speechDetector: SpeechDetector?
@@ -108,10 +98,10 @@ public final class SpeechSession {
 #endif
 
     /// Stream of speech detector results when voice activation reporting is enabled; `nil` otherwise.
-    public private(set) var speechDetectorResultsStream: AsyncStream<SpeechDetector.Result>?
+    public internal(set) var speechDetectorResultsStream: AsyncStream<SpeechDetector.Result>?
 
     /// Reflects the speech detector's most recent state; defaults to `true` when monitoring is inactive.
-    public private(set) var isSpeechDetected: Bool = true
+    public internal(set) var isSpeechDetected: Bool = true
 
     /// Progress of the ongoing model download, if any.
     ///
@@ -132,7 +122,7 @@ public final class SpeechSession {
     public var isVoiceActivationEnabled: Bool {
         voiceActivationConfiguration != nil
     }
-    
+
     // Stream state management
     var continuation: AsyncThrowingStream<SpeechTranscriber.Result, Error>.Continuation?
     var recognizerTask: Task<Void, Never>?
@@ -156,101 +146,6 @@ public final class SpeechSession {
     struct VoiceActivationConfiguration {
         let detectionOptions: SpeechDetector.DetectionOptions
         let reportResults: Bool
-    }
-
-    func prepareSpeechDetectorResultsStream(reportResults: Bool) -> AsyncStream<SpeechDetector.Result>.Continuation? {
-        guard reportResults else {
-            tearDownSpeechDetectorStream()
-            return nil
-        }
-
-        if let existing = speechDetectorResultsContinuation {
-            return existing
-        }
-
-        let (stream, continuation) = AsyncStream<SpeechDetector.Result>.makeStream()
-        speechDetectorResultsStream = stream
-        speechDetectorResultsContinuation = continuation
-        if Self.shouldLog(.debug) {
-            Self.logger.debug("Prepared speech detector results stream")
-        }
-        return continuation
-    }
-
-    func tearDownSpeechDetectorStream() {
-        speechDetectorResultsTask?.cancel()
-        speechDetectorResultsTask = nil
-        speechDetectorResultsContinuation?.finish()
-        speechDetectorResultsContinuation = nil
-        speechDetectorResultsStream = nil
-        isSpeechDetected = true
-        if Self.shouldLog(.debug) {
-            Self.logger.debug("Speech detector stream torn down")
-        }
-    }
-
-    func startSpeechDetectorMonitoring() {
-        guard let detector = speechDetector else { return }
-
-        speechDetectorResultsTask?.cancel()
-        if Self.shouldLog(.debug) {
-            Self.logger.debug("Starting speech detector monitoring")
-        }
-        speechDetectorResultsTask = Task<Void, Never> { [weak self] in
-            guard let self else { return }
-            do {
-                for try await result in detector.results {
-                    await MainActor.run {
-                        self.handleSpeechDetectorResult(result)
-                    }
-                }
-            } catch {
-                let finalError = (error as? CancellationError) != nil ? nil : error
-                await MainActor.run {
-                    self.handleSpeechDetectorStreamCompletion(error: finalError)
-                }
-                return
-            }
-
-            await MainActor.run {
-                self.handleSpeechDetectorStreamCompletion(error: nil)
-            }
-            if Self.shouldLog(.notice) {
-                Self.logger.notice("Speech detector monitoring completed")
-            }
-        }
-    }
-
-    @MainActor
-    func handleSpeechDetectorResult(_ result: SpeechDetector.Result) {
-        isSpeechDetected = result.speechDetected
-        speechDetectorResultsContinuation?.yield(result)
-        if Self.shouldLog(.debug) {
-            Self.logger.debug("Speech detector result: speechDetected=\(result.speechDetected, privacy: .public)")
-        }
-    }
-
-    @MainActor
-    func handleSpeechDetectorStreamCompletion(error: Error?) {
-        defer { speechDetectorResultsTask = nil }
-
-        if let continuation = speechDetectorResultsContinuation {
-            continuation.finish()
-        }
-
-        speechDetectorResultsContinuation = nil
-        speechDetectorResultsStream = nil
-        isSpeechDetected = true
-
-        if let error {
-            if Self.shouldLog(.error) {
-                Self.logger.error("Speech detector monitoring failed: \(error.localizedDescription, privacy: .public)")
-            }
-        } else {
-            if Self.shouldLog(.notice) {
-                Self.logger.notice("Speech detector monitoring stopped")
-            }
-        }
     }
 
     // MARK: - Init
@@ -356,7 +251,12 @@ public final class SpeechSession {
     ) {
         if Self.shouldLog(.info) {
             let sensitivityDescription = String(describing: detectionOptions.sensitivityLevel)
-            Self.logger.info("Configuring voice activation (sensitivity: \(sensitivityDescription, privacy: .public), reportResults: \(reportResults, privacy: .public))")
+            Self.logger.info(
+                """
+                Configuring voice activation (sensitivity: \(sensitivityDescription, privacy: .public), \
+                reportResults: \(reportResults, privacy: .public))
+                """
+            )
         }
         voiceActivationConfiguration = VoiceActivationConfiguration(
             detectionOptions: detectionOptions,
@@ -433,15 +333,12 @@ public final class SpeechSession {
 
         setStatus(.preparing)
         continuation = newContinuation
-
         Task { @MainActor [weak self] in
             guard let self else { return }
             await self.startPipeline(with: newContinuation, contextualStrings: contextualStrings)
         }
-
         return stream
     }
-
     /// Start streaming live microphone audio to the speech analyzer with contextual strings.
     ///
     /// Convenience method that takes a simple array of contextual words and maps them to
@@ -466,7 +363,6 @@ public final class SpeechSession {
     ) -> AsyncThrowingStream<SpeechTranscriber.Result, Error> {
         return startTranscribing(contextualStrings: [.general: contextualStrings])
     }
-
     /// Stop capturing audio and finish the current transcription stream.
     ///
     /// Safe to call even if `startTranscribing()` has not been invoked or the stream has already
@@ -501,5 +397,4 @@ public final class SpeechSession {
             throw error
         }
     }
-
 }

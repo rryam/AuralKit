@@ -9,7 +9,9 @@ extension SpeechSession {
         if Self.shouldLog(.notice) {
             let previousDescription = String(describing: previousStatus)
             let newDescription = String(describing: newStatus)
-            Self.logger.notice("Status transition: \(previousDescription, privacy: .public) -> \(newDescription, privacy: .public)")
+            Self.logger.notice(
+                "Status transition: \(previousDescription, privacy: .public) -> \(newDescription, privacy: .public)"
+            )
         }
         status = newStatus
         statusContinuation?.yield(newStatus)

@@ -69,8 +69,8 @@ extension SpeechSession {
                 return
             }
 
-            let previousPortType = (userInfo[AVAudioSessionRouteChangePreviousRouteKey] as? AVAudioSessionRouteDescription)?
-                .inputs.first?.portType
+            let previousRoute = userInfo[AVAudioSessionRouteChangePreviousRouteKey] as? AVAudioSessionRouteDescription
+            let previousPortType = previousRoute?.inputs.first?.portType
 
             Task { [weak self] in
                 guard let self else { return }
@@ -104,7 +104,9 @@ extension SpeechSession {
             try await reset()
         } catch {
             if Self.shouldLog(.error) {
-                Self.logger.error("Failed to reset audio engine after route change: \(error.localizedDescription, privacy: .public)")
+                Self.logger.error(
+                    "Failed to reset audio engine after route change: \(error.localizedDescription, privacy: .public)"
+                )
             }
         }
 
@@ -116,7 +118,10 @@ extension SpeechSession {
             try await reset()
         } catch {
             if Self.shouldLog(.error) {
-                Self.logger.error("Failed to reset audio engine after configuration change: \(error.localizedDescription, privacy: .public)")
+                let desc = error.localizedDescription
+                Self.logger.error(
+                    "Failed to reset audio engine after configuration change: \(desc, privacy: .public)"
+                )
             }
         }
 
@@ -154,7 +159,9 @@ extension SpeechSession {
             audioInputConfigurationContinuation?.yield(info)
         } catch {
             if Self.shouldLog(.error) {
-                Self.logger.error("Failed to obtain audio input details: \(error.localizedDescription, privacy: .public)")
+                Self.logger.error(
+                    "Failed to obtain audio input details: \(error.localizedDescription, privacy: .public)"
+                )
             }
             audioInputConfigurationContinuation?.yield(nil)
         }

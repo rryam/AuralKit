@@ -79,46 +79,17 @@ extension SpeechSession {
                 Self.logger.notice("Starting pipeline setup")
             }
             try await ensurePermissions()
-
-#if os(iOS)
-            try await MainActor.run {
-                let audioSession = AVAudioSession.sharedInstance()
-                try audioSession.setCategory(audioConfig.category, mode: audioConfig.mode, options: audioConfig.options)
-                try audioSession.setActive(true)
-            }
-#endif
-#if os(iOS) || os(macOS)
-            publishCurrentAudioInputInfo()
-#endif
+            try await setupAudioSession()
 
             let transcriber = try await setUpTranscriber(contextualStrings: contextualStrings)
             if Self.shouldLog(.info) {
                 Self.logger.info("Transcriber prepared with modules")
             }
 
-            recognizerTask = Task<Void, Never> { [weak self] in
-                guard let self else { return }
-
-                do {
-                    for try await result in transcriber.results {
-                        streamContinuation.yield(result)
-                    }
-                    if Self.shouldLog(.notice) {
-                        Self.logger.notice("Recognizer task completed without error")
-                    }
-                    await self.finishFromRecognizerTask(error: nil)
-                } catch is CancellationError {
-                    if Self.shouldLog(.debug) {
-                        Self.logger.debug("Recognizer task cancelled")
-                    }
-                    // Cancellation handled by cleanup logic
-                } catch {
-                    if Self.shouldLog(.error) {
-                        Self.logger.error("Recognizer task failed: \(error.localizedDescription, privacy: .public)")
-                    }
-                    await self.finishFromRecognizerTask(error: error)
-                }
-            }
+            recognizerTask = createRecognizerTask(
+                transcriber: transcriber,
+                streamContinuation: streamContinuation
+            )
 
             try startAudioStreaming()
 
@@ -147,7 +118,9 @@ extension SpeechSession {
     func finishFromRecognizerTask(error: Error?) async {
         if let error {
             if Self.shouldLog(.error) {
-                Self.logger.error("Finishing from recognizer with error: \(error.localizedDescription, privacy: .public)")
+                Self.logger.error(
+                    "Finishing from recognizer with error: \(error.localizedDescription, privacy: .public)"
+                )
             }
         } else {
             if Self.shouldLog(.notice) {
@@ -200,6 +173,55 @@ extension SpeechSession {
                 Self.logger.notice("Finishing stream successfully")
             }
             cont.finish()
+        }
+    }
+
+    // MARK: - Helper Methods
+
+    private func setupAudioSession() async throws {
+#if os(iOS)
+        try await MainActor.run {
+            let audioSession = AVAudioSession.sharedInstance()
+            try audioSession.setCategory(
+                audioConfig.category,
+                mode: audioConfig.mode,
+                options: audioConfig.options
+            )
+            try audioSession.setActive(true)
+        }
+#endif
+#if os(iOS) || os(macOS)
+        publishCurrentAudioInputInfo()
+#endif
+    }
+
+    private func createRecognizerTask(
+        transcriber: SpeechTranscriber,
+        streamContinuation: AsyncThrowingStream<SpeechTranscriber.Result, Error>.Continuation
+    ) -> Task<Void, Never> {
+        Task<Void, Never> { [weak self] in
+            guard let self else { return }
+
+            do {
+                for try await result in transcriber.results {
+                    streamContinuation.yield(result)
+                }
+                if Self.shouldLog(.notice) {
+                    Self.logger.notice("Recognizer task completed without error")
+                }
+                await self.finishFromRecognizerTask(error: nil)
+            } catch is CancellationError {
+                if Self.shouldLog(.debug) {
+                    Self.logger.debug("Recognizer task cancelled")
+                }
+            } catch {
+                if Self.shouldLog(.error) {
+                    Self.logger.error(
+                        "Recognizer task failed: \(error.localizedDescription, privacy: .public)"
+                    )
+                }
+                await self.finishFromRecognizerTask(error: error)
+            }
         }
     }
 }

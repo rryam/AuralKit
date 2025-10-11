@@ -13,6 +13,17 @@ extension SpeechSession {
         if Self.shouldLog(.notice) {
             Self.logger.notice("Setting up transcriber")
         }
+
+        let transcriber = try createTranscriber()
+        let modules = configureModules(transcriber: transcriber)
+        try await ensureModels(modules: modules)
+        try await configureAnalyzerContext(contextualStrings: contextualStrings)
+        try await startAnalyzer(modules: modules)
+
+        return transcriber
+    }
+
+    private func createTranscriber() throws -> SpeechTranscriber {
         let effectiveTranscriptionOptions = preset?.transcriptionOptions ?? []
         let effectiveReportingOptions = preset?.reportingOptions ?? reportingOptions
         let effectiveAttributeOptions = preset?.attributeOptions ?? attributeOptions
@@ -28,6 +39,10 @@ extension SpeechSession {
             throw SpeechSessionError.recognitionStreamSetupFailed
         }
 
+        return transcriber
+    }
+
+    private func configureModules(transcriber: SpeechTranscriber) -> [any SpeechModule] {
         var modules: [any SpeechModule] = []
 
 #if compiler(>=6.2.1) // SpeechDetector conforms to SpeechModule in iOS 26.1+
@@ -41,8 +56,10 @@ extension SpeechSession {
             let detectorModule: any SpeechModule = detector
             modules.append(detectorModule)
             if Self.shouldLog(.info) {
-                let sensitivityDescription = String(describing: configuration.detectionOptions.sensitivityLevel)
-                Self.logger.info("Added speech detector module with sensitivity: \(sensitivityDescription, privacy: .public)")
+                let sensitivity = String(describing: configuration.detectionOptions.sensitivityLevel)
+                Self.logger.info(
+                    "Added speech detector module with sensitivity: \(sensitivity, privacy: .public)"
+                )
             }
         } else {
             speechDetector = nil
@@ -50,8 +67,6 @@ extension SpeechSession {
             voiceActivationConfiguration = nil
         }
 #else
-        // SpeechDetector doesn't conform to SpeechModule on iOS/macOS 26.0
-        // Voice activation requires iOS/macOS 26.1+ SDK
         speechDetector = nil
         tearDownSpeechDetectorStream()
         voiceActivationConfiguration = nil
@@ -64,41 +79,55 @@ extension SpeechSession {
             Self.logger.debug("Analyzer instantiated with \(modules.count, privacy: .public) module(s)")
         }
 
+        return modules
+    }
+
+    private func ensureModels(modules: [any SpeechModule]) async throws {
+        guard let transcriber else { return }
+
         try await modelManager.ensureModel(transcriber: transcriber, locale: locale)
         if Self.shouldLog(.info) {
             let localeIdentifier = locale.identifier(.bcp47)
             Self.logger.info("Model ensured for locale \(localeIdentifier, privacy: .public)")
         }
 
-        if modules.count > 1 {
-            let supplementalModules = modules.filter { !($0 is SpeechTranscriber) }
-            if !supplementalModules.isEmpty {
-                if Self.shouldLog(.info) {
-                    Self.logger.info("Ensuring supplemental assets for \(supplementalModules.count, privacy: .public) module(s)")
-                }
-                try await modelManager.ensureAssets(for: supplementalModules)
+        let supplementalModules = modules.filter { !($0 is SpeechTranscriber) }
+        if !supplementalModules.isEmpty {
+            if Self.shouldLog(.info) {
+                Self.logger.info(
+                    "Ensuring supplemental assets for \(supplementalModules.count, privacy: .public) module(s)"
+                )
             }
+            try await modelManager.ensureAssets(for: supplementalModules)
+        }
+    }
+
+    private func configureAnalyzerContext(
+        contextualStrings: [AnalysisContext.ContextualStringsTag: [String]]?
+    ) async throws {
+        guard let contextualStrings, !contextualStrings.isEmpty, let analyzer else { return }
+
+        let analysisContext = AnalysisContext()
+        for (tag, strings) in contextualStrings {
+            analysisContext.contextualStrings[tag] = strings
         }
 
-        if let contextualStrings, !contextualStrings.isEmpty, let analyzer {
-            let analysisContext = AnalysisContext()
-            for (tag, strings) in contextualStrings {
-                analysisContext.contextualStrings[tag] = strings
-            }
-            do {
-                try await analyzer.setContext(analysisContext)
-            } catch {
-                throw SpeechSessionError.contextSetupFailed(error)
-            }
-            if Self.shouldLog(.debug) {
-                Self.logger.debug("Configured contextual strings for analyzer")
-            }
+        do {
+            try await analyzer.setContext(analysisContext)
+        } catch {
+            throw SpeechSessionError.contextSetupFailed(error)
         }
 
+        if Self.shouldLog(.debug) {
+            Self.logger.debug("Configured contextual strings for analyzer")
+        }
+    }
+
+    private func startAnalyzer(modules: [any SpeechModule]) async throws {
         analyzerFormat = await SpeechAnalyzer.bestAvailableAudioFormat(compatibleWith: modules)
         (inputSequence, inputBuilder) = AsyncStream<AnalyzerInput>.makeStream()
 
-        guard let inputSequence else { return transcriber }
+        guard let inputSequence else { return }
 
         try await analyzer?.start(inputSequence: inputSequence)
         if Self.shouldLog(.info) {
@@ -108,8 +137,6 @@ extension SpeechSession {
         if voiceActivationConfiguration != nil {
             startSpeechDetectorMonitoring()
         }
-
-        return transcriber
     }
 
     func processAudioBuffer(_ buffer: AVAudioPCMBuffer) throws {
