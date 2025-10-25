@@ -9,14 +9,14 @@ extension SpeechSession {
 
     // MARK: - Transcriber Setup and Cleanup
 
-    func setUpTranscriber(
+    func setUpSpeechTranscriber(
         contextualStrings: [AnalysisContext.ContextualStringsTag: [String]]? = nil
     ) async throws -> SpeechTranscriber {
         if Self.shouldLog(.notice) {
             Self.logger.notice("Setting up transcriber")
         }
 
-        let transcriber = try createTranscriber()
+        let transcriber = try createSpeechTranscriber()
         let modules = configureModules(transcriber: transcriber)
         try await ensureModels(modules: modules)
         try await configureAnalyzerContext(contextualStrings: contextualStrings)
@@ -25,7 +25,24 @@ extension SpeechSession {
         return transcriber
     }
 
-    private func createTranscriber() throws -> SpeechTranscriber {
+    @available(iOS 26.0, macOS 26.0, *)
+    func setUpDictationTranscriber(
+        contextualStrings: [AnalysisContext.ContextualStringsTag: [String]]? = nil
+    ) async throws -> DictationTranscriber {
+        if Self.shouldLog(.notice) {
+            Self.logger.notice("Setting up dictation transcriber")
+        }
+
+        let transcriber = try createDictationTranscriber()
+        let modules = configureModules(transcriber: transcriber)
+        try await ensureModels(modules: modules)
+        try await configureAnalyzerContext(contextualStrings: contextualStrings)
+        try await startAnalyzer(modules: modules)
+
+        return transcriber
+    }
+
+    private func createSpeechTranscriber() throws -> SpeechTranscriber {
         let effectiveTranscriptionOptions = preset?.transcriptionOptions ?? []
         let effectiveReportingOptions = preset?.reportingOptions ?? reportingOptions
         let effectiveAttributeOptions = preset?.attributeOptions ?? attributeOptions
@@ -44,7 +61,32 @@ extension SpeechSession {
         return transcriber
     }
 
-    private func configureModules(transcriber: SpeechTranscriber) -> [any SpeechModule] {
+    @available(iOS 26.0, macOS 26.0, *)
+    private func createDictationTranscriber() throws -> DictationTranscriber {
+        let basePreset = DictationTranscriber.Preset.progressiveLongDictation
+        var contentHints = basePreset.contentHints
+
+        if let configuration = customVocabularyConfiguration {
+            contentHints.insert(.customizedLanguage(modelConfiguration: configuration))
+        }
+
+        dictationTranscriber = DictationTranscriber(
+            locale: locale,
+            contentHints: contentHints,
+            transcriptionOptions: basePreset.transcriptionOptions,
+            reportingOptions: basePreset.reportingOptions,
+            attributeOptions: basePreset.attributeOptions
+        )
+
+        guard let dictationTranscriber else {
+            throw SpeechSessionError.recognitionStreamSetupFailed
+        }
+
+        return dictationTranscriber
+    }
+
+    @discardableResult
+    private func configureModules(transcriber: any SpeechModule) -> [any SpeechModule] {
         var modules: [any SpeechModule] = []
 
         if let configuration = voiceActivationConfiguration {
@@ -78,15 +120,21 @@ extension SpeechSession {
     }
 
     private func ensureModels(modules: [any SpeechModule]) async throws {
-        guard let transcriber else { return }
-
-        try await modelManager.ensureModel(transcriber: transcriber, locale: locale)
-        if Self.shouldLog(.info) {
-            let localeIdentifier = locale.identifier(.bcp47)
-            Self.logger.info("Model ensured for locale \(localeIdentifier, privacy: .public)")
+        if let transcriber {
+            try await modelManager.ensureModel(module: transcriber, locale: locale)
+            if Self.shouldLog(.info) {
+                let localeIdentifier = locale.identifier(.bcp47)
+                Self.logger.info("Model ensured for locale \(localeIdentifier, privacy: .public)")
+            }
+        } else if let dictationTranscriber {
+            try await modelManager.ensureModel(module: dictationTranscriber, locale: locale)
+            if Self.shouldLog(.info) {
+                let localeIdentifier = locale.identifier(.bcp47)
+                Self.logger.info("Dictation model ensured for locale \(localeIdentifier, privacy: .public)")
+            }
         }
 
-        let supplementalModules = modules.filter { !($0 is SpeechTranscriber) }
+        let supplementalModules = modules.filter { !($0 is SpeechTranscriber) && !($0 is DictationTranscriber) }
         if !supplementalModules.isEmpty {
             if Self.shouldLog(.info) {
                 Self.logger.info(
@@ -167,6 +215,7 @@ extension SpeechSession {
         analyzerFormat = nil
         analyzer = nil
         transcriber = nil
+        dictationTranscriber = nil
         if Self.shouldLog(.debug) {
             Self.logger.debug("Transcriber cleanup complete")
         }

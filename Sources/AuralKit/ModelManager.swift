@@ -11,36 +11,66 @@ class ModelManager: @unchecked Sendable {
     private(set) var currentDownloadProgress: Progress?
 
     /// Ensure the speech model for the given locale is available
-    func ensureModel(transcriber: SpeechTranscriber, locale: Locale) async throws {
-        guard await supported(locale: locale) else {
+    func ensureModel(module: any LocaleDependentSpeechModule, locale: Locale) async throws {
+        if let speechModule = module as? SpeechTranscriber {
+            try await ensureSpeechModel(transcriber: speechModule, locale: locale)
+            return
+        }
+
+        if let dictationModule = module as? DictationTranscriber {
+            try await ensureDictationModel(transcriber: dictationModule, locale: locale)
+            return
+        }
+
+        try await downloadAssetsIfNeeded(for: [module])
+    }
+
+    private func ensureSpeechModel(transcriber: SpeechTranscriber, locale: Locale) async throws {
+        guard await speechSupported(locale: locale) else {
             throw SpeechSessionError.unsupportedLocale(locale)
         }
 
-        if await installed(locale: locale) {
+        if await speechInstalled(locale: locale) {
             logger.notice("Locale \(locale.identifier(.bcp47)) already installed")
             currentDownloadProgress = nil
-            return
         } else {
             logger.info("Ensuring model download for locale \(locale.identifier(.bcp47))")
-            try await downloadIfNeeded(for: transcriber)
+            try await downloadAssetsIfNeeded(for: [transcriber])
         }
     }
 
-    /// Check if the locale is supported
-    private func supported(locale: Locale) async -> Bool {
+    private func ensureDictationModel(transcriber: DictationTranscriber, locale: Locale) async throws {
+        guard await dictationSupported(locale: locale) else {
+            throw SpeechSessionError.unsupportedLocale(locale)
+        }
+
+        if await dictationInstalled(locale: locale) {
+            logger.notice("Locale \(locale.identifier(.bcp47)) already installed")
+            currentDownloadProgress = nil
+        } else {
+            logger.info("Ensuring model download for locale \(locale.identifier(.bcp47))")
+            try await downloadAssetsIfNeeded(for: [transcriber])
+        }
+    }
+
+    private func speechSupported(locale: Locale) async -> Bool {
         let supported = await SpeechTranscriber.supportedLocales
         return supported.map { $0.identifier(.bcp47) }.contains(locale.identifier(.bcp47))
     }
 
-    /// Check if the locale is already installed
-    private func installed(locale: Locale) async -> Bool {
-        let installed = await Set(SpeechTranscriber.installedLocales)
+    private func speechInstalled(locale: Locale) async -> Bool {
+        let installed = await SpeechTranscriber.installedLocales
         return installed.map { $0.identifier(.bcp47) }.contains(locale.identifier(.bcp47))
     }
 
-    /// Download the model if needed
-    private func downloadIfNeeded(for module: SpeechTranscriber) async throws {
-        try await downloadAssetsIfNeeded(for: [module])
+    private func dictationSupported(locale: Locale) async -> Bool {
+        let supported = await DictationTranscriber.supportedLocales
+        return supported.map { $0.identifier(.bcp47) }.contains(locale.identifier(.bcp47))
+    }
+
+    private func dictationInstalled(locale: Locale) async -> Bool {
+        let installed = await DictationTranscriber.installedLocales
+        return installed.map { $0.identifier(.bcp47) }.contains(locale.identifier(.bcp47))
     }
 
     func ensureAssets(for modules: [any SpeechModule]) async throws {

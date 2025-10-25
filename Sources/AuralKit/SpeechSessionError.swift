@@ -46,4 +46,16 @@ public enum SpeechSessionError: LocalizedError {
 
     /// Failed to set up analysis context with contextual strings.
     case contextSetupFailed(Error)
+
+    /// Custom vocabulary can only be configured while the session is idle.
+    case customVocabularyRequiresIdleSession
+
+    /// The supplied custom vocabulary locale differs from the session locale.
+    case customVocabularyUnsupportedLocale(Locale)
+
+    /// Preparing the on-disk custom vocabulary directories failed.
+    case customVocabularyPreparationFailed
+
+    /// Custom vocabulary compilation failed with an underlying error.
+    case customVocabularyCompilationFailed(Error)
 }

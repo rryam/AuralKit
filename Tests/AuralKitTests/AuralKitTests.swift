@@ -1,4 +1,5 @@
 import Testing
+import Speech
 @testable import AuralKit
 
 @Suite("SpeechSession State")
@@ -137,6 +138,157 @@ struct SpeechSessionLoggingTests {
 
             #expect(SpeechSession.logging == level)
         }
+    }
+}
+
+@Suite("SpeechSession Custom Vocabulary")
+struct SpeechSessionCustomVocabularyTests {
+
+    @Test("Custom vocabulary cache key is stable")
+    func customVocabularyCacheKeyStable() throws {
+        let descriptor = SpeechSession.CustomVocabulary(
+            locale: Locale(identifier: "en_US"),
+            identifier: "test",
+            version: "1",
+            phrases: [
+                .init(text: "AuralKit", count: 5),
+                .init(text: "Dictation", count: 2)
+            ],
+            pronunciations: [
+                .init(grapheme: "AuralKit", phonemes: ["ɔː", "r", "əl", "k", "ɪ", "t"])
+            ],
+            templates: [
+                .init(
+                    body: "<product> transcription",
+                    count: 3,
+                    classes: ["product": ["AuralKit", "AuralPlan"]]
+                )
+            ]
+        )
+
+        let first = try descriptor.cacheKey()
+        let second = try descriptor.cacheKey()
+        #expect(first == second)
+    }
+
+    @Test("Configuring custom vocabulary caches compilation result")
+    @MainActor
+    func configureCustomVocabularyCachesCompilation() async throws {
+        let compiler = MockCustomVocabularyCompiler()
+        let session = SpeechSession(locale: Locale(identifier: "en_US"))
+        session.customVocabularyCompiler = compiler
+
+        let descriptor = SpeechSession.CustomVocabulary(
+            locale: Locale(identifier: "en_US"),
+            identifier: "medical",
+            version: "1"
+        )
+
+        try await session.configureCustomVocabulary(descriptor)
+        let expectedCacheKey = try descriptor.cacheKey()
+        let compileCount = await compiler.compileCallCount
+        #expect(compileCount == 1)
+        #expect(session.customVocabularyDescriptor == descriptor)
+        #expect(session.customVocabularyCacheKey == expectedCacheKey)
+        #expect(session.customVocabularyConfiguration != nil)
+
+        try await session.configureCustomVocabulary(descriptor)
+        let repeatCompileCount = await compiler.compileCallCount
+        #expect(repeatCompileCount == 1)
+
+        try await session.configureCustomVocabulary(nil)
+        await compiler.cleanup()
+    }
+
+    @Test("Configuring custom vocabulary rejects mismatched locale")
+    @MainActor
+    func configureCustomVocabularyRejectsMismatchedLocale() async {
+        let compiler = MockCustomVocabularyCompiler()
+        let session = SpeechSession(locale: Locale(identifier: "en_US"))
+        session.customVocabularyCompiler = compiler
+
+        let descriptor = SpeechSession.CustomVocabulary(
+            locale: Locale(identifier: "fr_FR"),
+            identifier: "test",
+            version: "1"
+        )
+
+        do {
+            try await session.configureCustomVocabulary(descriptor)
+            Issue.record("Expected customVocabularyUnsupportedLocale error")
+        } catch SpeechSessionError.customVocabularyUnsupportedLocale {
+            // expected path
+        } catch {
+            Issue.record("Unexpected error: \(error)")
+        }
+
+        await compiler.cleanup()
+    }
+
+    @Test("Configuring custom vocabulary requires idle session")
+    @MainActor
+    func configureCustomVocabularyRequiresIdleSession() async {
+        let compiler = MockCustomVocabularyCompiler()
+        let session = SpeechSession(locale: Locale(identifier: "en_US"))
+        session.customVocabularyCompiler = compiler
+
+        session.streamingMode = .liveMicrophone
+
+        let descriptor = SpeechSession.CustomVocabulary(
+            locale: Locale(identifier: "en_US"),
+            identifier: "test",
+            version: "1"
+        )
+
+        do {
+            try await session.configureCustomVocabulary(descriptor)
+            Issue.record("Expected customVocabularyRequiresIdleSession error")
+        } catch SpeechSessionError.customVocabularyRequiresIdleSession {
+            // expected path
+        } catch {
+            Issue.record("Unexpected error: \(error)")
+        }
+
+        session.streamingMode = .inactive
+        await compiler.cleanup()
+    }
+}
+
+actor MockCustomVocabularyCompiler: CustomVocabularyCompiling {
+
+    private let baseDirectory: URL
+    private let fileManager: FileManager
+    private(set) var compileCallCount = 0
+    private(set) var lastDescriptor: SpeechSession.CustomVocabulary?
+
+    init(fileManager: FileManager = .default) {
+        self.fileManager = fileManager
+        baseDirectory = fileManager.temporaryDirectory
+            .appendingPathComponent("mock-vocabulary-\(UUID().uuidString)", isDirectory: true)
+    }
+
+    func compile(descriptor: SpeechSession.CustomVocabulary) async throws -> CustomVocabularyCompilation {
+        compileCallCount += 1
+        lastDescriptor = descriptor
+        let cacheKey = try descriptor.cacheKey()
+
+        let outputDirectory = baseDirectory.appendingPathComponent(cacheKey, isDirectory: true)
+        try? fileManager.createDirectory(at: outputDirectory, withIntermediateDirectories: true)
+
+        let configuration = SFSpeechLanguageModel.Configuration(
+            languageModel: outputDirectory.appendingPathComponent("languageModel.bin"),
+            vocabulary: outputDirectory.appendingPathComponent("vocabulary.bin")
+        )
+
+        return CustomVocabularyCompilation(
+            configuration: configuration,
+            cacheKey: cacheKey,
+            outputDirectory: outputDirectory
+        )
+    }
+
+    func cleanup() async {
+        try? fileManager.removeItem(at: baseDirectory)
     }
 }
 

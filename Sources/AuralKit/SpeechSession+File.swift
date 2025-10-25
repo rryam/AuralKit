@@ -64,7 +64,7 @@ public extension SpeechSession {
         }
 
         setStatus(.preparing)
-        continuation = newContinuation
+        continuation = .speech(newContinuation)
 
         Task { @MainActor [weak self] in
             guard let self else { return }
@@ -199,7 +199,8 @@ private extension SpeechSession {
             Self.logger.notice("Starting file transcription pipeline")
         }
 
-        let transcriber = try await setUpTranscriber(contextualStrings: contextualStrings)
+        let transcriber = try await setUpSpeechTranscriber(contextualStrings: contextualStrings)
+        activeResultKind = .speech
 
         recognizerTask = Task<Void, Never> { [weak self] in
                 guard let self else { return }
