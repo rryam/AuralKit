@@ -107,7 +107,6 @@ extension SpeechSession {
         }
     }
 
-    @available(iOS 26.0, macOS 26.0, *)
     func startDictationPipeline(
         with streamContinuation: AsyncThrowingStream<DictationTranscriber.Result, Error>.Continuation,
         contextualStrings: [AnalysisContext.ContextualStringsTag: [String]]? = nil
@@ -309,7 +308,6 @@ extension SpeechSession {
         }
     }
 
-    @available(iOS 26.0, macOS 26.0, *)
     private func createDictationRecognizerTask(
         transcriber: DictationTranscriber,
         streamContinuation: AsyncThrowingStream<DictationTranscriber.Result, Error>.Continuation

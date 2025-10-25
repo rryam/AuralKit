@@ -25,7 +25,6 @@ extension SpeechSession {
         return transcriber
     }
 
-    @available(iOS 26.0, macOS 26.0, *)
     func setUpDictationTranscriber(
         contextualStrings: [AnalysisContext.ContextualStringsTag: [String]]? = nil
     ) async throws -> DictationTranscriber {
@@ -61,7 +60,6 @@ extension SpeechSession {
         return transcriber
     }
 
-    @available(iOS 26.0, macOS 26.0, *)
     private func createDictationTranscriber() throws -> DictationTranscriber {
         let basePreset = DictationTranscriber.Preset.progressiveLongDictation
         var contentHints = basePreset.contentHints

@@ -2,7 +2,6 @@ import Foundation
 import Speech
 import CryptoKit
 
-@available(iOS 26.0, macOS 26.0, *)
 extension SpeechSession {
 
     // swiftlint:disable nesting
@@ -127,19 +126,16 @@ extension SpeechSession {
     // swiftlint:enable nesting
 }
 
-@available(iOS 26.0, macOS 26.0, *)
 struct CustomVocabularyCompilation: Sendable {
     let configuration: SFSpeechLanguageModel.Configuration
     let cacheKey: String
     let outputDirectory: URL
 }
 
-@available(iOS 26.0, macOS 26.0, *)
 protocol CustomVocabularyCompiling: Sendable {
     func compile(descriptor: SpeechSession.CustomVocabulary) async throws -> CustomVocabularyCompilation
 }
 
-@available(iOS 26.0, macOS 26.0, *)
 final class CustomVocabularyCompiler: CustomVocabularyCompiling, @unchecked Sendable {
 
     private struct CompilationPaths {
@@ -243,7 +239,6 @@ final class CustomVocabularyCompiler: CustomVocabularyCompiling, @unchecked Send
     }
 }
 
-@available(iOS 26.0, macOS 26.0, *)
 @MainActor
 extension SpeechSession {
 
