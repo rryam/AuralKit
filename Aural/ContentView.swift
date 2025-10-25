@@ -9,15 +9,41 @@ struct ContentView: View {
             if showAdvanced {
                 AdvancedContentView(showAdvanced: $showAdvanced)
             } else {
-                TranscriptionView()
-                    .toolbar {
-                        ToolbarItem(placement: .automatic) {
-                            Button("Advanced") {
-                                showAdvanced = true
-                            }
-                        }
-                    }
+                SimpleContentView(showAdvanced: $showAdvanced)
             }
+        }
+    }
+}
+
+private struct SimpleContentView: View {
+    enum SimpleTab: Hashable {
+        case live
+        case customVocabulary
+    }
+
+    @Binding var showAdvanced: Bool
+    @State private var selectedTab: SimpleTab = .live
+
+    var body: some View {
+        TabView(selection: $selectedTab) {
+            TranscriptionView()
+                .tabItem {
+                    Label("Live", systemImage: "waveform")
+                }
+                .tag(SimpleTab.live)
+
+            CustomVocabularyDemoView()
+                .tabItem {
+                    Label("Custom Vocab", systemImage: "text.badge.plus")
+                }
+                .tag(SimpleTab.customVocabulary)
+        }
+        .overlay(alignment: .topTrailing) {
+            Button("Advanced") {
+                showAdvanced = true
+            }
+            .buttonStyle(.bordered)
+            .padding()
         }
     }
 }

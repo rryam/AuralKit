@@ -9,9 +9,12 @@
 /* Begin PBXBuildFile section */
 		0D2C9B708312F7B7A7E23A33 /* AuralKit in Frameworks */ = {isa = PBXBuildFile; productRef = BE28FF32F80B6AC79CB37BB9 /* AuralKit */; };
 		0D32F9DC5EEA1C53DE8D13B0 /* TranscriptionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED904D0402C83071A8E85CAC /* TranscriptionView.swift */; };
+		2A6D82B6B616D91CA07E1B23 /* CustomVocabularyDemoView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B5FD51A5F6D0FD434B1F6B7 /* CustomVocabularyDemoView.swift */; };
 		2F2A4D64E4E0DB85BBD36CB7 /* TranscriptionViewComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = D5C5C90F0DAE3FB6A2A4A8BE /* TranscriptionViewComponents.swift */; };
+		4A2D5B0DC930C66CBB803A07 /* CustomVocabularyDemoSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13F1551C5C77E3A2A1EC3F54 /* CustomVocabularyDemoSupport.swift */; };
 		1BA6ADA6F8BCA88CEE5787CD /* AuralApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = E753F8F18224F7CC8AF5408E /* AuralApp.swift */; };
 		1CDE3454CD4ECDE7F6222F07 /* NoiseShader.metal in Sources */ = {isa = PBXBuildFile; fileRef = 075E14F26905E59928194CCC /* NoiseShader.metal */; };
+		2A601A4D8C9AA4D8B21F3E50 /* CustomVocabularyDemoView+Logic.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E19E7A7D3F7A07BBF2F4E6D /* CustomVocabularyDemoView+Logic.swift */; };
 		4B9C3E3D05F65E65D03EBA4D /* TranscriptionDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C80FC8B2BE7097ED045651C /* TranscriptionDetailView.swift */; };
 		700F97EB1758FA8AF4B964F7 /* TopGradientView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1CB7004D8320DB8D951F22C7 /* TopGradientView.swift */; };
 		953322660A1A1A62C0260615 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1D3477DBCAFCCFB77C7C71D /* SettingsView.swift */; };
@@ -26,6 +29,7 @@
 
 /* Begin PBXFileReference section */
 		075E14F26905E59928194CCC /* NoiseShader.metal */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.metal; path = NoiseShader.metal; sourceTree = "<group>"; };
+		13F1551C5C77E3A2A1EC3F54 /* CustomVocabularyDemoSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CustomVocabularyDemoSupport.swift; sourceTree = "<group>"; };
 		1CB7004D8320DB8D951F22C7 /* TopGradientView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TopGradientView.swift; sourceTree = "<group>"; };
 		1D0B0EEA6F94CD5B7889405D /* AboutView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AboutView.swift; sourceTree = "<group>"; };
 		2B71C1A5798D2D5DF5B498A6 /* AuralKit */ = {isa = PBXFileReference; lastKnownFileType = folder; name = AuralKit; path = .; sourceTree = SOURCE_ROOT; };
@@ -33,10 +37,12 @@
 		36DA87A814E38A68FCF9B447 /* HistoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryView.swift; sourceTree = "<group>"; };
 		3BF79E9BB137291A06A75678 /* TranscriptionManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptionManager.swift; sourceTree = "<group>"; };
 		43AD4C3CAAA551B20034E2A3 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		7E19E7A7D3F7A07BBF2F4E6D /* CustomVocabularyDemoView+Logic.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "CustomVocabularyDemoView+Logic.swift"; sourceTree = "<group>"; };
 		5A9426C3785CBCC445AC3E57 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		5B2F0C0F8B6B8DA6D39BAA86 /* DemoTranscriberPreset.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DemoTranscriberPreset.swift; sourceTree = "<group>"; };
 		7E646A2CBF5CB0DA6AC615F7 /* Aural.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Aural.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		93DA3314E337533E7CA3A549 /* AdvancedTranscriptionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdvancedTranscriptionView.swift; sourceTree = "<group>"; };
+		9B5FD51A5F6D0FD434B1F6B7 /* CustomVocabularyDemoView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CustomVocabularyDemoView.swift; sourceTree = "<group>"; };
 		D5C5C90F0DAE3FB6A2A4A8BE /* TranscriptionViewComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptionViewComponents.swift; sourceTree = "<group>"; };
 		9C80FC8B2BE7097ED045651C /* TranscriptionDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptionDetailView.swift; sourceTree = "<group>"; };
 		E753F8F18224F7CC8AF5408E /* AuralApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuralApp.swift; sourceTree = "<group>"; };
@@ -78,6 +84,9 @@
 			children = (
 				1D0B0EEA6F94CD5B7889405D /* AboutView.swift */,
 				93DA3314E337533E7CA3A549 /* AdvancedTranscriptionView.swift */,
+				9B5FD51A5F6D0FD434B1F6B7 /* CustomVocabularyDemoView.swift */,
+				7E19E7A7D3F7A07BBF2F4E6D /* CustomVocabularyDemoView+Logic.swift */,
+				13F1551C5C77E3A2A1EC3F54 /* CustomVocabularyDemoSupport.swift */,
 				D5C5C90F0DAE3FB6A2A4A8BE /* TranscriptionViewComponents.swift */,
 				31E3959D0929A5287D1A624F /* Assets.xcassets */,
 				E753F8F18224F7CC8AF5408E /* AuralApp.swift */,
@@ -181,6 +190,9 @@
 			files = (
 				9C6D5EF24AFFE2AE0157C023 /* AboutView.swift in Sources */,
 				A99E9DD346893ADEFEA3AC16 /* AdvancedTranscriptionView.swift in Sources */,
+				2A6D82B6B616D91CA07E1B23 /* CustomVocabularyDemoView.swift in Sources */,
+				2A601A4D8C9AA4D8B21F3E50 /* CustomVocabularyDemoView+Logic.swift in Sources */,
+				4A2D5B0DC930C66CBB803A07 /* CustomVocabularyDemoSupport.swift in Sources */,
 				2F2A4D64E4E0DB85BBD36CB7 /* TranscriptionViewComponents.swift in Sources */,
 				1BA6ADA6F8BCA88CEE5787CD /* AuralApp.swift in Sources */,
 				986932F368883459B7FEF825 /* ContentView.swift in Sources */,

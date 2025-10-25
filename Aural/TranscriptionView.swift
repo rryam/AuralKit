@@ -153,6 +153,9 @@ struct TranscriptionView: View {
                 error = nil
             }
         }
+        .onDisappear {
+            handleStopAction()
+        }
     }
 
 }
