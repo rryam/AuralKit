@@ -19,6 +19,16 @@ extension SpeechSession {
         case filePlayback
     }
 
+    enum TranscriptionResultKind: Equatable, Sendable {
+        case speech
+        case dictation
+    }
+
+    enum TranscriptionContinuation {
+        case speech(AsyncThrowingStream<SpeechTranscriber.Result, Error>.Continuation)
+        case dictation(AsyncThrowingStream<DictationTranscriber.Result, Error>.Continuation)
+    }
+
     struct VoiceActivationConfiguration {
         let detectionOptions: SpeechDetector.DetectionOptions
         let reportResults: Bool

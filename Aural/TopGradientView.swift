@@ -32,30 +32,35 @@ struct TopGradientView: View {
     }
 
     var body: some View {
-        LinearGradient(colors: [
-            Color.indigo.opacity(opacity), .antiPrimary
-        ], startPoint: .top, endPoint: endPoint)
-        .colorEffect(ShaderLibrary.parameterizedNoise(
-            .float(noiseIntensity),
-            .float(noiseScale),
-            .float(noiseFrequency)
-        ))
-        .ignoresSafeArea()
+        if scheme == .dark {
+            gradient
+                .colorEffect(ShaderLibrary.parameterizedNoise(
+                    .float(noiseIntensity),
+                    .float(noiseScale),
+                    .float(noiseFrequency)
+                ))
+                .ignoresSafeArea()
+        } else {
+            gradient
+                .ignoresSafeArea()
+        }
     }
-}
 
-extension Color {
-    static var antiPrimary: Color {
-#if os(iOS) || os(tvOS) || os(macCatalyst) || os(visionOS)
-        return Color(UIColor { traitCollection in
-            if traitCollection.userInterfaceStyle == .dark {
-                return UIColor.black
-            } else {
-                return UIColor.white
-            }
+    private var gradient: LinearGradient {
+        LinearGradient(
+            colors: [Color.indigo.opacity(opacity), baseColor],
+            startPoint: .top,
+            endPoint: endPoint
+        )
+    }
+
+    private var baseColor: Color {
+#if os(iOS)
+        Color(UIColor { traitCollection in
+            traitCollection.userInterfaceStyle == .dark ? UIColor.black : UIColor.white
         })
 #else
-        return .white
+        scheme == .dark ? .black : .white
 #endif
     }
 }

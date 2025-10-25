@@ -2,241 +2,158 @@ import SwiftUI
 import AuralKit
 import Speech
 
-/// Minimal example showing how easy SpeechSession is to use
 struct TranscriptionView: View {
-    @State private var presetChoice: DemoTranscriberPreset = .manual
-    @State private var session = SpeechSession(preset: DemoTranscriberPreset.manual.preset)
-    @State private var finalText: AttributedString = ""
-    @State private var partialText: AttributedString = ""
-#if os(iOS)
-    @State private var micInput: AudioInputInfo?
-#endif
-    @State private var status: SpeechSession.Status = .idle
-    @State private var error: String?
-    @State private var transcriptionTask: Task<Void, Never>?
-    @State private var enableVAD: Bool = false
-    @State private var vadSensitivity: SpeechDetector.SensitivityLevel = .medium
-    @State private var isSpeechDetected: Bool = true
-    @State private var logLevel: SpeechSession.LogLevel = SpeechSession.logging
-    @State private var vadConfigurationToken = UUID()
+    @Bindable var manager: TranscriptionManager
+    @State private var animationScale: CGFloat = 1.0
+
+    private let preferredLocales: [Locale] = [
+        Locale(identifier: "en-US"),
+        Locale(identifier: "es-ES"),
+        Locale(identifier: "fr-FR"),
+        Locale(identifier: "de-DE"),
+        Locale(identifier: "it-IT"),
+        Locale(identifier: "pt-BR"),
+        Locale(identifier: "zh-CN"),
+        Locale(identifier: "ja-JP"),
+        Locale(identifier: "ko-KR")
+    ]
 
     var body: some View {
         NavigationStack {
             VStack(spacing: 32) {
-                TranscriptionSettingsView(
-                    presetChoice: $presetChoice,
-                    enableVAD: $enableVAD,
-                    vadSensitivity: $vadSensitivity,
-                    isSpeechDetected: $isSpeechDetected,
-                    logLevel: $logLevel
-                )
+                settingsSection
 
                 TranscriptionTextView(
-                    finalText: finalText,
-                    partialText: partialText
+                    finalText: manager.finalizedText,
+                    partialText: manager.volatileText,
+                    currentTimeRange: manager.currentTimeRange.isEmpty ? nil : manager.currentTimeRange,
+                    emptyStateMessage: "Press the microphone to begin live transcription."
                 )
+                .padding(.horizontal)
 
-                Spacer()
+                Spacer(minLength: 0)
 
                 TranscriptionControlsView(
-                    status: status,
-                    error: error,
+                    status: manager.status,
+                    error: manager.error,
                     showStopButton: showStopButton,
                     buttonColor: buttonColor,
                     buttonIcon: buttonIcon,
                     statusMessage: statusMessage,
-                    onPrimaryAction: handlePrimaryAction,
-                    onStopAction: handleStopAction
+                    onPrimaryAction: { manager.primaryAction() },
+                    onStopAction: { manager.stopTranscription() },
+                    animationScale: animationScale
                 )
+                .padding(.horizontal)
             }
+            .padding(.top, 24)
             .frame(maxWidth: .infinity)
             .background(TopGradientView())
-            .navigationTitle("Aural")
+            .navigationTitle("Transcribe")
 #if os(iOS)
-            .toolbar {
-                if !String(finalText.characters).isEmpty {
-                    ToolbarItem(placement: .topBarTrailing) {
-                        ShareLink(item: String(finalText.characters)) {
-                            Image(systemName: "square.and.arrow.up")
-                        }
-                    }
-                }
+            .navigationBarTitleDisplayMode(.large)
+#endif
+            .toolbar { toolbarContent }
+#if os(macOS)
+            .toolbarVisibility(.visible, for: .automatic)
+#endif
+        }
+        .onAppear {
+            SpeechSession.logging = .debug
+            updateAnimation(for: manager.status)
+        }
+        .onChange(of: manager.status) { _, status in
+            updateAnimation(for: status)
+        }
+    }
 
-                ToolbarItem(placement: .topBarLeading) {
-                    Button {
-                        // show more information about the mic
-                        if let micInput {
-                            print(micInput)
-                        }
-                    } label: {
-                        Image(systemName: micInput?.portIcon ?? "mic")
-                            .contentTransition(.symbolEffect)
-                    }
+    private var settingsSection: some View {
+        VStack(spacing: 16) {
+            TranscriptionSettingsView(
+                presetChoice: $manager.selectedPreset,
+                enableVAD: $manager.isVoiceActivationEnabled,
+                vadSensitivity: $manager.voiceActivationSensitivity,
+                isSpeechDetected: manager.isSpeechDetected
+            )
+
+            GroupBox("Preferred Locale") {
+                LanguageSelector(manager: manager, locales: preferredLocales)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .padding(.horizontal)
+        }
+    }
+
+    @ToolbarContentBuilder
+    private var toolbarContent: some ToolbarContent {
+        if !manager.currentTranscript.isEmpty {
+#if os(iOS)
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    manager.clearText()
+                } label: {
+                    Image(systemName: "trash")
                 }
             }
-            .task(id: ObjectIdentifier(session)) {
-                for await input in session.audioInputConfigurationStream {
-                    withAnimation {
-                        micInput = input
-                    }
+            ToolbarItem(placement: .topBarTrailing) {
+                ShareLink(item: manager.currentTranscript) {
+                    Image(systemName: "square.and.arrow.up")
+                }
+            }
+#else
+            ToolbarItem(placement: .automatic) {
+                Button {
+                    manager.clearText()
+                } label: {
+                    Image(systemName: "trash")
+                }
+            }
+            ToolbarItem(placement: .automatic) {
+                ShareLink(item: manager.currentTranscript) {
+                    Image(systemName: "square.and.arrow.up")
                 }
             }
 #endif
-            .task(id: ObjectIdentifier(session)) {
-                for await newStatus in session.statusStream {
-                    status = newStatus
-                }
-            }
-            .task(id: SpeechDetectorTaskID(
-                sessionID: ObjectIdentifier(session),
-                vadEnabled: enableVAD,
-                configurationID: vadConfigurationToken
-            )) {
-                guard enableVAD, let stream = session.speechDetectorResultsStream else {
-                    await MainActor.run {
-                        isSpeechDetected = true
-                    }
-                    return
-                }
+        }
 
-                for await result in stream {
-                    await MainActor.run {
-                        withAnimation {
-                            isSpeechDetected = result.speechDetected
-                        }
-                    }
+#if os(iOS)
+        ToolbarItem(placement: .topBarLeading) {
+            Button {
+                if let micInput = manager.micInput {
+                    print(micInput)
                 }
+            } label: {
+                Image(systemName: manager.micInput?.portIcon ?? "mic")
+                    .contentTransition(.symbolEffect)
             }
         }
-        .onChange(of: enableVAD) { _, newValue in
-            Task { @MainActor in
-                if newValue {
-                    session.configureVoiceActivation(
-                        detectionOptions: .init(sensitivityLevel: vadSensitivity),
-                        reportResults: true
-                    )
-                } else {
-                    session.disableVoiceActivation()
-                }
-                isSpeechDetected = true
-                vadConfigurationToken = UUID()
-            }
-        }
-        .onChange(of: vadSensitivity) { _, newLevel in
-            guard enableVAD else { return }
-            Task { @MainActor in
-                session.configureVoiceActivation(
-                    detectionOptions: .init(sensitivityLevel: newLevel),
-                    reportResults: true
-                )
-                vadConfigurationToken = UUID()
-            }
-        }
-        .onChange(of: logLevel) { _, newValue in
-            SpeechSession.logging = newValue
-        }
-        .onChange(of: presetChoice) { _, newChoice in
-            Task { @MainActor in
-                let previousSession = session
+#endif
+    }
 
-                transcriptionTask?.cancel()
-                transcriptionTask = nil
-
-                if status != .idle, status != .stopping {
-                    await previousSession.stopTranscribing()
-                }
-
-                session = makeSession(for: newChoice)
-                status = .idle
-                finalText = ""
-                partialText = ""
-                error = nil
-            }
+    private func updateAnimation(for status: SpeechSession.Status) {
+        let isActive = status == .transcribing
+        withAnimation(.easeInOut(duration: 1.0).repeatForever(autoreverses: true)) {
+            animationScale = isActive ? 1.2 : 1.0
         }
     }
 
-}
-
-private struct SpeechDetectorTaskID: Hashable {
-    let sessionID: ObjectIdentifier
-    let vadEnabled: Bool
-    let configurationID: UUID
-}
-
-private extension TranscriptionView {
-    func handlePrimaryAction() {
-        switch status {
+    private var buttonColor: Color {
+        switch manager.status {
         case .idle:
-            startSession()
+            return .indigo
         case .preparing:
-            handleStopAction()
+            return .orange
         case .transcribing:
-            Task { @MainActor in
-                await session.pauseTranscribing()
-            }
+            return .red
         case .paused:
-            Task { @MainActor in
-                do {
-                    try await session.resumeTranscribing()
-                } catch {
-                    self.error = error.localizedDescription
-                }
-            }
+            return .yellow
         case .stopping:
-            break
+            return .gray
         }
     }
 
-    func handleStopAction() {
-        Task { @MainActor in
-            await session.stopTranscribing()
-            self.partialText = ""
-        }
-        transcriptionTask?.cancel()
-        transcriptionTask = nil
-    }
-
-    func startSession() {
-        error = nil
-        finalText = ""
-        partialText = ""
-
-        transcriptionTask?.cancel()
-        transcriptionTask = Task { @MainActor in
-            do {
-                for try await result in session.startTranscribing() {
-                    result.apply(
-                        to: &finalText,
-                        partialText: &partialText
-                    )
-                }
-            } catch is CancellationError {
-                // Ignore cancellations triggered by stop action
-            } catch {
-                self.error = error.localizedDescription
-            }
-            self.partialText = ""
-            self.transcriptionTask = nil
-        }
-    }
-
-    var buttonColor: Color {
-        switch status {
-        case .idle:
-            return Color.indigo
-        case .preparing:
-            return Color.orange
-        case .transcribing:
-            return Color.red
-        case .paused:
-            return Color.yellow
-        case .stopping:
-            return Color.gray
-        }
-    }
-
-    var buttonIcon: String {
-        switch status {
+    private var buttonIcon: String {
+        switch manager.status {
         case .idle:
             return "mic.fill"
         case .preparing:
@@ -250,8 +167,8 @@ private extension TranscriptionView {
         }
     }
 
-    var showStopButton: Bool {
-        switch status {
+    private var showStopButton: Bool {
+        switch manager.status {
         case .idle, .stopping:
             return false
         case .preparing, .transcribing, .paused:
@@ -259,10 +176,10 @@ private extension TranscriptionView {
         }
     }
 
-    var statusMessage: String {
-        switch status {
+    private var statusMessage: String {
+        switch manager.status {
         case .idle:
-            return "Tap to start"
+            return "Ready"
         case .preparing:
             return "Preparing session..."
         case .transcribing:
@@ -273,19 +190,49 @@ private extension TranscriptionView {
             return "Stopping..."
         }
     }
-
-    func makeSession(for choice: DemoTranscriberPreset) -> SpeechSession {
-        let newSession = SpeechSession(preset: choice.preset)
-        if enableVAD {
-            newSession.configureVoiceActivation(
-                detectionOptions: .init(sensitivityLevel: vadSensitivity),
-                reportResults: true
-            )
-        }
-        return newSession
-    }
 }
 
-#Preview {
-    TranscriptionView()
+private struct LanguageSelector: View {
+    @Bindable var manager: TranscriptionManager
+    let locales: [Locale]
+
+    var body: some View {
+        HStack {
+            Image(systemName: "globe")
+                .foregroundStyle(.secondary)
+            Text("Locale")
+                .foregroundStyle(.secondary)
+            Spacer()
+            Menu {
+                ForEach(locales, id: \.identifier) { locale in
+                    Button {
+                        manager.selectedLocale = locale
+                    } label: {
+                        HStack {
+                            Text(locale.localizedString(forIdentifier: locale.identifier) ?? locale.identifier)
+                            if locale == manager.selectedLocale {
+                                Image(systemName: "checkmark")
+                            }
+                        }
+                    }
+                }
+            } label: {
+                HStack(spacing: 6) {
+                    Text(
+                        manager.selectedLocale.localizedString(
+                            forIdentifier: manager.selectedLocale.identifier
+                        ) ?? manager.selectedLocale.identifier
+                    )
+                    .foregroundStyle(.primary)
+                    Image(systemName: "chevron.down")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .background(Color.gray.opacity(0.12))
+                .cornerRadius(8)
+            }
+        }
+    }
 }

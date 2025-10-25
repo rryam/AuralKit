@@ -37,6 +37,7 @@ public final class SpeechSession {
 
     let converter = BufferConverter()
     let modelManager = ModelManager()
+    var customVocabularyCompiler: any CustomVocabularyCompiling
 
     lazy var audioEngine = AVAudioEngine()
     var isAudioStreaming = false
@@ -61,12 +62,18 @@ public final class SpeechSession {
 
     // Transcriber components
     var transcriber: SpeechTranscriber?
+    var dictationTranscriber: DictationTranscriber?
     var speechDetector: SpeechDetector?
     var analyzer: SpeechAnalyzer?
     var inputSequence: AsyncStream<AnalyzerInput>?
     var inputBuilder: AsyncStream<AnalyzerInput>.Continuation?
     var analyzerFormat: AVAudioFormat?
     var voiceActivationConfiguration: VoiceActivationConfiguration?
+    var customVocabularyDescriptor: CustomVocabulary?
+    var customVocabularyConfiguration: SFSpeechLanguageModel.Configuration?
+    var customVocabularyCacheKey: String?
+    var customVocabularyOutputDirectory: URL?
+    var activeResultKind: TranscriptionResultKind?
 
     // MARK: - Public Observables
 
@@ -80,7 +87,7 @@ public final class SpeechSession {
     public internal(set) var isSpeechDetected: Bool = true
 
     // Stream state management
-    var continuation: AsyncThrowingStream<SpeechTranscriber.Result, Error>.Continuation?
+    var continuation: TranscriptionContinuation?
     var recognizerTask: Task<Void, Never>?
     var fileIngestionTask: Task<Void, Never>?
     var streamingMode: StreamingMode = .inactive
@@ -115,6 +122,7 @@ public final class SpeechSession {
         self.preset = preset
         self.reportingOptions = reportingOptions
         self.attributeOptions = attributeOptions
+        self.customVocabularyCompiler = CustomVocabularyCompiler()
 #if os(iOS)
         self.audioConfig = AudioSessionConfiguration.default
 #endif
@@ -148,6 +156,7 @@ public final class SpeechSession {
         self.reportingOptions = reportingOptions
         self.attributeOptions = attributeOptions
         self.audioConfig = audioConfig
+        self.customVocabularyCompiler = CustomVocabularyCompiler()
 #if os(iOS) || os(macOS)
         setupAudioConfigurationObservers()
 #endif
@@ -281,10 +290,10 @@ public final class SpeechSession {
         }
 
         setStatus(.preparing)
-        continuation = newContinuation
+        continuation = .speech(newContinuation)
         Task { @MainActor [weak self] in
             guard let self else { return }
-            await self.startPipeline(with: newContinuation, contextualStrings: contextualStrings)
+            await self.startSpeechPipeline(with: newContinuation, contextualStrings: contextualStrings)
         }
         return stream
     }
@@ -312,6 +321,7 @@ public final class SpeechSession {
     ) -> AsyncThrowingStream<SpeechTranscriber.Result, Error> {
         return startTranscribing(contextualStrings: [.general: contextualStrings])
     }
+
     /// Stop capturing audio and finish the current transcription stream.
     ///
     /// Safe to call even if `startTranscribing()` has not been invoked or the stream has already
@@ -346,4 +356,5 @@ public final class SpeechSession {
             throw error
         }
     }
+
 }

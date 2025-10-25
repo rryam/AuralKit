@@ -23,18 +23,6 @@ public struct FileTranscriptionOptions {
     }
 }
 
-/// Aggregate container that surfaces the final results produced by file transcription.
-public struct FileTranscriptionResult {
-    /// Final `SpeechTranscriber.Result` entries emitted during transcription.
-    public let finalResults: [SpeechTranscriber.Result]
-
-    /// Creates a new file transcription result container.
-    /// - Parameter finalResults: Ordered collection of final analyzer results.
-    public init(finalResults: [SpeechTranscriber.Result]) {
-        self.finalResults = finalResults
-    }
-}
-
 @MainActor
 public extension SpeechSession {
     /// Stream transcription results for an audio file from disk.
@@ -64,7 +52,7 @@ public extension SpeechSession {
         }
 
         setStatus(.preparing)
-        continuation = newContinuation
+        continuation = .speech(newContinuation)
 
         Task { @MainActor [weak self] in
             guard let self else { return }
@@ -91,7 +79,7 @@ public extension SpeechSession {
         audioFile: URL,
         options: FileTranscriptionOptions = .init(),
         progressHandler: (@Sendable (Double) -> Void)? = nil
-    ) async throws -> FileTranscriptionResult {
+    ) async throws -> [SpeechTranscriber.Result] {
         let stream = streamTranscription(
             from: audioFile,
             options: options,
@@ -107,7 +95,7 @@ public extension SpeechSession {
         }
         let finalResults = try await stream.reduce(into: [SpeechTranscriber.Result](), accumulator)
 
-        return FileTranscriptionResult(finalResults: finalResults)
+        return finalResults
     }
 }
 
@@ -199,7 +187,8 @@ private extension SpeechSession {
             Self.logger.notice("Starting file transcription pipeline")
         }
 
-        let transcriber = try await setUpTranscriber(contextualStrings: contextualStrings)
+        let transcriber = try await setUpSpeechTranscriber(contextualStrings: contextualStrings)
+        activeResultKind = .speech
 
         recognizerTask = Task<Void, Never> { [weak self] in
                 guard let self else { return }

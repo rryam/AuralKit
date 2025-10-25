@@ -99,10 +99,50 @@ public extension SpeechSessionError {
             return NSLocalizedString("Speech model download failed.",
                                      comment: "Generic model download failure")
 
+        case .modelReservationFailed(let locale, let underlyingError):
+            return String(
+                format: NSLocalizedString(
+                    "Failed to reserve speech assets for locale '%@': %@.",
+                    comment: "Error when reserving speech model locale fails"
+                ),
+                locale.identifier,
+                underlyingError.localizedDescription
+            )
+
         case .contextSetupFailed(let underlyingError):
             return String(format: NSLocalizedString("Failed to set up analysis context: %@",
                                                    comment: "Error when analysis context setup fails"),
                           underlyingError.localizedDescription)
+
+        case .customVocabularyRequiresIdleSession:
+            return NSLocalizedString(
+                "Custom vocabulary can only be configured when the session is idle.",
+                comment: "Error when attempting to configure vocabulary during an active session"
+            )
+
+        case .customVocabularyUnsupportedLocale(let locale):
+            return String(
+                format: NSLocalizedString(
+                    "Custom vocabulary locale '%@' does not match the session locale.",
+                    comment: "Error when custom vocabulary locale mismatches session"
+                ),
+                locale.identifier
+            )
+
+        case .customVocabularyPreparationFailed:
+            return NSLocalizedString(
+                "Unable to prepare storage for the custom vocabulary model.",
+                comment: "Error when preparing custom vocabulary storage fails"
+            )
+
+        case .customVocabularyCompilationFailed(let underlyingError):
+            return String(
+                format: NSLocalizedString(
+                    "Custom vocabulary compilation failed: %@",
+                    comment: "Error when compiling custom vocabulary fails"
+                ),
+                underlyingError.localizedDescription
+            )
         }
     }
 
@@ -158,10 +198,40 @@ public extension SpeechSessionError {
             return NSLocalizedString("The speech model could not be downloaded.",
                                      comment: "Failure reason when model download fails")
 
+        case .modelReservationFailed:
+            return NSLocalizedString(
+                "The speech framework couldn't allocate the locale for offline assets.",
+                comment: "Failure reason when locale reservation fails"
+            )
+
         case .contextSetupFailed:
             return NSLocalizedString(
                 "Unable to configure the speech analyzer with the provided contextual strings.",
                 comment: "Failure reason when context setup fails"
+            )
+
+        case .customVocabularyRequiresIdleSession:
+            return NSLocalizedString(
+                "Custom vocabulary updates cannot be applied while transcription is active.",
+                comment: "Failure reason when configuring vocabulary during active session"
+            )
+
+        case .customVocabularyUnsupportedLocale:
+            return NSLocalizedString(
+                "The custom vocabulary uses a different locale than the session.",
+                comment: "Failure reason when vocabulary locale mismatches"
+            )
+
+        case .customVocabularyPreparationFailed:
+            return NSLocalizedString(
+                "The storage location for the custom language model could not be created.",
+                comment: "Failure reason when preparing vocabulary storage fails"
+            )
+
+        case .customVocabularyCompilationFailed:
+            return NSLocalizedString(
+                "The speech framework rejected the provided vocabulary data.",
+                comment: "Failure reason when vocabulary compilation fails"
             )
         }
     }
@@ -227,9 +297,39 @@ public extension SpeechSessionError {
             return NSLocalizedString("Try again later or verify your network connection.",
                                      comment: "Recovery suggestion when model download fails")
 
+        case .modelReservationFailed:
+            return NSLocalizedString(
+                "Close other apps using on-device speech assets or choose a different locale, then try again.",
+                comment: "Recovery suggestion when locale reservation fails"
+            )
+
         case .contextSetupFailed:
             return NSLocalizedString("Try starting transcription again or simplify the contextual strings provided.",
                                      comment: "Recovery suggestion when context setup fails")
+
+        case .customVocabularyRequiresIdleSession:
+            return NSLocalizedString(
+                "Stop the active transcription session before configuring a custom vocabulary.",
+                comment: "Recovery suggestion for active session vocabulary configuration"
+            )
+
+        case .customVocabularyUnsupportedLocale:
+            return NSLocalizedString(
+                "Create the custom vocabulary using the same locale as the transcription session.",
+                comment: "Recovery suggestion for mismatched vocabulary locale"
+            )
+
+        case .customVocabularyPreparationFailed:
+            return NSLocalizedString(
+                "Ensure the app can write to the Application Support directory and try again.",
+                comment: "Recovery suggestion when vocabulary storage preparation fails"
+            )
+
+        case .customVocabularyCompilationFailed:
+            return NSLocalizedString(
+                "Check the vocabulary entries for invalid data or try recompiling later.",
+                comment: "Recovery suggestion when vocabulary compilation fails"
+            )
         }
     }
 }

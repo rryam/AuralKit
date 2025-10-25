@@ -1,8 +1,44 @@
 import Foundation
 @preconcurrency import AVFoundation
 
+private final class WeakSpeechSessionBox: @unchecked Sendable {
+    weak var value: SpeechSession?
+
+    init(_ value: SpeechSession) {
+        self.value = value
+    }
+}
+
+private func makeAudioTapHandler(for session: SpeechSession) -> AVAudioNodeTapBlock {
+    let weakSession = WeakSpeechSessionBox(session)
+
+    return { buffer, _ in
+        guard let bufferCopy = buffer.copy() as? AVAudioPCMBuffer else {
+            return
+        }
+
+        Task { @MainActor in
+            guard let session = weakSession.value else {
+                return
+            }
+
+            do {
+                try session.processAudioBuffer(bufferCopy)
+            } catch {
+                if SpeechSession.shouldLog(.error) {
+                    SpeechSession.logger.error(
+                        "Audio processing error: \(error.localizedDescription, privacy: .public)"
+                    )
+                }
+            }
+        }
+    }
+}
+
 @MainActor
 extension SpeechSession {
+
+    private static let microphoneTapBufferSize: AVAudioFrameCount = 2048
 
     // MARK: - Audio Streaming
 
@@ -18,26 +54,18 @@ extension SpeechSession {
 
         let inputFormat = audioEngine.inputNode.outputFormat(forBus: 0)
 
+        if Self.shouldLog(.debug) {
+            Self.logger.debug(
+                "Installing audio tap with buffer size \(Self.microphoneTapBufferSize, privacy: .public) frames"
+            )
+        }
+
         audioEngine.inputNode.installTap(
             onBus: 0,
-            bufferSize: 4096,
-            format: inputFormat
-        ) { [weak self] buffer, _ in
-            guard let self,
-                  let bufferCopy = buffer.copy() as? AVAudioPCMBuffer else {
-                return
-            }
-            Task { @MainActor [weak self] in
-                guard let self else { return }
-                do {
-                    try self.processAudioBuffer(bufferCopy)
-                } catch {
-                    if Self.shouldLog(.error) {
-                        Self.logger.error("Audio processing error: \(error.localizedDescription, privacy: .public)")
-                    }
-                }
-            }
-        }
+            bufferSize: Self.microphoneTapBufferSize,
+            format: inputFormat,
+            block: makeAudioTapHandler(for: self)
+        )
 
         audioEngine.prepare()
         try audioEngine.start()
@@ -71,9 +99,8 @@ extension SpeechSession {
 
             let previousRoute = userInfo[AVAudioSessionRouteChangePreviousRouteKey] as? AVAudioSessionRouteDescription
             let previousPortType = previousRoute?.inputs.first?.portType
-
-            Task { [weak self] in
-                guard let self else { return }
+            guard let self else { return }
+            Task {
                 await self.handleRouteChange(reason, previousPortType: previousPortType)
             }
         }
@@ -85,9 +112,8 @@ extension SpeechSession {
         ) { [weak self] notification in
             let typeValue = notification.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt
             let optionsValue = notification.userInfo?[AVAudioSessionInterruptionOptionKey] as? UInt
-
-            Task { @MainActor [weak self] in
-                guard let self else { return }
+            guard let self else { return }
+            Task { @MainActor in
                 await self.handleAudioSessionInterruption(typeValue: typeValue, optionsValue: optionsValue)
             }
         }
@@ -97,8 +123,8 @@ extension SpeechSession {
             object: audioEngine,
             queue: .main
         ) { [weak self] _ in
-            Task { [weak self] in
-                guard let self else { return }
+            guard let self else { return }
+            Task {
                 await self.handleEngineConfigurationChange()
             }
         }
