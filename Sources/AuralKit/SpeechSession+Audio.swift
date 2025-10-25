@@ -1,5 +1,5 @@
 import Foundation
-import AVFoundation
+@preconcurrency import AVFoundation
 
 @MainActor
 extension SpeechSession {
@@ -184,7 +184,8 @@ extension SpeechSession {
             }
         } catch {
             if Self.shouldLog(.error) {
-                Self.logger.error("Failed to resume after interruption: \(error.localizedDescription, privacy: .public)")
+                let description = error.localizedDescription
+                Self.logger.error("Failed to resume after interruption: \(description, privacy: .public)")
             }
             prepareForStop()
             await cleanup(cancelRecognizer: true)

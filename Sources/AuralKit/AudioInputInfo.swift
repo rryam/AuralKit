@@ -9,9 +9,9 @@ import Foundation
 import AudioToolbox
 
 #if os(iOS)
-import AVFoundation
+@preconcurrency import AVFoundation
 #elseif os(macOS)
-import AVFAudio
+@preconcurrency import AVFAudio
 import CoreAudio
 #endif
 

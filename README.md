@@ -60,7 +60,7 @@ let session = SpeechSession(locale: .current)
 let streamTask = Task {
     do {
         // Start the async stream
-        let stream = await session.startTranscribing()
+        let stream = session.startTranscribing()
         for try await result in stream {
             if result.isFinal {
                 print("Final: \(result.text)")
@@ -113,7 +113,7 @@ let session = SpeechSession(locale: Locale(identifier: "es-ES"))
 let streamTask = Task {
     do {
         // Start transcribing
-        let stream = await session.startTranscribing()
+        let stream = session.startTranscribing()
         for try await result in stream {
             let attributedText = result.text
 
@@ -447,7 +447,7 @@ public struct Result {
 Access transcription text, timing, confidence scores, and alternatives:
 
 ```swift
-let stream = await session.startTranscribing()
+let stream = session.startTranscribing()
 for try await result in stream {
     // Get plain text
     let plainText = String(result.text.characters)

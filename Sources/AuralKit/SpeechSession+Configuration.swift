@@ -1,7 +1,7 @@
 import Foundation
 import Speech
 #if os(iOS)
-import AVFoundation
+@preconcurrency import AVFoundation
 #endif
 
 public extension SpeechSession {

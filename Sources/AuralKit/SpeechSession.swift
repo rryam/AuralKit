@@ -1,5 +1,5 @@
 import Foundation
-import AVFoundation
+@preconcurrency import AVFoundation
 import Speech
 
 // MARK: - SpeechSession
@@ -32,15 +32,6 @@ import Speech
 /// for subsequent transcription sessions.
 @MainActor
 public final class SpeechSession {
-
-    /// Discrete lifecycle stages for a speech transcription session.
-    public enum Status: Equatable, Sendable {
-        case idle
-        case preparing
-        case transcribing
-        case paused
-        case stopping
-    }
 
     // MARK: - Properties
 
@@ -82,79 +73,16 @@ public final class SpeechSession {
     /// Current lifecycle status for the session.
     public internal(set) var status: Status = .idle
 
-    /// Async stream that emits lifecycle status updates, beginning with the current status.
-    public var statusStream: AsyncStream<Status> {
-        AsyncStream { [weak self] continuation in
-            let id = UUID()
-            Task { @MainActor [weak self] in
-                guard let self else { return }
-                continuation.yield(self.status)
-                self.statusContinuations[id] = continuation
-            }
-
-            continuation.onTermination = { [weak self] _ in
-                Task { @MainActor [weak self] in
-                    self?.statusContinuations.removeValue(forKey: id)
-                }
-            }
-        }
-    }
-
-#if os(iOS) || os(macOS)
-    /// Stream that delivers `AudioInputInfo` updates whenever the active audio input changes.
-    public var audioInputConfigurationStream: AsyncStream<AudioInputInfo?> {
-        AsyncStream { [weak self] continuation in
-            let id = UUID()
-            Task { @MainActor [weak self] in
-                guard let self else { return }
-                self.audioInputContinuations[id] = continuation
-            }
-            continuation.onTermination = { [weak self] _ in
-                Task { @MainActor [weak self] in
-                    self?.audioInputContinuations.removeValue(forKey: id)
-                }
-            }
-        }
-    }
-#endif
-
     /// Stream of speech detector results when voice activation reporting is enabled; `nil` otherwise.
     public internal(set) var speechDetectorResultsStream: AsyncStream<SpeechDetector.Result>?
 
     /// Reflects the speech detector's most recent state; defaults to `true` when monitoring is inactive.
     public internal(set) var isSpeechDetected: Bool = true
 
-    /// Progress of the ongoing model download, if any.
-    ///
-    /// Poll or observe this property to drive UI such as `ProgressView`. The value is non-nil only
-    /// while a locale model is downloading.
-    ///
-    /// ```swift
-    /// let session = SpeechSession()
-    /// if let progress = session.modelDownloadProgress {
-    ///     print("Downloading: \(progress.fractionCompleted * 100)%")
-    /// }
-    /// ```
-    public var modelDownloadProgress: Progress? {
-        modelManager.currentDownloadProgress
-    }
-
-    /// Returns `true` when voice activation has been configured for the session.
-    public var isVoiceActivationEnabled: Bool {
-        voiceActivationConfiguration != nil
-    }
-
     // Stream state management
     var continuation: AsyncThrowingStream<SpeechTranscriber.Result, Error>.Continuation?
     var recognizerTask: Task<Void, Never>?
     var fileIngestionTask: Task<Void, Never>?
-    /// Discrete source types currently feeding the analyzer pipeline.
-    enum StreamingMode: Equatable, Sendable {
-        case inactive
-        case liveMicrophone
-        case filePlayback
-    }
-
     var streamingMode: StreamingMode = .inactive
 
     // Notification Handling
@@ -163,11 +91,6 @@ public final class SpeechSession {
     // Voice activation state
     var speechDetectorResultsContinuation: AsyncStream<SpeechDetector.Result>.Continuation?
     var speechDetectorResultsTask: Task<Void, Never>?
-
-    struct VoiceActivationConfiguration {
-        let detectionOptions: SpeechDetector.DetectionOptions
-        let reportResults: Bool
-    }
 
     // MARK: - Init
 

@@ -162,7 +162,16 @@ struct TranscriptionView: View {
         }
     }
 
-    private func handlePrimaryAction() {
+}
+
+private struct SpeechDetectorTaskID: Hashable {
+    let sessionID: ObjectIdentifier
+    let vadEnabled: Bool
+    let configurationID: UUID
+}
+
+private extension TranscriptionView {
+    func handlePrimaryAction() {
         switch status {
         case .idle:
             startSession()
@@ -185,7 +194,7 @@ struct TranscriptionView: View {
         }
     }
 
-    private func handleStopAction() {
+    func handleStopAction() {
         Task { @MainActor in
             await session.stopTranscribing()
             self.partialText = ""
@@ -194,7 +203,7 @@ struct TranscriptionView: View {
         transcriptionTask = nil
     }
 
-    private func startSession() {
+    func startSession() {
         error = nil
         finalText = ""
         partialText = ""
@@ -218,7 +227,7 @@ struct TranscriptionView: View {
         }
     }
 
-    private var buttonColor: Color {
+    var buttonColor: Color {
         switch status {
         case .idle:
             return Color.indigo
@@ -233,7 +242,7 @@ struct TranscriptionView: View {
         }
     }
 
-    private var buttonIcon: String {
+    var buttonIcon: String {
         switch status {
         case .idle:
             return "mic.fill"
@@ -248,7 +257,7 @@ struct TranscriptionView: View {
         }
     }
 
-    private var showStopButton: Bool {
+    var showStopButton: Bool {
         switch status {
         case .idle, .stopping:
             return false
@@ -257,7 +266,7 @@ struct TranscriptionView: View {
         }
     }
 
-    private var statusMessage: String {
+    var statusMessage: String {
         switch status {
         case .idle:
             return "Tap to start"
@@ -272,7 +281,7 @@ struct TranscriptionView: View {
         }
     }
 
-    private func makeSession(for choice: DemoTranscriberPreset) -> SpeechSession {
+    func makeSession(for choice: DemoTranscriberPreset) -> SpeechSession {
         let newSession = SpeechSession(preset: choice.preset)
         if enableVAD {
             newSession.configureVoiceActivation(
@@ -282,12 +291,6 @@ struct TranscriptionView: View {
         }
         return newSession
     }
-}
-
-private struct SpeechDetectorTaskID: Hashable {
-    let sessionID: ObjectIdentifier
-    let vadEnabled: Bool
-    let configurationID: UUID
 }
 
 #Preview {
