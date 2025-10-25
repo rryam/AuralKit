@@ -5,9 +5,9 @@ import CryptoKit
 extension SpeechSession {
 
     // swiftlint:disable nesting
-    public struct CustomVocabulary: Sendable, Hashable {
+    public struct CustomVocabulary: Sendable, Hashable, Encodable {
 
-        public struct Phrase: Sendable, Hashable {
+        public struct Phrase: Sendable, Hashable, Encodable {
             public let text: String
             public let count: Int
 
@@ -17,7 +17,7 @@ extension SpeechSession {
             }
         }
 
-        public struct Pronunciation: Sendable, Hashable {
+        public struct Pronunciation: Sendable, Hashable, Encodable {
             public let grapheme: String
             public let phonemes: [String]
 
@@ -27,7 +27,7 @@ extension SpeechSession {
             }
         }
 
-        public struct Template: Sendable, Hashable {
+        public struct Template: Sendable, Hashable, Encodable {
             public let body: String
             public let count: Int
             public let classes: [String: [String]]
@@ -66,27 +66,9 @@ extension SpeechSession {
         }
 
         func cacheKey() throws -> String {
-            var payload: [String: Any] = [
-                "locale": locale.identifier(.bcp47),
-                "identifier": identifier,
-                "version": version
-            ]
-
-            if let weight {
-                payload["weight"] = weight
-            }
-
-            payload["phrases"] = phrases.map { ["text": $0.text, "count": $0.count] }
-            payload["pronunciations"] = pronunciations.map { ["grapheme": $0.grapheme, "phonemes": $0.phonemes] }
-            payload["templates"] = templates.map { template in
-                [
-                    "body": template.body,
-                    "count": template.count,
-                    "classes": template.classes
-                ]
-            }
-
-            let data = try JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys])
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.sortedKeys]
+            let data = try encoder.encode(self)
             let digest = SHA256.hash(data: data)
             return digest.map { String(format: "%02x", $0) }.joined()
         }
@@ -121,6 +103,27 @@ extension SpeechSession {
             }
 
             return data
+        }
+
+        enum CodingKeys: String, CodingKey {
+            case locale
+            case identifier
+            case version
+            case weight
+            case phrases
+            case pronunciations
+            case templates
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var container = encoder.container(keyedBy: CodingKeys.self)
+            try container.encode(locale.identifier(.bcp47), forKey: .locale)
+            try container.encode(identifier, forKey: .identifier)
+            try container.encode(version, forKey: .version)
+            try container.encodeIfPresent(weight, forKey: .weight)
+            try container.encode(phrases, forKey: .phrases)
+            try container.encode(pronunciations, forKey: .pronunciations)
+            try container.encode(templates, forKey: .templates)
         }
     }
     // swiftlint:enable nesting
