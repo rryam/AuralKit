@@ -172,7 +172,10 @@ extension SpeechSession {
 
         if Self.shouldLog(.debug) {
             Self.logger.debug(
-                "Analyzer format sampleRate: \(format.sampleRate, privacy: .public) Hz, channels: \(format.channelCount, privacy: .public)"
+                """
+                Analyzer format sampleRate: \(format.sampleRate, privacy: .public) Hz, \
+                channels: \(format.channelCount, privacy: .public)
+                """
             )
         }
         (inputSequence, inputBuilder) = AsyncStream<AnalyzerInput>.makeStream()

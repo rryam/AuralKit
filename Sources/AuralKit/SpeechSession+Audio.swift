@@ -33,7 +33,9 @@ private func makeAudioTapHandler(for session: SpeechSession) -> AVAudioNodeTapBl
                 try session.processAudioBuffer(bufferCopy)
             } catch {
                 if SpeechSession.shouldLog(.error) {
-                    SpeechSession.logger.error("Audio processing error: \(error.localizedDescription, privacy: .public)")
+                    SpeechSession.logger.error(
+                        "Audio processing error: \(error.localizedDescription, privacy: .public)"
+                    )
                 }
                 print("[AudioTap] audio processing error: \(error)")
             }
@@ -59,9 +61,13 @@ extension SpeechSession {
         audioEngine.inputNode.removeTap(onBus: 0)
 
         let inputFormat = audioEngine.inputNode.outputFormat(forBus: 0)
-        print("[AudioTap] startAudioStreaming entered; queue: \(currentQueueLabel()), main thread: \(Thread.isMainThread)")
+        print(
+            "[AudioTap] startAudioStreaming entered; queue: \(currentQueueLabel()), main thread: \(Thread.isMainThread)"
+        )
         if Self.shouldLog(.debug) {
-            Self.logger.debug("Installing audio tap with buffer size \(Self.microphoneTapBufferSize, privacy: .public) frames")
+            Self.logger.debug(
+                "Installing audio tap with buffer size \(Self.microphoneTapBufferSize, privacy: .public) frames"
+            )
         }
 
         audioEngine.inputNode.installTap(

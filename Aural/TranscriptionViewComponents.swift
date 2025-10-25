@@ -9,7 +9,7 @@ struct TranscriptionSettingsView: View {
     @Binding var enableVAD: Bool
     @Binding var vadSensitivity: SpeechDetector.SensitivityLevel
     let isSpeechDetected: Bool
-    
+
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             VStack(alignment: .leading, spacing: 4) {
@@ -23,13 +23,13 @@ struct TranscriptionSettingsView: View {
                 }
                 .pickerStyle(.menu)
             }
-            
+
             Divider()
-            
+
             VStack(alignment: .leading, spacing: 8) {
                 Toggle("Voice Activity Detection", isOn: $enableVAD)
                     .font(.subheadline)
-                
+
                 if enableVAD {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Sensitivity Level")
@@ -41,7 +41,7 @@ struct TranscriptionSettingsView: View {
                             Text("High").tag(SpeechDetector.SensitivityLevel.high)
                         }
                         .pickerStyle(.segmented)
-                        
+
                         Text("Speech detected: \(isSpeechDetected ? "Yes" : "No")")
                             .font(.caption)
                             .foregroundStyle(isSpeechDetected ? .green : .orange)
@@ -50,7 +50,7 @@ struct TranscriptionSettingsView: View {
                     .padding(.leading, 8)
                 }
             }
-            
+
             Divider()
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -63,7 +63,7 @@ struct TranscriptionSettingsView: View {
 struct TranscriptionTextView: View {
     let finalText: AttributedString
     let partialText: AttributedString
-    var currentTimeRange: String? = nil
+    var currentTimeRange: String?
     var emptyStateMessage: String = "Results will appear here once transcription begins."
 
     var body: some View {
@@ -127,7 +127,7 @@ struct TranscriptionControlsView: View {
     let onPrimaryAction: () -> Void
     let onStopAction: () -> Void
     var animationScale: CGFloat = 1.0
-    
+
     var body: some View {
         VStack(spacing: 16) {
             if let error {
@@ -139,7 +139,7 @@ struct TranscriptionControlsView: View {
                     .cornerRadius(8)
                     .padding(.horizontal)
             }
-            
+
             Button(action: onPrimaryAction) {
                 ZStack {
                     Circle()
@@ -154,13 +154,13 @@ struct TranscriptionControlsView: View {
             .buttonStyle(.glass)
             .buttonBorderShape(.circle)
             .disabled(error != nil || status == .stopping)
-            
+
             if showStopButton {
                 Button("Stop", action: onStopAction)
                     .buttonStyle(.borderedProminent)
                     .tint(.gray)
             }
-            
+
             Text(statusMessage)
                 .font(.body)
                 .foregroundStyle(.secondary)

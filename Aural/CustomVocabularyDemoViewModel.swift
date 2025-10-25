@@ -1,37 +1,43 @@
 import SwiftUI
+import Observation
 import AuralKit
 import Speech
+import CoreMedia
 
 @MainActor
-final class CustomVocabularyDemoViewModel: ObservableObject {
+@Observable
+final class CustomVocabularyDemoViewModel {
 
     // MARK: - Published state
 
-    @Published var status: SpeechSession.Status = .idle
-    @Published var finalText: AttributedString = ""
-    @Published var partialText: AttributedString = ""
-    @Published var errorMessage: String?
-    @Published var isCustomVocabularyEnabled: Bool = true
-    @Published var vocabularyIdentifier: String = "tech-demo"
-    @Published var vocabularyVersion: String = "1"
-    @Published var vocabularyWeight: Double = 0.6
-    @Published var phrases: [CustomVocabularyPhrase] = CustomVocabularyPreset.techDemo.phrases
-    @Published var pronunciations: [CustomVocabularyPronunciation] = CustomVocabularyPreset.techDemo.pronunciations
-    @Published var contextualTerms: String = "WebAssembly, TensorFlow, Kubernetes"
-    @Published var isCompiling: Bool = false
-    @Published var cacheKey: String?
-    @Published var compilationDuration: TimeInterval?
-    @Published var progressFraction: Double?
+    var status: SpeechSession.Status = .idle
+    var finalText: AttributedString = ""
+    var partialText: AttributedString = ""
+    var errorMessage: String?
+    var currentTimeRange: String = ""
+    var isCustomVocabularyEnabled: Bool = true
+    var vocabularyIdentifier: String = "tech-demo"
+    var vocabularyVersion: String = "1"
+    var vocabularyWeight: Double = 0.6
+    var phrases: [CustomVocabularyPhrase] = CustomVocabularyPreset.techDemo.phrases
+    var pronunciations: [CustomVocabularyPronunciation] = CustomVocabularyPreset.techDemo.pronunciations
+    var contextualTerms: String = "WebAssembly, TensorFlow, Kubernetes"
+    var phrasesEnabled: Bool = true
+    var contextualStringsEnabled: Bool = true
+    var isCompiling: Bool = false
+    var cacheKey: String?
+    var compilationDuration: TimeInterval?
+    var progressFraction: Double?
 
     // MARK: - Private state
 
     private let locale = Locale(identifier: "en_US")
-    private let session: SpeechSession
-    private var statusTask: Task<Void, Never>?
-    private var transcriptionTask: Task<Void, Never>?
-    private var progressTask: Task<Void, Never>?
-    private weak var trackedProgress: Progress?
-    private var progressObservation: NSKeyValueObservation?
+    @ObservationIgnored private let session: SpeechSession
+    @ObservationIgnored private var statusTask: Task<Void, Never>?
+    @ObservationIgnored private var transcriptionTask: Task<Void, Never>?
+    @ObservationIgnored private var progressTask: Task<Void, Never>?
+    @ObservationIgnored private weak var trackedProgress: Progress?
+    @ObservationIgnored private var progressObservation: NSKeyValueObservation?
 
     // MARK: - Init / Deinit
 
@@ -55,6 +61,7 @@ final class CustomVocabularyDemoViewModel: ObservableObject {
         errorMessage = nil
         finalText = ""
         partialText = ""
+        currentTimeRange = ""
         cacheKey = nil
         compilationDuration = nil
 
@@ -120,6 +127,7 @@ final class CustomVocabularyDemoViewModel: ObservableObject {
         Task { @MainActor in
             await session.stopTranscribing()
             partialText = ""
+            currentTimeRange = ""
         }
     }
 
@@ -219,10 +227,12 @@ final class CustomVocabularyDemoViewModel: ObservableObject {
     }
 
     private func buildDescriptor() -> SpeechSession.CustomVocabulary? {
-        let cleanedPhrases = phrases
+        let cleanedPhrases = phrasesEnabled ? phrases
             .map { $0.normalized }
-            .filter { !$0.text.isEmpty }
-        guard !cleanedPhrases.isEmpty else { return nil }
+            .filter { !$0.text.isEmpty } : []
+        if phrasesEnabled && cleanedPhrases.isEmpty {
+            return nil
+        }
 
         let cleanedPronunciations = pronunciations
             .map { $0.normalized }
@@ -239,6 +249,8 @@ final class CustomVocabularyDemoViewModel: ObservableObject {
     }
 
     private func buildContextualStrings() -> [AnalysisContext.ContextualStringsTag: [String]]? {
+        guard contextualStringsEnabled else { return nil }
+
         let tokens = contextualTerms
             .split { $0 == "," || $0.isNewline }
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
@@ -253,8 +265,27 @@ final class CustomVocabularyDemoViewModel: ObservableObject {
             finalText += result.text
             partialText = ""
         } else {
-            partialText = result.text
+            var styled = result.text
+            styled.foregroundColor = Color.purple.opacity(0.4)
+            partialText = styled
         }
+
+        currentTimeRange = ""
+        result.text.runs.forEach { run in
+            if let range = run.audioTimeRange {
+                let start = formatTime(range.start)
+                let end = formatTime(range.end)
+                currentTimeRange = "\(start) - \(end)"
+            }
+        }
+    }
+
+    private func formatTime(_ time: CMTime) -> String {
+        let seconds = time.seconds
+        let minutes = Int(seconds / 60)
+        let remainingSeconds = Int(seconds.truncatingRemainder(dividingBy: 60))
+        let milliseconds = Int((seconds.truncatingRemainder(dividingBy: 1)) * 100)
+        return String(format: "%d:%02d.%02d", minutes, remainingSeconds, milliseconds)
     }
 
     private func track(_ progress: Progress) {
