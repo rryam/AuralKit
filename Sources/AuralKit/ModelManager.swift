@@ -13,68 +13,54 @@ class ModelManager: @unchecked Sendable {
     /// Ensure the speech model for the given locale is available
     func ensureModel(module: any LocaleDependentSpeechModule, locale: Locale) async throws {
         if let speechModule = module as? SpeechTranscriber {
-            try await ensureSpeechModel(transcriber: speechModule, locale: locale)
+            try await ensureLocaleAssets(
+                module: speechModule,
+                locale: locale,
+                supportedLocales: { await SpeechTranscriber.supportedLocales },
+                installedLocales: { await SpeechTranscriber.installedLocales }
+            )
             return
         }
 
         if let dictationModule = module as? DictationTranscriber {
-            try await ensureDictationModel(transcriber: dictationModule, locale: locale)
+            try await ensureLocaleAssets(
+                module: dictationModule,
+                locale: locale,
+                supportedLocales: { await DictationTranscriber.supportedLocales },
+                installedLocales: { await DictationTranscriber.installedLocales }
+            )
             return
         }
 
         try await downloadAssetsIfNeeded(for: [module])
     }
 
-    private func ensureSpeechModel(transcriber: SpeechTranscriber, locale: Locale) async throws {
-        guard await speechSupported(locale: locale) else {
+    private func ensureLocaleAssets<Module: LocaleDependentSpeechModule>(
+        module: Module,
+        locale: Locale,
+        supportedLocales: @escaping @Sendable () async -> [Locale],
+        installedLocales: @escaping @Sendable () async -> [Locale]
+    ) async throws {
+        guard await localeMatches(provider: supportedLocales, locale: locale) else {
             throw SpeechSessionError.unsupportedLocale(locale)
         }
 
-        if await speechInstalled(locale: locale) {
+        if await localeMatches(provider: installedLocales, locale: locale) {
             logger.notice("Locale \(locale.identifier(.bcp47)) already installed")
             currentDownloadProgress = nil
         } else {
             logger.info("Ensuring model download for locale \(locale.identifier(.bcp47))")
-            try await downloadAssetsIfNeeded(for: [transcriber])
+            try await downloadAssetsIfNeeded(for: [module])
         }
     }
 
-    private func ensureDictationModel(transcriber: DictationTranscriber, locale: Locale) async throws {
-        guard await dictationSupported(locale: locale) else {
-            throw SpeechSessionError.unsupportedLocale(locale)
-        }
-
-        if await dictationInstalled(locale: locale) {
-            logger.notice("Locale \(locale.identifier(.bcp47)) already installed")
-            currentDownloadProgress = nil
-        } else {
-            logger.info("Ensuring model download for locale \(locale.identifier(.bcp47))")
-            try await downloadAssetsIfNeeded(for: [transcriber])
-        }
-    }
-
-    private func speechSupported(locale: Locale) async -> Bool {
-        let supported = await SpeechTranscriber.supportedLocales
+    private func localeMatches(
+        provider: @escaping @Sendable () async -> [Locale],
+        locale: Locale
+    ) async -> Bool {
+        let locales = await provider()
         let target = locale.identifier(.bcp47)
-        return supported.contains { $0.identifier(.bcp47) == target }
-    }
-
-    private func speechInstalled(locale: Locale) async -> Bool {
-        let installed = await SpeechTranscriber.installedLocales
-        let target = locale.identifier(.bcp47)
-        return installed.contains { $0.identifier(.bcp47) == target }
-    }
-
-    private func dictationSupported(locale: Locale) async -> Bool {
-        let supported = await DictationTranscriber.supportedLocales
-        let target = locale.identifier(.bcp47)
-        return supported.contains { $0.identifier(.bcp47) == target }
-    }
-
-    private func dictationInstalled(locale: Locale) async -> Bool {
-        let installed = await DictationTranscriber.installedLocales
-        let target = locale.identifier(.bcp47)
-        return installed.contains { $0.identifier(.bcp47) == target }
+        return locales.contains { $0.identifier(.bcp47) == target }
     }
 
     func ensureAssets(for modules: [any SpeechModule]) async throws {

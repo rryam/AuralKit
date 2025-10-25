@@ -220,6 +220,10 @@ final class CustomVocabularyCompiler: CustomVocabularyCompiling, @unchecked Send
     ) async throws {
         let modelData = descriptor.makeModelData()
 
+        defer {
+            try? fileManager.removeItem(at: paths.assetURL)
+        }
+
         do {
             try await modelData.export(to: paths.assetURL)
             try await Task.detached(priority: .userInitiated) {
@@ -229,11 +233,8 @@ final class CustomVocabularyCompiler: CustomVocabularyCompiling, @unchecked Send
                 )
             }.value
         } catch {
-            try? fileManager.removeItem(at: paths.assetURL)
             throw SpeechSessionError.customVocabularyCompilationFailed(error)
         }
-
-        try? fileManager.removeItem(at: paths.assetURL)
     }
 }
 
