@@ -65,7 +65,11 @@ extension SpeechSession {
             self.templates = templates
         }
 
-        func cacheKey() throws -> String {
+        /// Deterministic identifier derived from the descriptor contents.
+        ///
+        /// Uses `JSONEncoder` with sorted keys to ensure identical inputs
+        /// produce identical digests across processes and launches.
+        public func stableCacheKey() throws -> String {
             let encoder = JSONEncoder()
             encoder.outputFormatting = [.sortedKeys]
             let data = try encoder.encode(self)
@@ -155,7 +159,7 @@ final class CustomVocabularyCompiler: CustomVocabularyCompiling, @unchecked Send
     }
 
     func compile(descriptor: SpeechSession.CustomVocabulary) async throws -> CustomVocabularyCompilation {
-        let cacheKey = try descriptor.cacheKey()
+        let cacheKey = try descriptor.stableCacheKey()
         let paths = try preparePaths(for: cacheKey)
         let configuration = makeConfiguration(for: descriptor, paths: paths)
         try await exportModelData(descriptor, with: paths, configuration: configuration)
@@ -268,7 +272,7 @@ extension SpeechSession {
 
         let cacheKey: String
         do {
-            cacheKey = try vocabulary.cacheKey()
+            cacheKey = try vocabulary.stableCacheKey()
         } catch {
             throw SpeechSessionError.customVocabularyCompilationFailed(error)
         }

@@ -1,5 +1,4 @@
 import Foundation
-import SwiftUI
 
 struct CustomVocabularyPhrase: Identifiable {
     let id = UUID()
@@ -66,33 +65,5 @@ enum CustomVocabularyPreset {
                 .init(grapheme: "WebAssembly", phonemes: ["wɛb", "ə", "sɛm", "bli"])
             ]
         }
-    }
-}
-
-@MainActor
-final class CustomVocabularyProgressObserver: ObservableObject {
-    @Published var progressFraction: Double?
-    private var observation: NSKeyValueObservation?
-    private weak var trackedProgress: Progress?
-
-    func track(_ progress: Progress) {
-        guard trackedProgress !== progress else { return }
-
-        observation?.invalidate()
-        trackedProgress = progress
-        progressFraction = progress.fractionCompleted
-
-        observation = progress.observe(\.fractionCompleted, options: [.initial, .new]) { [weak self] progress, _ in
-            DispatchQueue.main.async {
-                self?.progressFraction = progress.fractionCompleted
-            }
-        }
-    }
-
-    func reset() {
-        observation?.invalidate()
-        observation = nil
-        trackedProgress = nil
-        progressFraction = nil
     }
 }

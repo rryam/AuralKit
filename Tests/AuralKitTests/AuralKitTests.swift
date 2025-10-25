@@ -166,8 +166,8 @@ struct SpeechSessionCustomVocabularyTests {
             ]
         )
 
-        let first = try descriptor.cacheKey()
-        let second = try descriptor.cacheKey()
+        let first = try descriptor.stableCacheKey()
+        let second = try descriptor.stableCacheKey()
         #expect(first == second)
     }
 
@@ -185,7 +185,7 @@ struct SpeechSessionCustomVocabularyTests {
         )
 
         try await session.configureCustomVocabulary(descriptor)
-        let expectedCacheKey = try descriptor.cacheKey()
+        let expectedCacheKey = try descriptor.stableCacheKey()
         let compileCount = await compiler.compileCallCount
         #expect(compileCount == 1)
         #expect(session.customVocabularyDescriptor == descriptor)
@@ -270,7 +270,7 @@ actor MockCustomVocabularyCompiler: CustomVocabularyCompiling {
     func compile(descriptor: SpeechSession.CustomVocabulary) async throws -> CustomVocabularyCompilation {
         compileCallCount += 1
         lastDescriptor = descriptor
-        let cacheKey = try descriptor.cacheKey()
+        let cacheKey = try descriptor.stableCacheKey()
 
         let outputDirectory = baseDirectory.appendingPathComponent(cacheKey, isDirectory: true)
         try? fileManager.createDirectory(at: outputDirectory, withIntermediateDirectories: true)

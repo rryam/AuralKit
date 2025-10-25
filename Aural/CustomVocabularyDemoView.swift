@@ -1,29 +1,9 @@
 import SwiftUI
 import AuralKit
 import Speech
-import CryptoKit
 
 struct CustomVocabularyDemoView: View {
-    @State var session = SpeechSession()
-    @State var status: SpeechSession.Status = .idle
-    @State var finalText: AttributedString = ""
-    @State var partialText: AttributedString = ""
-    @State var errorMessage: String?
-    @State var isCustomVocabularyEnabled = true
-    @State var vocabularyIdentifier = "tech-demo"
-    @State var vocabularyVersion = "1"
-    @State var vocabularyWeight = 0.6
-    @State var phrases: [CustomVocabularyPhrase] = CustomVocabularyPreset.techDemo.phrases
-    @State var pronunciations: [CustomVocabularyPronunciation] = CustomVocabularyPreset.techDemo.pronunciations
-    @State var contextualTerms = "WebAssembly, TensorFlow, Kubernetes"
-    @State var isCompiling = false
-    @State var cacheKey: String?
-    @State var compilationDuration: TimeInterval?
-    @State var transcriptionTask: Task<Void, Never>?
-    @StateObject var progressObserver = CustomVocabularyProgressObserver()
-    @State var progressTask: Task<Void, Never>?
-
-    let locale = Locale(identifier: "en_US")
+    @StateObject private var viewModel = CustomVocabularyDemoViewModel()
 
     var body: some View {
         NavigationStack {
@@ -52,20 +32,8 @@ struct CustomVocabularyDemoView: View {
                 }
             }
         }
-        .task(id: ObjectIdentifier(session)) {
-            for await newStatus in session.statusStream {
-                await MainActor.run {
-                    status = newStatus
-                }
-            }
-        }
-        .onChange(of: isCustomVocabularyEnabled) { _, isEnabled in
-            if !isEnabled, status == .transcribing || status == .preparing {
-                stopTranscription()
-            }
-        }
         .onDisappear {
-            stopTranscription()
+            viewModel.teardown()
         }
     }
 }
@@ -76,15 +44,18 @@ private extension CustomVocabularyDemoView {
     var configurationSection: some View {
         GroupBox("Configuration") {
             VStack(alignment: .leading, spacing: 12) {
-                Toggle("Enable Custom Vocabulary", isOn: $isCustomVocabularyEnabled)
+                Toggle("Enable Custom Vocabulary", isOn: $viewModel.isCustomVocabularyEnabled)
+                    .onChange(of: viewModel.isCustomVocabularyEnabled) { _, enabled in
+                        viewModel.handleToggleChange(enabled)
+                    }
 
-                if isCustomVocabularyEnabled {
+                if viewModel.isCustomVocabularyEnabled {
                     HStack {
-                        TextField("Identifier", text: $vocabularyIdentifier)
+                        TextField("Identifier", text: $viewModel.vocabularyIdentifier)
 #if os(iOS)
                             .textInputAutocapitalization(.never)
 #endif
-                        TextField("Version", text: $vocabularyVersion)
+                        TextField("Version", text: $viewModel.vocabularyVersion)
 #if os(iOS)
                             .textInputAutocapitalization(.never)
 #endif
@@ -93,18 +64,14 @@ private extension CustomVocabularyDemoView {
 
                     HStack {
                         Text("Weight")
-                        Slider(value: $vocabularyWeight, in: 0.0...1.0)
-                        Text(vocabularyWeight.formatted(.number.precision(.fractionLength(2))))
+                        Slider(value: $viewModel.vocabularyWeight, in: 0.0...1.0)
+                        Text(viewModel.vocabularyWeight.formatted(.number.precision(.fractionLength(2))))
                             .monospacedDigit()
                             .frame(width: 50, alignment: .trailing)
                     }
 
                     Button("Reset to Tech Demo") {
-                        phrases = CustomVocabularyPreset.techDemo.phrases
-                        pronunciations = CustomVocabularyPreset.techDemo.pronunciations
-                        vocabularyIdentifier = "tech-demo"
-                        vocabularyVersion = "1"
-                        vocabularyWeight = 0.6
+                        viewModel.resetToPreset()
                     }
                     .buttonStyle(.bordered)
                 }
@@ -116,7 +83,7 @@ private extension CustomVocabularyDemoView {
     var vocabularySection: some View {
         GroupBox("Phrases") {
             VStack(alignment: .leading, spacing: 12) {
-                ForEach($phrases) { phrase in
+                ForEach($viewModel.phrases) { phrase in
                     VStack(alignment: .leading, spacing: 6) {
                         TextField("Phrase", text: phrase.text)
                         Stepper(value: phrase.count, in: 1...20) {
@@ -127,7 +94,7 @@ private extension CustomVocabularyDemoView {
                 }
 
                 Button {
-                    phrases.append(.init(text: "", count: 3))
+                    viewModel.phrases.append(.init(text: "", count: 3))
                 } label: {
                     Label("Add Phrase", systemImage: "plus")
                 }
@@ -140,7 +107,7 @@ private extension CustomVocabularyDemoView {
     var pronunciationsSection: some View {
         GroupBox("Pronunciations") {
             VStack(alignment: .leading, spacing: 12) {
-                ForEach($pronunciations) { pronunciation in
+                ForEach($viewModel.pronunciations) { pronunciation in
                     VStack(alignment: .leading, spacing: 6) {
                         TextField("Grapheme", text: pronunciation.grapheme)
                         TextField("Phonemes (space separated)", text: pronunciation.phonemeText)
@@ -149,7 +116,7 @@ private extension CustomVocabularyDemoView {
                 }
 
                 Button {
-                    pronunciations.append(.init(grapheme: "", phonemes: []))
+                    viewModel.pronunciations.append(.init(grapheme: "", phonemes: []))
                 } label: {
                     Label("Add Pronunciation", systemImage: "plus")
                 }
@@ -165,7 +132,7 @@ private extension CustomVocabularyDemoView {
                 Text("Comma-separated list to further bias recognition.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
-                TextField("GraphQL, Static Analysis, Zero-Knowledge", text: $contextualTerms, axis: .vertical)
+                TextField("GraphQL, Static Analysis, Zero-Knowledge", text: $viewModel.contextualTerms, axis: .vertical)
 #if os(iOS)
                     .textInputAutocapitalization(.never)
 #endif
@@ -177,27 +144,27 @@ private extension CustomVocabularyDemoView {
     var statusSection: some View {
         GroupBox("Status") {
             VStack(alignment: .leading, spacing: 8) {
-                statusRow(title: "Session", value: statusTitle)
+                statusRow(title: "Session", value: viewModel.statusTitleText)
 
-                if let cacheKey {
+                if let cacheKey = viewModel.cacheKey {
                     statusRow(title: "Cache Key", value: cacheKey)
                 }
 
-                if let duration = compilationDuration {
+                if let duration = viewModel.compilationDuration {
                     statusRow(
                         title: "Compilation",
                         value: String(format: "%.2f s", duration)
                     )
                 }
 
-                if isCompiling {
+                if viewModel.isCompiling {
                     HStack(spacing: 8) {
                         ProgressView()
                         Text("Preparing custom vocabulary…")
                     }
                 }
 
-                if let progressFraction = progressObserver.progressFraction {
+                if let progressFraction = viewModel.progressFraction {
                     VStack(alignment: .leading) {
                         Text("Downloading dictation assets…")
                         ProgressView(value: progressFraction)
@@ -205,7 +172,7 @@ private extension CustomVocabularyDemoView {
                     }
                 }
 
-                if let message = errorMessage {
+                if let message = viewModel.errorMessage {
                     Label(message, systemImage: "exclamationmark.triangle.fill")
                         .foregroundStyle(.red)
                 }
@@ -217,16 +184,16 @@ private extension CustomVocabularyDemoView {
     var transcriptionOutputSection: some View {
         GroupBox("Transcription") {
             VStack(alignment: .leading, spacing: 12) {
-                if !finalText.characters.isEmpty {
-                    Text(finalText)
+                if !viewModel.finalText.characters.isEmpty {
+                    Text(viewModel.finalText)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(12)
                         .background(.thinMaterial)
                         .cornerRadius(8)
                 }
 
-                if !partialText.characters.isEmpty {
-                    Text(partialText)
+                if !viewModel.partialText.characters.isEmpty {
+                    Text(viewModel.partialText)
                         .fontWeight(.semibold)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(12)
@@ -234,7 +201,7 @@ private extension CustomVocabularyDemoView {
                         .cornerRadius(8)
                 }
 
-                if finalText.characters.isEmpty && partialText.characters.isEmpty {
+                if viewModel.finalText.characters.isEmpty && viewModel.partialText.characters.isEmpty {
                     Text("Results will appear here once transcription begins.")
                         .foregroundStyle(.secondary)
                 }
@@ -245,20 +212,31 @@ private extension CustomVocabularyDemoView {
 
     var controlSection: some View {
         HStack(spacing: 16) {
-            Button(action: startTranscription) {
-                Label(startButtonTitle, systemImage: startButtonIcon)
+            Button(action: viewModel.startTranscription) {
+                Label(viewModel.startButtonTitle, systemImage: viewModel.startButtonIcon)
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.borderedProminent)
-            .disabled(isCompiling || status == .preparing || status == .transcribing)
+            .disabled(viewModel.isStartDisabled)
 
-            Button(action: stopTranscription) {
+            Button(action: viewModel.stopTranscription) {
                 Label("Stop", systemImage: "stop.fill")
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.bordered)
-            .disabled(status == .idle || status == .stopping)
+            .disabled(viewModel.isStopDisabled)
         }
         .padding(.top, 8)
+    }
+
+    func statusRow(title: String, value: String) -> some View {
+        HStack {
+            Text(title)
+                .foregroundStyle(.secondary)
+            Spacer()
+            Text(value)
+                .multilineTextAlignment(.trailing)
+                .font(.footnote)
+        }
     }
 }
