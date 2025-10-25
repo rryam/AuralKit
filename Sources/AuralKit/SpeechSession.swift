@@ -59,6 +59,7 @@ public final class SpeechSession {
 
 #if os(iOS)
     let audioConfig: AudioSessionConfiguration
+    var isAudioSessionActive = false
 #endif
 
 #if os(iOS) || os(macOS)
