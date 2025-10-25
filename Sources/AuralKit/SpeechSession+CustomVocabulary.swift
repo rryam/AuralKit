@@ -240,6 +240,12 @@ final class CustomVocabularyCompiler: CustomVocabularyCompiling, @unchecked Send
 @MainActor
 extension SpeechSession {
 
+    /// Configure the session's custom vocabulary, compiling assets as needed.
+    ///
+    /// - Parameter vocabulary: The vocabulary descriptor to activate, or `nil` to clear the current
+    ///   configuration.
+    /// - Throws: A `SpeechSessionError` when the session is active, the descriptor locale mismatches, or
+    ///   compilation fails.
     public func configureCustomVocabulary(_ vocabulary: CustomVocabulary?) async throws {
         if streamingMode != .inactive {
             throw SpeechSessionError.customVocabularyRequiresIdleSession
@@ -282,6 +288,11 @@ extension SpeechSession {
         customVocabularyOutputDirectory = compilation.outputDirectory
     }
 
+    /// Start a dictation-backed transcription stream that leverages the currently configured custom vocabulary.
+    ///
+    /// - Parameter contextualStrings: Optional contextual strings to bias recognition alongside the custom
+    ///   language model.
+    /// - Returns: An async throwing stream producing `DictationTranscriber.Result` values.
     public func startDictationTranscribing(
         contextualStrings: [AnalysisContext.ContextualStringsTag: [String]]? = nil
     ) -> AsyncThrowingStream<DictationTranscriber.Result, Error> {
@@ -310,6 +321,13 @@ extension SpeechSession {
         return stream
     }
 
+    /// Compile and activate the provided custom vocabulary, then begin dictation-backed transcription.
+    ///
+    /// - Parameters:
+    ///   - customVocabulary: The descriptor describing phrases, pronunciations, and templates to prefer.
+    ///   - contextualStrings: Optional contextual strings to further bias the transcription.
+    /// - Returns: An async throwing stream emitting dictation transcriber results enriched by the custom vocabulary.
+    /// - Throws: Errors encountered while configuring the vocabulary or starting the dictation pipeline.
     public func startTranscribing(
         customVocabulary: CustomVocabulary,
         contextualStrings: [AnalysisContext.ContextualStringsTag: [String]]? = nil
