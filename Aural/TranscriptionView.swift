@@ -2,7 +2,7 @@ import SwiftUI
 import AuralKit
 import Speech
 
-struct TranscriptionExperienceView: View {
+struct TranscriptionView: View {
     @Bindable var manager: TranscriptionManager
     @State private var animationScale: CGFloat = 1.0
 
@@ -54,6 +54,9 @@ struct TranscriptionExperienceView: View {
             .navigationBarTitleDisplayMode(.large)
 #endif
             .toolbar { toolbarContent }
+#if os(macOS)
+            .toolbarVisibility(.visible, for: .automatic)
+#endif
         }
         .onAppear {
             SpeechSession.logging = .debug
@@ -86,11 +89,25 @@ struct TranscriptionExperienceView: View {
         if !manager.currentTranscript.isEmpty {
 #if os(iOS)
             ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    manager.clearText()
+                } label: {
+                    Image(systemName: "trash")
+                }
+            }
+            ToolbarItem(placement: .topBarTrailing) {
                 ShareLink(item: manager.currentTranscript) {
                     Image(systemName: "square.and.arrow.up")
                 }
             }
 #else
+            ToolbarItem(placement: .automatic) {
+                Button {
+                    manager.clearText()
+                } label: {
+                    Image(systemName: "trash")
+                }
+            }
             ToolbarItem(placement: .automatic) {
                 ShareLink(item: manager.currentTranscript) {
                     Image(systemName: "square.and.arrow.up")

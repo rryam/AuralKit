@@ -296,7 +296,11 @@ extension CustomVocabularyDemoViewModel {
 
         if isCustomVocabularyEnabled {
             guard let descriptor = buildDescriptor() else {
-                let error = NSError(domain: "CustomVocabularyDemoViewModel", code: 1, userInfo: [NSLocalizedDescriptionKey: "Please provide at least one phrase."])
+                let error = NSError(
+                    domain: "CustomVocabularyDemoViewModel",
+                    code: 1,
+                    userInfo: [NSLocalizedDescriptionKey: "Please provide at least one phrase."]
+                )
                 throw SpeechSessionError.customVocabularyCompilationFailed(error)
             }
 

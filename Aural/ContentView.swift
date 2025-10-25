@@ -14,7 +14,7 @@ struct ContentView: View {
 
     var body: some View {
         TabView(selection: $selectedTab) {
-            TranscriptionExperienceView(manager: transcriptionManager)
+            TranscriptionView(manager: transcriptionManager)
                 .tabItem {
                     Label("Transcribe", systemImage: "waveform")
                 }

@@ -172,6 +172,12 @@ class TranscriptionManager {
         transcriptionHistory.removeAll()
     }
 
+    func clearText() {
+        finalizedText = ""
+        volatileText = ""
+        currentTimeRange = ""
+    }
+
     func deleteRecord(_ record: TranscriptionRecord) {
         transcriptionHistory.removeAll { $0.id == record.id }
     }

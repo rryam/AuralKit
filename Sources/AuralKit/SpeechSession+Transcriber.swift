@@ -61,18 +61,21 @@ extension SpeechSession {
     }
 
     private func createDictationTranscriber() throws -> DictationTranscriber {
-        let basePreset = DictationTranscriber.Preset.progressiveLongDictation
+        let basePreset = DictationTranscriber.Preset.progressiveShortDictation
         var contentHints = basePreset.contentHints
+        var reportingOptions = basePreset.reportingOptions
 
         if let configuration = customVocabularyConfiguration {
             contentHints.insert(.customizedLanguage(modelConfiguration: configuration))
+            // Add frequent finalization for real-time behavior with custom vocabulary
+            reportingOptions.insert(.frequentFinalization)
         }
 
         dictationTranscriber = DictationTranscriber(
             locale: locale,
             contentHints: contentHints,
             transcriptionOptions: basePreset.transcriptionOptions,
-            reportingOptions: basePreset.reportingOptions,
+            reportingOptions: reportingOptions,
             attributeOptions: basePreset.attributeOptions
         )
 
