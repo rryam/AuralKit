@@ -368,7 +368,7 @@ for try await result in session.startTranscribing() {
 - When `reportResults` is `false`, AuralKit still skips silence but keeps the detector stream `nil`.
 - Inspect `isSpeechDetected` for the most recent detector state, or call `disableVoiceActivation()` to revert to continuous transcription.
 
-> **Requirements:** Voice activation is available on iOS 26.1+ and macOS 26.1+ where `SpeechDetector` conforms to `SpeechModule`.
+> **Requirements:** Voice activation is available on platforms where `SpeechDetector` conforms to `SpeechModule`.
 
 ### Device Capabilities
 

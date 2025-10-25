@@ -2,6 +2,8 @@ import Foundation
 @preconcurrency import AVFoundation
 import Speech
 
+extension SpeechDetector: @retroactive SpeechModule, @unchecked @retroactive Sendable {}
+
 @MainActor
 extension SpeechSession {
 
@@ -45,7 +47,6 @@ extension SpeechSession {
     private func configureModules(transcriber: SpeechTranscriber) -> [any SpeechModule] {
         var modules: [any SpeechModule] = []
 
-#if compiler(>=6.2.1) // SpeechDetector conforms to SpeechModule in iOS 26.1+
         if let configuration = voiceActivationConfiguration {
             let detector = SpeechDetector(
                 detectionOptions: configuration.detectionOptions,
@@ -53,8 +54,7 @@ extension SpeechSession {
             )
             speechDetector = detector
             _ = prepareSpeechDetectorResultsStream(reportResults: configuration.reportResults)
-            let detectorModule: any SpeechModule = detector
-            modules.append(detectorModule)
+            modules.append(detector)
             if Self.shouldLog(.info) {
                 let sensitivity = String(describing: configuration.detectionOptions.sensitivityLevel)
                 Self.logger.info(
@@ -66,11 +66,6 @@ extension SpeechSession {
             tearDownSpeechDetectorStream()
             voiceActivationConfiguration = nil
         }
-#else
-        speechDetector = nil
-        tearDownSpeechDetectorStream()
-        voiceActivationConfiguration = nil
-#endif
 
         modules.append(transcriber)
 
