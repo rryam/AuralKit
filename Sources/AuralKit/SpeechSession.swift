@@ -55,7 +55,7 @@ public final class SpeechSession {
     let reportingOptions: Set<SpeechTranscriber.ReportingOption>
     let attributeOptions: Set<SpeechTranscriber.ResultAttributeOption>
 
-    var statusContinuation: AsyncStream<Status>.Continuation?
+    var statusContinuations: [UUID: AsyncStream<Status>.Continuation] = [:]
 
 #if os(iOS)
     let audioConfig: AudioSessionConfiguration
@@ -65,7 +65,7 @@ public final class SpeechSession {
 #endif
 
 #if os(iOS) || os(macOS)
-    var audioInputConfigurationContinuation: AsyncStream<AudioInputInfo?>.Continuation?
+    var audioInputContinuations: [UUID: AsyncStream<AudioInputInfo?>.Continuation] = [:]
 #endif
 
     // Transcriber components
@@ -83,21 +83,39 @@ public final class SpeechSession {
     public internal(set) var status: Status = .idle
 
     /// Async stream that emits lifecycle status updates, beginning with the current status.
-    public private(set) lazy var statusStream: AsyncStream<Status> = {
-        AsyncStream<Status> { [weak self] continuation in
-            guard let self else { return }
-            continuation.yield(self.status)
-            self.statusContinuation = continuation
+    public var statusStream: AsyncStream<Status> {
+        AsyncStream { [weak self] continuation in
+            let id = UUID()
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                continuation.yield(self.status)
+                self.statusContinuations[id] = continuation
+            }
+
+            continuation.onTermination = { [weak self] _ in
+                Task { @MainActor [weak self] in
+                    self?.statusContinuations.removeValue(forKey: id)
+                }
+            }
         }
-    }()
+    }
 
 #if os(iOS) || os(macOS)
     /// Stream that delivers `AudioInputInfo` updates whenever the active audio input changes.
-    public private(set) lazy var audioInputConfigurationStream: AsyncStream<AudioInputInfo?> = {
+    public var audioInputConfigurationStream: AsyncStream<AudioInputInfo?> {
         AsyncStream { [weak self] continuation in
-            self?.audioInputConfigurationContinuation = continuation
+            let id = UUID()
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                self.audioInputContinuations[id] = continuation
+            }
+            continuation.onTermination = { [weak self] _ in
+                Task { @MainActor [weak self] in
+                    self?.audioInputContinuations.removeValue(forKey: id)
+                }
+            }
         }
-    }()
+    }
 #endif
 
     /// Stream of speech detector results when voice activation reporting is enabled; `nil` otherwise.
@@ -219,14 +237,14 @@ public final class SpeechSession {
         if let observer = routeChangeObserver {
             NotificationCenter.default.removeObserver(observer)
         }
-        audioInputConfigurationContinuation?.finish()
+        finishAudioInputStreams()
 #endif
 #if os(iOS)
         if let observer = interruptionObserver {
             NotificationCenter.default.removeObserver(observer)
         }
 #endif
-        statusContinuation?.finish()
+        finishStatusStreams()
     }
 
     // MARK: - Public API

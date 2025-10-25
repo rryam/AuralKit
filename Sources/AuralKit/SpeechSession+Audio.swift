@@ -216,12 +216,12 @@ extension SpeechSession {
             if Self.shouldLog(.info) {
                 Self.logger.info("Publishing audio input info for port: \(input.portName, privacy: .public)")
             }
-            audioInputConfigurationContinuation?.yield(AudioInputInfo(from: input))
+            broadcastAudioInputInfo(AudioInputInfo(from: input))
         } else {
             if Self.shouldLog(.debug) {
                 Self.logger.debug("No active audio input detected")
             }
-            audioInputConfigurationContinuation?.yield(nil)
+            broadcastAudioInputInfo(nil)
         }
 #elseif os(macOS)
         do {
@@ -235,16 +235,31 @@ extension SpeechSession {
                     Self.logger.debug("No active audio input detected")
                 }
             }
-            audioInputConfigurationContinuation?.yield(info)
+            broadcastAudioInputInfo(info)
         } catch {
             if Self.shouldLog(.error) {
                 Self.logger.error(
                     "Failed to obtain audio input details: \(error.localizedDescription, privacy: .public)"
                 )
             }
-            audioInputConfigurationContinuation?.yield(nil)
+            broadcastAudioInputInfo(nil)
         }
 #endif
+    }
+#endif
+
+#if os(iOS) || os(macOS)
+    func broadcastAudioInputInfo(_ info: AudioInputInfo?) {
+        for continuation in audioInputContinuations.values {
+            continuation.yield(info)
+        }
+    }
+
+    func finishAudioInputStreams() {
+        for continuation in audioInputContinuations.values {
+            continuation.finish()
+        }
+        audioInputContinuations.removeAll()
     }
 #endif
 
