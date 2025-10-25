@@ -52,6 +52,8 @@ class ModelManager: @unchecked Sendable {
             logger.info("Ensuring model download for locale \(locale.identifier(.bcp47))")
             try await downloadAssetsIfNeeded(for: [module])
         }
+
+        try await reserveLocaleIfNeeded(locale)
     }
 
     private func localeMatches(
@@ -61,6 +63,23 @@ class ModelManager: @unchecked Sendable {
         let locales = await provider()
         let target = locale.identifier(.bcp47)
         return locales.contains { $0.identifier(.bcp47) == target }
+    }
+
+    private func reserveLocaleIfNeeded(_ locale: Locale) async throws {
+        let existingReservations = await AssetInventory.reservedLocales
+        let target = locale.identifier(.bcp47)
+        if existingReservations.contains(where: { $0.identifier(.bcp47) == target }) {
+            logger.debug("Locale \(target) already reserved")
+            return
+        }
+
+        do {
+            try await AssetInventory.reserve(locale: locale)
+            logger.info("Reserved locale \(target)")
+        } catch {
+            logger.error("Failed to reserve locale \(target): \(error.localizedDescription, privacy: .public)")
+            throw SpeechSessionError.modelReservationFailed(locale, error)
+        }
     }
 
     func ensureAssets(for modules: [any SpeechModule]) async throws {

@@ -20,17 +20,6 @@ struct CustomVocabularyDemoView: View {
                 .padding()
             }
             .navigationTitle("Custom Vocabulary")
-            .toolbar {
-                ToolbarItem(placement: .principal) {
-                    VStack {
-                        Text("Custom Vocabulary")
-                            .font(.headline)
-                        Text("Tech Demo")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-            }
         }
         .onDisappear {
             viewModel.teardown()

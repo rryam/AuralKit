@@ -99,6 +99,16 @@ public extension SpeechSessionError {
             return NSLocalizedString("Speech model download failed.",
                                      comment: "Generic model download failure")
 
+        case .modelReservationFailed(let locale, let underlyingError):
+            return String(
+                format: NSLocalizedString(
+                    "Failed to reserve speech assets for locale '%@': %@.",
+                    comment: "Error when reserving speech model locale fails"
+                ),
+                locale.identifier,
+                underlyingError.localizedDescription
+            )
+
         case .contextSetupFailed(let underlyingError):
             return String(format: NSLocalizedString("Failed to set up analysis context: %@",
                                                    comment: "Error when analysis context setup fails"),
@@ -187,6 +197,12 @@ public extension SpeechSessionError {
         case .modelDownloadFailed:
             return NSLocalizedString("The speech model could not be downloaded.",
                                      comment: "Failure reason when model download fails")
+
+        case .modelReservationFailed:
+            return NSLocalizedString(
+                "The speech framework couldn't allocate the locale for offline assets.",
+                comment: "Failure reason when locale reservation fails"
+            )
 
         case .contextSetupFailed:
             return NSLocalizedString(
@@ -280,6 +296,12 @@ public extension SpeechSessionError {
         case .modelDownloadFailed:
             return NSLocalizedString("Try again later or verify your network connection.",
                                      comment: "Recovery suggestion when model download fails")
+
+        case .modelReservationFailed:
+            return NSLocalizedString(
+                "Close other apps using on-device speech assets or choose a different locale, then try again.",
+                comment: "Recovery suggestion when locale reservation fails"
+            )
 
         case .contextSetupFailed:
             return NSLocalizedString("Try starting transcription again or simplify the contextual strings provided.",

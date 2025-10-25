@@ -44,6 +44,9 @@ public enum SpeechSessionError: LocalizedError {
     /// Model download failed for other reasons.
     case modelDownloadFailed(NSError?)
 
+    /// Reserving the locale for on-device speech assets failed.
+    case modelReservationFailed(Locale, Error)
+
     /// Failed to set up analysis context with contextual strings.
     case contextSetupFailed(Error)
 

@@ -9,8 +9,7 @@ struct TranscriptionSettingsView: View {
     @Binding var enableVAD: Bool
     @Binding var vadSensitivity: SpeechDetector.SensitivityLevel
     @Binding var isSpeechDetected: Bool
-    @Binding var logLevel: SpeechSession.LogLevel
-
+    
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             VStack(alignment: .leading, spacing: 4) {
@@ -24,13 +23,13 @@ struct TranscriptionSettingsView: View {
                 }
                 .pickerStyle(.menu)
             }
-
+            
             Divider()
-
+            
             VStack(alignment: .leading, spacing: 8) {
                 Toggle("Voice Activity Detection", isOn: $enableVAD)
                     .font(.subheadline)
-
+                
                 if enableVAD {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Sensitivity Level")
@@ -42,7 +41,7 @@ struct TranscriptionSettingsView: View {
                             Text("High").tag(SpeechDetector.SensitivityLevel.high)
                         }
                         .pickerStyle(.segmented)
-
+                        
                         Text("Speech detected: \(isSpeechDetected ? "Yes" : "No")")
                             .font(.caption)
                             .foregroundStyle(isSpeechDetected ? .green : .orange)
@@ -51,21 +50,8 @@ struct TranscriptionSettingsView: View {
                     .padding(.leading, 8)
                 }
             }
-
+            
             Divider()
-
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Logging Level")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-
-                Picker("Logging Level", selection: $logLevel) {
-                    ForEach(SpeechSession.LogLevel.allCases, id: \.self) { level in
-                        Text(level.displayName).tag(level)
-                    }
-                }
-                .pickerStyle(.segmented)
-            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal)
@@ -77,7 +63,7 @@ struct TranscriptionSettingsView: View {
 struct TranscriptionTextView: View {
     let finalText: AttributedString
     let partialText: AttributedString
-
+    
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
@@ -89,7 +75,7 @@ struct TranscriptionTextView: View {
                         .background(Color.gray.opacity(0.1))
                         .cornerRadius(12)
                 }
-
+                
                 if !partialText.characters.isEmpty {
                     HStack(spacing: 8) {
                         ProgressView()
@@ -120,7 +106,7 @@ struct TranscriptionControlsView: View {
     let statusMessage: String
     let onPrimaryAction: () -> Void
     let onStopAction: () -> Void
-
+    
     var body: some View {
         VStack(spacing: 16) {
             if let error {
@@ -132,7 +118,7 @@ struct TranscriptionControlsView: View {
                     .cornerRadius(8)
                     .padding(.horizontal)
             }
-
+            
             Button(action: onPrimaryAction) {
                 ZStack {
                     Circle()
@@ -143,14 +129,16 @@ struct TranscriptionControlsView: View {
                         .foregroundStyle(.white)
                 }
             }
+            .buttonStyle(.glass)
+            .buttonBorderShape(.circle)
             .disabled(error != nil || status == .stopping)
-
+            
             if showStopButton {
                 Button("Stop", action: onStopAction)
                     .buttonStyle(.borderedProminent)
                     .tint(.gray)
             }
-
+            
             Text(statusMessage)
                 .font(.body)
                 .foregroundStyle(.secondary)

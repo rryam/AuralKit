@@ -1,8 +1,50 @@
 import Foundation
 @preconcurrency import AVFoundation
 
+private final class WeakSpeechSessionBox: @unchecked Sendable {
+    weak var value: SpeechSession?
+
+    init(_ value: SpeechSession) {
+        self.value = value
+    }
+}
+
+private func currentQueueLabel() -> String {
+    String(cString: __dispatch_queue_get_label(nil))
+}
+
+private func makeAudioTapHandler(for session: SpeechSession) -> AVAudioNodeTapBlock {
+    let weakSession = WeakSpeechSessionBox(session)
+
+    return { buffer, _ in
+        print("[AudioTap] invoked on queue: \(currentQueueLabel()), main thread: \(Thread.isMainThread)")
+        guard let bufferCopy = buffer.copy() as? AVAudioPCMBuffer else {
+            print("[AudioTap] failed to copy buffer")
+            return
+        }
+
+        Task { @MainActor in
+            guard let session = weakSession.value else {
+                print("[AudioTap] session deallocated before processing")
+                return
+            }
+
+            do {
+                try session.processAudioBuffer(bufferCopy)
+            } catch {
+                if SpeechSession.shouldLog(.error) {
+                    SpeechSession.logger.error("Audio processing error: \(error.localizedDescription, privacy: .public)")
+                }
+                print("[AudioTap] audio processing error: \(error)")
+            }
+        }
+    }
+}
+
 @MainActor
 extension SpeechSession {
+
+    private static let microphoneTapBufferSize: AVAudioFrameCount = 2048
 
     // MARK: - Audio Streaming
 
@@ -17,26 +59,18 @@ extension SpeechSession {
         audioEngine.inputNode.removeTap(onBus: 0)
 
         let inputFormat = audioEngine.inputNode.outputFormat(forBus: 0)
+        print("[AudioTap] startAudioStreaming entered; queue: \(currentQueueLabel()), main thread: \(Thread.isMainThread)")
+        if Self.shouldLog(.debug) {
+            Self.logger.debug("Installing audio tap with buffer size \(Self.microphoneTapBufferSize, privacy: .public) frames")
+        }
 
         audioEngine.inputNode.installTap(
             onBus: 0,
-            bufferSize: 4096,
-            format: inputFormat
-        ) { [weak self] buffer, _ in
-            guard let bufferCopy = buffer.copy() as? AVAudioPCMBuffer else {
-                return
-            }
-            Task { @MainActor [weak self] in
-                guard let self else { return }
-                do {
-                    try self.processAudioBuffer(bufferCopy)
-                } catch {
-                    if Self.shouldLog(.error) {
-                        Self.logger.error("Audio processing error: \(error.localizedDescription, privacy: .public)")
-                    }
-                }
-            }
-        }
+            bufferSize: Self.microphoneTapBufferSize,
+            format: inputFormat,
+            block: makeAudioTapHandler(for: self)
+        )
+        print("[AudioTap] tap installed; queue: \(currentQueueLabel()), main thread: \(Thread.isMainThread)")
 
         audioEngine.prepare()
         try audioEngine.start()

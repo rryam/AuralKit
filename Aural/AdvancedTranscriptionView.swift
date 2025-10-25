@@ -69,15 +69,7 @@ struct VolatileTextView: View {
 
 struct EmptyStateView: View {
     var body: some View {
-        VStack(spacing: 12) {
-            Image(systemName: "mic.circle")
-                .font(.system(size: 60))
-                .foregroundStyle(.secondary)
-            Text("Tap the button below to start transcribing")
-                .font(.headline)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-        }
+        VStack { Spacer(minLength: 0) }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(.top, 100)
     }
@@ -146,10 +138,6 @@ struct PresetSelectorView: View {
             }
             .pickerStyle(.menu)
             .labelsHidden()
-            .padding(.horizontal, 12)
-            .padding(.vertical, 6)
-            .background(Color.gray.opacity(0.1))
-            .cornerRadius(8)
         }
         .padding(.horizontal)
     }
@@ -177,6 +165,8 @@ struct RecordButtonView: View {
                         .symbolEffect(.pulse, isActive: status == .preparing)
                 }
             }
+            .buttonStyle(.glass)
+            .buttonBorderShape(.circle)
             .disabled(isDisabled || status == .stopping)
 
             if showsStopButton {
@@ -191,7 +181,7 @@ struct RecordButtonView: View {
     private var buttonColor: Color {
         switch status {
         case .idle:
-            return Color.blue
+            return Color.indigo
         case .preparing:
             return Color.orange
         case .transcribing:
@@ -243,54 +233,17 @@ struct ErrorView: View {
     }
 }
 
-struct ControlsView: View {
+struct AdvancedSettingsView: View {
     @Bindable var manager: TranscriptionManager
-    @Binding var animationScale: CGFloat
     let commonLocales: [Locale]
 
     var body: some View {
-        VStack(spacing: 20) {
+        VStack(alignment: .leading, spacing: 16) {
             PresetSelectorView(manager: manager)
-            LanguageSelectorView(
-                manager: manager,
-                commonLocales: commonLocales
-            )
-
-            RecordButtonView(
-                status: manager.status,
-                isDisabled: manager.error != nil,
-                primaryAction: manager.primaryAction,
-                stopAction: manager.stopTranscription,
-                animationScale: $animationScale
-            )
-
-            Text(statusMessage(for: manager.status))
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .padding(.bottom)
+            LanguageSelectorView(manager: manager, commonLocales: commonLocales)
         }
-        .padding(.vertical)
-        #if os(iOS)
-        .background(Color(UIColor.systemBackground))
-        #else
-        .background(Color(NSColor.windowBackgroundColor))
-        #endif
-        .shadow(color: .black.opacity(0.1), radius: 10, y: -5)
-    }
-
-    private func statusMessage(for status: SpeechSession.Status) -> String {
-        switch status {
-        case .idle:
-            return "Tap to start"
-        case .preparing:
-            return "Preparing session..."
-        case .transcribing:
-            return "Listening..."
-        case .paused:
-            return "Paused — tap to resume or stop"
-        case .stopping:
-            return "Stopping..."
-        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal)
     }
 }
 
@@ -299,34 +252,50 @@ struct ControlsView: View {
 struct AdvancedTranscriptionView: View {
     @Bindable var manager: TranscriptionManager
     @State private var animationScale: CGFloat = 1.0
-    @State private var showPermissionsAlert = false
+
+    private let commonLocales: [Locale] = [
+        Locale(identifier: "en-US"),
+        Locale(identifier: "es-ES"),
+        Locale(identifier: "fr-FR"),
+        Locale(identifier: "de-DE"),
+        Locale(identifier: "it-IT"),
+        Locale(identifier: "pt-BR"),
+        Locale(identifier: "zh-CN"),
+        Locale(identifier: "ja-JP"),
+        Locale(identifier: "ko-KR")
+    ]
 
     var body: some View {
         NavigationStack {
-            VStack(spacing: 0) {
-                // Transcript Display
-                ScrollView {
-                    TranscriptContentView(
-                        finalizedText: manager.finalizedText,
-                        volatileText: manager.volatileText,
-                        currentTimeRange: manager.currentTimeRange,
-                        status: manager.status
-                    )
-                }
-                .frame(maxHeight: .infinity)
-
-                // Error Display
-                if let error = manager.error {
-                    ErrorView(error: error)
-                }
-
-                // Controls
-                ControlsView(
+            VStack(spacing: 32) {
+                AdvancedSettingsView(
                     manager: manager,
-                    animationScale: $animationScale,
                     commonLocales: commonLocales
                 )
+
+                TranscriptContentView(
+                    finalizedText: manager.finalizedText,
+                    volatileText: manager.volatileText,
+                    currentTimeRange: manager.currentTimeRange,
+                    status: manager.status
+                )
+
+                RecordButtonView(
+                    status: manager.status,
+                    isDisabled: manager.error != nil,
+                    primaryAction: manager.primaryAction,
+                    stopAction: manager.stopTranscription,
+                    animationScale: $animationScale
+                )
+
+                Text(statusMessage(for: manager.status))
+                    .font(.body)
+                    .foregroundStyle(.secondary)
+                    .padding(.bottom, 32)
             }
+            .padding(.top, 24)
+            .frame(maxWidth: .infinity)
+            .background(TopGradientView())
             .navigationTitle("AuralKit Demo")
 #if os(iOS)
             .navigationBarTitleDisplayMode(.large)
@@ -337,13 +306,6 @@ struct AdvancedTranscriptionView: View {
                         ShareLink(item: manager.currentTranscript) {
                             Image(systemName: "square.and.arrow.up")
                         }
-                    }
-
-                    Menu {
-                        Label("iOS 26+ Features Active", systemImage: "checkmark.circle.fill")
-                            .foregroundStyle(.green)
-                    } label: {
-                        Image(systemName: "ellipsis.circle")
                     }
                 }
             }
@@ -356,24 +318,25 @@ struct AdvancedTranscriptionView: View {
         }
     }
 
-    var commonLocales: [Locale] {
-        [
-            Locale(identifier: "en-US"),
-            Locale(identifier: "es-ES"),
-            Locale(identifier: "fr-FR"),
-            Locale(identifier: "de-DE"),
-            Locale(identifier: "it-IT"),
-            Locale(identifier: "pt-BR"),
-            Locale(identifier: "zh-CN"),
-            Locale(identifier: "ja-JP"),
-            Locale(identifier: "ko-KR")
-        ]
-    }
-
     private func updateAnimation(for status: SpeechSession.Status) {
         let isActive = status == .transcribing
         withAnimation(.easeInOut(duration: 1.0).repeatForever(autoreverses: true)) {
             animationScale = isActive ? 1.2 : 1.0
+        }
+    }
+
+    private func statusMessage(for status: SpeechSession.Status) -> String {
+        switch status {
+        case .idle:
+            return "Ready"
+        case .preparing:
+            return "Preparing session..."
+        case .transcribing:
+            return "Listening..."
+        case .paused:
+            return "Paused — tap to resume or stop"
+        case .stopping:
+            return "Stopping..."
         }
     }
 }

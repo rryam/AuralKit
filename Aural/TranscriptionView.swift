@@ -17,7 +17,6 @@ struct TranscriptionView: View {
     @State private var enableVAD: Bool = false
     @State private var vadSensitivity: SpeechDetector.SensitivityLevel = .medium
     @State private var isSpeechDetected: Bool = true
-    @State private var logLevel: SpeechSession.LogLevel = SpeechSession.logging
     @State private var vadConfigurationToken = UUID()
 
     var body: some View {
@@ -27,8 +26,7 @@ struct TranscriptionView: View {
                     presetChoice: $presetChoice,
                     enableVAD: $enableVAD,
                     vadSensitivity: $vadSensitivity,
-                    isSpeechDetected: $isSpeechDetected,
-                    logLevel: $logLevel
+                    isSpeechDetected: $isSpeechDetected
                 )
 
                 TranscriptionTextView(
@@ -49,6 +47,7 @@ struct TranscriptionView: View {
                     onStopAction: handleStopAction
                 )
             }
+            .padding(.top, 24)
             .frame(maxWidth: .infinity)
             .background(TopGradientView())
             .navigationTitle("Aural")
@@ -132,9 +131,6 @@ struct TranscriptionView: View {
                 vadConfigurationToken = UUID()
             }
         }
-        .onChange(of: logLevel) { _, newValue in
-            SpeechSession.logging = newValue
-        }
         .onChange(of: presetChoice) { _, newChoice in
             Task { @MainActor in
                 let previousSession = session
@@ -155,6 +151,9 @@ struct TranscriptionView: View {
         }
         .onDisappear {
             handleStopAction()
+        }
+        .onAppear {
+            SpeechSession.logging = .debug
         }
     }
 
@@ -265,7 +264,7 @@ private extension TranscriptionView {
     var statusMessage: String {
         switch status {
         case .idle:
-            return "Tap to start"
+            return "Ready"
         case .preparing:
             return "Preparing session..."
         case .transcribing:

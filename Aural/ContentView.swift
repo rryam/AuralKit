@@ -2,92 +2,52 @@ import SwiftUI
 import AuralKit
 
 struct ContentView: View {
-    @State private var showAdvanced = false
-
-    var body: some View {
-        Group {
-            if showAdvanced {
-                AdvancedContentView(showAdvanced: $showAdvanced)
-            } else {
-                SimpleContentView(showAdvanced: $showAdvanced)
-            }
-        }
-    }
-}
-
-private struct SimpleContentView: View {
-    enum SimpleTab: Hashable {
-        case live
+    private enum DemoTab: Hashable {
+        case quickStart
+        case advanced
         case customVocabulary
+        case history
+        case settings
     }
 
-    @Binding var showAdvanced: Bool
-    @State private var selectedTab: SimpleTab = .live
+    @State private var selectedTab: DemoTab = .quickStart
+    @State private var transcriptionManager = TranscriptionManager()
 
     var body: some View {
         TabView(selection: $selectedTab) {
             TranscriptionView()
                 .tabItem {
-                    Label("Live", systemImage: "waveform")
+                    Label("Quick Start", systemImage: "bolt.waveform")
                 }
-                .tag(SimpleTab.live)
+                .tag(DemoTab.quickStart)
+
+            AdvancedTranscriptionView(manager: transcriptionManager)
+                .tabItem {
+                    Label("Advanced", systemImage: "mic.circle.fill")
+                }
+                .tag(DemoTab.advanced)
 
             CustomVocabularyDemoView()
                 .tabItem {
-                    Label("Custom Vocab", systemImage: "text.badge.plus")
+                    Label("Vocabulary", systemImage: "text.badge.plus")
                 }
-                .tag(SimpleTab.customVocabulary)
-        }
-        .overlay(alignment: .topTrailing) {
-            Button("Advanced") {
-                showAdvanced = true
-            }
-            .buttonStyle(.bordered)
-            .padding()
-        }
-    }
-}
-
-/// Advanced demo with language selection, history, and settings
-struct AdvancedContentView: View {
-    @Binding var showAdvanced: Bool
-    @State private var transcriptionManager = TranscriptionManager()
-    @State private var selectedTab = 0
-
-    var body: some View {
-        TabView(selection: $selectedTab) {
-            AdvancedTranscriptionView(manager: transcriptionManager)
-                .tabItem {
-                    Label("Transcribe", systemImage: "mic.circle.fill")
-                }
-                .tag(0)
+                .tag(DemoTab.customVocabulary)
 
             HistoryView(manager: transcriptionManager)
                 .tabItem {
                     Label("History", systemImage: "clock.arrow.circlepath")
                 }
-                .tag(1)
+                .tag(DemoTab.history)
 
             SettingsView(manager: transcriptionManager)
                 .tabItem {
                     Label("Settings", systemImage: "gear")
                 }
-                .tag(2)
-        }
-        .toolbar {
-            ToolbarItem(placement: .automatic) {
-                Button("Simple") {
-                    showAdvanced = false
-                }
-            }
+                .tag(DemoTab.settings)
         }
     }
 }
 
-#Preview("Minimal") {
+#Preview {
     ContentView()
-}
-
-#Preview("Advanced") {
-    AdvancedContentView(showAdvanced: .constant(true))
 }

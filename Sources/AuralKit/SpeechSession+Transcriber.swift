@@ -165,12 +165,25 @@ extension SpeechSession {
     }
 
     private func startAnalyzer(modules: [any SpeechModule]) async throws {
-        analyzerFormat = await SpeechAnalyzer.bestAvailableAudioFormat(compatibleWith: modules)
+        guard let format = await SpeechAnalyzer.bestAvailableAudioFormat(compatibleWith: modules) else {
+            throw SpeechSessionError.invalidAudioDataType
+        }
+        analyzerFormat = format
+
+        if Self.shouldLog(.debug) {
+            Self.logger.debug(
+                "Analyzer format sampleRate: \(format.sampleRate, privacy: .public) Hz, channels: \(format.channelCount, privacy: .public)"
+            )
+        }
         (inputSequence, inputBuilder) = AsyncStream<AnalyzerInput>.makeStream()
 
         guard let inputSequence else { return }
 
-        try await analyzer?.start(inputSequence: inputSequence)
+        guard let analyzer else {
+            throw SpeechSessionError.recognitionStreamSetupFailed
+        }
+
+        try await analyzer.start(inputSequence: inputSequence)
         if Self.shouldLog(.info) {
             Self.logger.info("Analyzer started")
         }

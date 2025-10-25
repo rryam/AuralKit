@@ -35,7 +35,7 @@ final class CustomVocabularyDemoViewModel: ObservableObject {
 
     // MARK: - Init / Deinit
 
-    init(session: SpeechSession = SpeechSession()) {
+    init(session: SpeechSession = SpeechSession(reportingOptions: [])) {
         self.session = session
         bindStatusStream()
     }
@@ -240,12 +240,9 @@ final class CustomVocabularyDemoViewModel: ObservableObject {
     }
 
     private func applyDictationResult(_ result: DictationTranscriber.Result) {
-        if result.isFinal {
-            finalText += result.text
-            partialText = ""
-        } else {
-            partialText = result.text
-        }
+        guard result.isFinal else { return }
+        finalText += result.text
+        partialText = ""
     }
 
     private func track(_ progress: Progress) {
