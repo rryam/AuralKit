@@ -2,6 +2,7 @@ import Foundation
 @preconcurrency import AVFoundation
 import Speech
 
+/// Configuration used by `SpeechSession` when transcribing an audio file from disk.
 public struct FileTranscriptionOptions {
     /// Optional contextual strings to improve transcription accuracy.
     public var contextualStrings: [AnalysisContext.ContextualStringsTag: [String]]?
@@ -9,6 +10,10 @@ public struct FileTranscriptionOptions {
     /// Maximum allowed duration for the audio file. Files longer than this will fail validation.
     public var maxDuration: TimeInterval?
 
+    /// Creates a new set of file transcription options.
+    /// - Parameters:
+    ///   - contextualStrings: Tag-keyed terms that bias recognition toward domain-specific vocabulary.
+    ///   - maxDuration: Upper limit for the audio length; longer files trigger `.audioFileTooLong`.
     public init(
         contextualStrings: [AnalysisContext.ContextualStringsTag: [String]]? = nil,
         maxDuration: TimeInterval? = nil
@@ -18,10 +23,13 @@ public struct FileTranscriptionOptions {
     }
 }
 
+/// Aggregate container that surfaces the final results produced by file transcription.
 public struct FileTranscriptionResult {
     /// Final `SpeechTranscriber.Result` entries emitted during transcription.
     public let finalResults: [SpeechTranscriber.Result]
 
+    /// Creates a new file transcription result container.
+    /// - Parameter finalResults: Ordered collection of final analyzer results.
     public init(finalResults: [SpeechTranscriber.Result]) {
         self.finalResults = finalResults
     }

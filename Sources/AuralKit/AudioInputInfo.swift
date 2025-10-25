@@ -9,16 +9,21 @@ import Foundation
 import AudioToolbox
 
 #if os(iOS)
-import AVFoundation
+@preconcurrency import AVFoundation
 #elseif os(macOS)
-import AVFAudio
+@preconcurrency import AVFAudio
 import CoreAudio
 #endif
 
+/// Describes the active hardware input route that is feeding `SpeechSession`.
 public struct AudioInputInfo: Sendable, CustomStringConvertible {
+    /// Human-readable name reported by the system (for example “AirPods Pro”).
     public let portName: String
+    /// Symbol configuration to display alongside the name in UI.
     public let portIcon: String
+    /// Stable identifier for the port so changes can be tracked.
     public let uid: String
+    /// Metadata for each available channel on the port.
     public let channels: [ChannelInfo]
 
 #if os(iOS)
@@ -77,14 +82,20 @@ public struct AudioInputInfo: Sendable, CustomStringConvertible {
         return lines.joined(separator: "\n")
     }
 
+    /// Metadata describing a single channel on the active input port.
     public struct ChannelInfo: Sendable {
+        /// Label such as “Input 1”.
         public let channelName: String
+        /// 1-based channel number reported by Core Audio / AVAudioSession.
         public let channelNumber: Int
+        /// Port UID that owns this channel.
         public let owningPortUID: String
+        /// Core Audio channel label, when available.
         public let channelLabel: AudioChannelLabel
     }
 
 #if os(iOS)
+    /// Summary of a specific iOS audio data source (built-in mic, beam pattern, etc.).
     public struct DataSourceInfo: Sendable {
         public let dataSourceID: NSNumber
         public let dataSourceName: String
@@ -99,6 +110,8 @@ public struct AudioInputInfo: Sendable, CustomStringConvertible {
 
 #if os(iOS)
 public extension AudioInputInfo {
+    /// Creates a new `AudioInputInfo` from an `AVAudioSessionPortDescription`.
+    /// - Parameter portDescription: The port supplied by `AVAudioSession.currentRoute`.
     init(from portDescription: AVAudioSessionPortDescription) {
         let portType = portDescription.portType
         let portName = portDescription.portName
@@ -189,6 +202,7 @@ public extension AudioInputInfo {
 }
 #elseif os(macOS)
 public extension AudioInputInfo {
+    /// Errors emitted while querying Core Audio for device metadata on macOS.
     enum AudioInputInfoError: Error, LocalizedError {
         case audioHardwareError(OSStatus, selector: AudioObjectPropertySelector)
 
@@ -200,6 +214,8 @@ public extension AudioInputInfo {
         }
     }
 
+    /// Returns metadata for the current default input, or `nil` if no input is available.
+    /// - Throws: `AudioInputInfoError` when Core Audio queries fail.
     static func current() throws -> AudioInputInfo? {
         guard let deviceID = try defaultInputDeviceID() else {
             return nil

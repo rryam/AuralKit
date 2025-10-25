@@ -12,7 +12,7 @@ the previous `CLAUDE.md` guidance.
 
 - **Name**: AuralKit (Swift Package)
 - **Platforms**: iOS 26+, macOS 26+
-- **Primary API**: `SpeechSession` (actor living in `Sources/AuralKit/SpeechSession.swift`)
+- **Primary API**: `SpeechSession` (MainActor class in `Sources/AuralKit/SpeechSession.swift`)
 - **Purpose**: Real‑time speech‑to‑text using Apple’s `SpeechTranscriber` / `SpeechAnalyzer`
 - **Demo App**: SwiftUI app in the `Aural/` directory (scheme `Aural`)
 
@@ -105,7 +105,7 @@ including `converter.primeMethod = .none`. Ask for explicit approval before edit
 
 ### Concurrency
 
-- `SpeechSession` is an `@unchecked Sendable` actor; respect isolation.
+- `SpeechSession` is a `@MainActor` class; respect main-thread isolation.
 - When bridging notifications into `Task`, capture only the data you need and, if
   touching UI- or engine-bound state, hop onto `@MainActor`.
 - Avoid sharing mutable state between tasks without actor or `Sendable` guarantees.
@@ -142,10 +142,9 @@ Before opening a PR (or completing an automated change):
 
 ## Quick Reference
 
-- Minimal transcription example lives in `Aural/MinimalTranscriptionView.swift`.
-- Advanced transcription UI lives in `Aural/TranscriptionView.swift`.
+- Minimal transcription example lives in `Aural/TranscriptionView.swift`.
+- Advanced transcription UI lives in `Aural/AdvancedTranscriptionView.swift`.
 - Error cases and localized descriptions are centralized in `Sources/AuralKit/SpeechSessionError.swift`.
 - CI uses Codemagic (`codemagic.yaml`); green builds are required before merging.
 
 Happy transcribing!
-

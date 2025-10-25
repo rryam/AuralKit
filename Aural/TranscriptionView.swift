@@ -18,6 +18,7 @@ struct TranscriptionView: View {
     @State private var vadSensitivity: SpeechDetector.SensitivityLevel = .medium
     @State private var isSpeechDetected: Bool = true
     @State private var logLevel: SpeechSession.LogLevel = SpeechSession.logging
+    @State private var vadConfigurationToken = UUID()
 
     var body: some View {
         NavigationStack {
@@ -86,12 +87,23 @@ struct TranscriptionView: View {
                     status = newStatus
                 }
             }
-            .task(id: ObjectIdentifier(session)) {
-                guard enableVAD else { return }
-                guard let stream = session.speechDetectorResultsStream else { return }
+            .task(id: SpeechDetectorTaskID(
+                sessionID: ObjectIdentifier(session),
+                vadEnabled: enableVAD,
+                configurationID: vadConfigurationToken
+            )) {
+                guard enableVAD, let stream = session.speechDetectorResultsStream else {
+                    await MainActor.run {
+                        isSpeechDetected = true
+                    }
+                    return
+                }
+
                 for await result in stream {
-                    withAnimation {
-                        isSpeechDetected = result.speechDetected
+                    await MainActor.run {
+                        withAnimation {
+                            isSpeechDetected = result.speechDetected
+                        }
                     }
                 }
             }
@@ -107,6 +119,7 @@ struct TranscriptionView: View {
                     session.disableVoiceActivation()
                 }
                 isSpeechDetected = true
+                vadConfigurationToken = UUID()
             }
         }
         .onChange(of: vadSensitivity) { _, newLevel in
@@ -116,6 +129,7 @@ struct TranscriptionView: View {
                     detectionOptions: .init(sensitivityLevel: newLevel),
                     reportResults: true
                 )
+                vadConfigurationToken = UUID()
             }
         }
         .onChange(of: logLevel) { _, newValue in
@@ -141,7 +155,16 @@ struct TranscriptionView: View {
         }
     }
 
-    private func handlePrimaryAction() {
+}
+
+private struct SpeechDetectorTaskID: Hashable {
+    let sessionID: ObjectIdentifier
+    let vadEnabled: Bool
+    let configurationID: UUID
+}
+
+private extension TranscriptionView {
+    func handlePrimaryAction() {
         switch status {
         case .idle:
             startSession()
@@ -164,7 +187,7 @@ struct TranscriptionView: View {
         }
     }
 
-    private func handleStopAction() {
+    func handleStopAction() {
         Task { @MainActor in
             await session.stopTranscribing()
             self.partialText = ""
@@ -173,7 +196,7 @@ struct TranscriptionView: View {
         transcriptionTask = nil
     }
 
-    private func startSession() {
+    func startSession() {
         error = nil
         finalText = ""
         partialText = ""
@@ -197,7 +220,7 @@ struct TranscriptionView: View {
         }
     }
 
-    private var buttonColor: Color {
+    var buttonColor: Color {
         switch status {
         case .idle:
             return Color.indigo
@@ -212,7 +235,7 @@ struct TranscriptionView: View {
         }
     }
 
-    private var buttonIcon: String {
+    var buttonIcon: String {
         switch status {
         case .idle:
             return "mic.fill"
@@ -227,7 +250,7 @@ struct TranscriptionView: View {
         }
     }
 
-    private var showStopButton: Bool {
+    var showStopButton: Bool {
         switch status {
         case .idle, .stopping:
             return false
@@ -236,7 +259,7 @@ struct TranscriptionView: View {
         }
     }
 
-    private var statusMessage: String {
+    var statusMessage: String {
         switch status {
         case .idle:
             return "Tap to start"
@@ -251,7 +274,7 @@ struct TranscriptionView: View {
         }
     }
 
-    private func makeSession(for choice: DemoTranscriberPreset) -> SpeechSession {
+    func makeSession(for choice: DemoTranscriberPreset) -> SpeechSession {
         let newSession = SpeechSession(preset: choice.preset)
         if enableVAD {
             newSession.configureVoiceActivation(

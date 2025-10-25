@@ -1,5 +1,5 @@
 import Foundation
-import AVFoundation
+@preconcurrency import AVFoundation
 import Speech
 
 @MainActor
@@ -152,6 +152,10 @@ extension SpeechSession {
 
         streamingMode = .inactive
         stopAudioStreaming()
+        deactivateAudioSessionIfNeeded()
+#if os(iOS)
+        shouldResumeAfterInterruption = false
+#endif
         await stopTranscriberAndCleanup()
         setStatus(.idle)
         if Self.shouldLog(.debug) {
@@ -178,7 +182,7 @@ extension SpeechSession {
 
     // MARK: - Helper Methods
 
-    private func setupAudioSession() async throws {
+    func setupAudioSession() async throws {
 #if os(iOS)
         try await MainActor.run {
             let audioSession = AVAudioSession.sharedInstance()
@@ -188,12 +192,33 @@ extension SpeechSession {
                 options: audioConfig.options
             )
             try audioSession.setActive(true)
+            isAudioSessionActive = true
         }
 #endif
 #if os(iOS) || os(macOS)
         publishCurrentAudioInputInfo()
 #endif
     }
+
+#if os(iOS)
+    private func deactivateAudioSessionIfNeeded() {
+        guard isAudioSessionActive else { return }
+        do {
+            let audioSession = AVAudioSession.sharedInstance()
+            try audioSession.setActive(false, options: [.notifyOthersOnDeactivation])
+            isAudioSessionActive = false
+            if Self.shouldLog(.info) {
+                Self.logger.info("Audio session deactivated")
+            }
+        } catch {
+            if Self.shouldLog(.error) {
+                Self.logger.error("Failed to deactivate audio session: \(error.localizedDescription, privacy: .public)")
+            }
+        }
+    }
+#else
+    private func deactivateAudioSessionIfNeeded() {}
+#endif
 
     private func createRecognizerTask(
         transcriber: SpeechTranscriber,

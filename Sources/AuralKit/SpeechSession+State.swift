@@ -14,7 +14,9 @@ extension SpeechSession {
             )
         }
         status = newStatus
-        statusContinuation?.yield(newStatus)
+        for continuation in statusContinuations.values {
+            continuation.yield(newStatus)
+        }
     }
 
     /// Prepare the session for teardown while ensuring consistent state transitions.
@@ -29,5 +31,12 @@ extension SpeechSession {
             }
             setStatus(.stopping)
         }
+    }
+
+    func finishStatusStreams() {
+        for continuation in statusContinuations.values {
+            continuation.finish()
+        }
+        statusContinuations.removeAll()
     }
 }

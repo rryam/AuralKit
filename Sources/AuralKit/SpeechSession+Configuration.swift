@@ -1,7 +1,7 @@
 import Foundation
 import Speech
 #if os(iOS)
-import AVFoundation
+@preconcurrency import AVFoundation
 #endif
 
 public extension SpeechSession {
@@ -19,12 +19,17 @@ public extension SpeechSession {
     ]
 
 #if os(iOS)
-    /// Audio session configuration for iOS.
+    /// Declarative wrapper describing how `SpeechSession` should configure `AVAudioSession` on iOS.
     struct AudioSessionConfiguration: Sendable {
+        /// High-level audio category applied before starting capture.
         public let category: AVAudioSession.Category
+        /// Audio session mode (for example `.spokenAudio`).
         public let mode: AVAudioSession.Mode
+        /// Additional session options such as `.duckOthers` or `.allowBluetooth`.
         public let options: AVAudioSession.CategoryOptions
 
+        /// Creates a new configuration.
+        /// - Parameters correspond directly to the stored properties and default to values tuned for speech capture.
         public init(
             category: AVAudioSession.Category = .playAndRecord,
             mode: AVAudioSession.Mode = .spokenAudio,
@@ -35,6 +40,7 @@ public extension SpeechSession {
             self.options = options
         }
 
+        /// Default configuration used when a custom one is not provided.
         public static let `default` = AudioSessionConfiguration()
     }
 #endif
