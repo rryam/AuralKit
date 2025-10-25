@@ -55,22 +55,26 @@ class ModelManager: @unchecked Sendable {
 
     private func speechSupported(locale: Locale) async -> Bool {
         let supported = await SpeechTranscriber.supportedLocales
-        return supported.map { $0.identifier(.bcp47) }.contains(locale.identifier(.bcp47))
+        let target = locale.identifier(.bcp47)
+        return supported.contains { $0.identifier(.bcp47) == target }
     }
 
     private func speechInstalled(locale: Locale) async -> Bool {
         let installed = await SpeechTranscriber.installedLocales
-        return installed.map { $0.identifier(.bcp47) }.contains(locale.identifier(.bcp47))
+        let target = locale.identifier(.bcp47)
+        return installed.contains { $0.identifier(.bcp47) == target }
     }
 
     private func dictationSupported(locale: Locale) async -> Bool {
         let supported = await DictationTranscriber.supportedLocales
-        return supported.map { $0.identifier(.bcp47) }.contains(locale.identifier(.bcp47))
+        let target = locale.identifier(.bcp47)
+        return supported.contains { $0.identifier(.bcp47) == target }
     }
 
     private func dictationInstalled(locale: Locale) async -> Bool {
         let installed = await DictationTranscriber.installedLocales
-        return installed.map { $0.identifier(.bcp47) }.contains(locale.identifier(.bcp47))
+        let target = locale.identifier(.bcp47)
+        return installed.contains { $0.identifier(.bcp47) == target }
     }
 
     func ensureAssets(for modules: [any SpeechModule]) async throws {

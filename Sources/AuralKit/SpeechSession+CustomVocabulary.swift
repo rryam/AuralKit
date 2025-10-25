@@ -181,9 +181,7 @@ final class CustomVocabularyCompiler: CustomVocabularyCompiling, @unchecked Send
         let languageModelURL = outputDirectory.appendingPathComponent("languageModel.bin")
         let vocabularyURL = outputDirectory.appendingPathComponent("vocabulary.bin")
         let assetURL = fileManager.temporaryDirectory
-            .appendingPathComponent("auralkit-custom-vocabulary-")
-            .appendingPathComponent(cacheKey)
-            .appendingPathExtension("bin")
+            .appendingPathComponent("auralkit-custom-vocabulary-\(cacheKey).bin")
 
         if fileManager.fileExists(atPath: assetURL.path) {
             try fileManager.removeItem(at: assetURL)

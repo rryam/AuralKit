@@ -86,7 +86,7 @@ extension SpeechSession {
                 Self.logger.info("Transcriber prepared with modules")
             }
 
-            recognizerTask = createRecognizerTask(
+            recognizerTask = createSpeechRecognizerTask(
                 transcriber: transcriber,
                 streamContinuation: streamContinuation
             )
@@ -278,59 +278,53 @@ extension SpeechSession {
     private func deactivateAudioSessionIfNeeded() {}
 #endif
 
-    private func createRecognizerTask(
+    private func createSpeechRecognizerTask(
         transcriber: SpeechTranscriber,
         streamContinuation: AsyncThrowingStream<SpeechTranscriber.Result, Error>.Continuation
     ) -> Task<Void, Never> {
-        Task<Void, Never> { [weak self] in
-            guard let self else { return }
-
-            do {
-                for try await result in transcriber.results {
-                    streamContinuation.yield(result)
-                }
-                if Self.shouldLog(.notice) {
-                    Self.logger.notice("Recognizer task completed without error")
-                }
-                await self.finishFromRecognizerTask(error: nil)
-            } catch is CancellationError {
-                if Self.shouldLog(.debug) {
-                    Self.logger.debug("Recognizer task cancelled")
-                }
-            } catch {
-                if Self.shouldLog(.error) {
-                    Self.logger.error(
-                        "Recognizer task failed: \(error.localizedDescription, privacy: .public)"
-                    )
-                }
-                await self.finishFromRecognizerTask(error: error)
-            }
-        }
+        createRecognizerTask(
+            label: "Recognizer task",
+            results: transcriber.results,
+            streamContinuation: streamContinuation
+        )
     }
 
     private func createDictationRecognizerTask(
         transcriber: DictationTranscriber,
         streamContinuation: AsyncThrowingStream<DictationTranscriber.Result, Error>.Continuation
     ) -> Task<Void, Never> {
+        createRecognizerTask(
+            label: "Dictation recognizer task",
+            results: transcriber.results,
+            streamContinuation: streamContinuation
+        )
+    }
+
+    private func createRecognizerTask<Sequence: AsyncSequence>(
+        label: String,
+        results: Sequence,
+        streamContinuation: AsyncThrowingStream<Sequence.Element, Error>.Continuation
+    ) -> Task<Void, Never>
+    where Sequence: Sendable, Sequence.Element: Sendable {
         Task<Void, Never> { [weak self] in
             guard let self else { return }
 
             do {
-                for try await result in transcriber.results {
+                for try await result in results {
                     streamContinuation.yield(result)
                 }
                 if Self.shouldLog(.notice) {
-                    Self.logger.notice("Dictation recognizer task completed without error")
+                    Self.logger.notice("\(label, privacy: .public) completed without error")
                 }
                 await self.finishFromRecognizerTask(error: nil)
             } catch is CancellationError {
                 if Self.shouldLog(.debug) {
-                    Self.logger.debug("Dictation recognizer task cancelled")
+                    Self.logger.debug("\(label, privacy: .public) cancelled")
                 }
             } catch {
                 if Self.shouldLog(.error) {
                     Self.logger.error(
-                        "Dictation recognizer task failed: \(error.localizedDescription, privacy: .public)"
+                        "\(label, privacy: .public) failed: \(error.localizedDescription, privacy: .public)"
                     )
                 }
                 await self.finishFromRecognizerTask(error: error)
