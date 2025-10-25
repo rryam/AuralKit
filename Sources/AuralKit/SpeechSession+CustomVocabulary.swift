@@ -1,12 +1,21 @@
 import Foundation
 import Speech
 import CryptoKit
+import OSLog
 
+private let customVocabularyLogger = Logger(subsystem: "com.auralkit.speech", category: "CustomVocabulary")
+
+private func logCustomVocabularyError(_ message: StaticString, path: String, error: Error) {
+    Task { @MainActor in
+        guard SpeechSession.shouldLog(.error) else { return }
+        customVocabularyLogger.error("\(message) path: \(path, privacy: .public)")
+        customVocabularyLogger.error("error: \(error.localizedDescription, privacy: .public)")
+    }
+}
 extension SpeechSession {
 
     // swiftlint:disable nesting
     public struct CustomVocabulary: Sendable, Hashable, Encodable {
-
         public struct Phrase: Sendable, Hashable, Encodable {
             public let text: String
             public let count: Int
@@ -38,7 +47,6 @@ extension SpeechSession {
                 self.classes = classes
             }
         }
-
         public let locale: Locale
         public let identifier: String
         public let version: String
@@ -191,7 +199,15 @@ final class CustomVocabularyCompiler: CustomVocabularyCompiling, @unchecked Send
             .appendingPathComponent("auralkit-custom-vocabulary-\(cacheKey).bin")
 
         if fileManager.fileExists(atPath: assetURL.path) {
-            try fileManager.removeItem(at: assetURL)
+            do {
+                try fileManager.removeItem(at: assetURL)
+            } catch {
+                logCustomVocabularyError(
+                    "Failed to delete temp vocabulary asset.",
+                    path: assetURL.path,
+                    error: error
+                )
+            }
         }
 
         return CompilationPaths(
@@ -228,7 +244,15 @@ final class CustomVocabularyCompiler: CustomVocabularyCompiling, @unchecked Send
         let modelData = descriptor.makeModelData()
 
         defer {
-            try? fileManager.removeItem(at: paths.assetURL)
+            do {
+                try fileManager.removeItem(at: paths.assetURL)
+            } catch {
+                logCustomVocabularyError(
+                    "Failed to clean up temp vocabulary asset.",
+                    path: paths.assetURL.path,
+                    error: error
+                )
+            }
         }
 
         do {
@@ -287,7 +311,15 @@ extension SpeechSession {
 
         if let previousDirectory = customVocabularyOutputDirectory,
            previousDirectory != compilation.outputDirectory {
-            try? FileManager.default.removeItem(at: previousDirectory)
+            do {
+                try FileManager.default.removeItem(at: previousDirectory)
+            } catch {
+                logCustomVocabularyError(
+                    "Failed to delete previous vocabulary directory.",
+                    path: previousDirectory.path,
+                    error: error
+                )
+            }
         }
 
         customVocabularyDescriptor = vocabulary
@@ -346,7 +378,15 @@ extension SpeechSession {
 
     func clearCustomVocabularyArtifacts(removeDescriptor: Bool) {
         if let directory = customVocabularyOutputDirectory {
-            try? FileManager.default.removeItem(at: directory)
+            do {
+                try FileManager.default.removeItem(at: directory)
+            } catch {
+                logCustomVocabularyError(
+                    "Failed to delete vocabulary directory during cleanup.",
+                    path: directory.path,
+                    error: error
+                )
+            }
         }
 
         customVocabularyConfiguration = nil

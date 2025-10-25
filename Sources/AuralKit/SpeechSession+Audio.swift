@@ -23,8 +23,7 @@ extension SpeechSession {
             bufferSize: 4096,
             format: inputFormat
         ) { [weak self] buffer, _ in
-            guard let self,
-                  let bufferCopy = buffer.copy() as? AVAudioPCMBuffer else {
+            guard let bufferCopy = buffer.copy() as? AVAudioPCMBuffer else {
                 return
             }
             Task { @MainActor [weak self] in

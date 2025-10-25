@@ -81,7 +81,12 @@ final class CustomVocabularyDemoViewModel: ObservableObject {
                         contextualStrings: self.buildContextualStrings()
                     )
                     self.compilationDuration = Date().timeIntervalSince(startTime)
-                    self.cacheKey = try? descriptor.stableCacheKey()
+                    do {
+                        self.cacheKey = try descriptor.stableCacheKey()
+                    } catch {
+                        self.cacheKey = nil
+                        self.errorMessage = "Failed to compute cache key: \(error.localizedDescription)"
+                    }
                 } else {
                     stream = self.session.startDictationTranscribing(
                         contextualStrings: self.buildContextualStrings()
