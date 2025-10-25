@@ -5,7 +5,7 @@ import Speech
 
 struct CustomVocabularyDemoView: View {
     @State private var model = CustomVocabularyDemoViewModel()
-    
+
     var body: some View {
         NavigationStack {
             @Bindable var viewModel = model
@@ -26,7 +26,7 @@ struct CustomVocabularyDemoView: View {
                     .padding(.horizontal)
                     .padding(.bottom, 16)
                 }
-                
+
                 TranscriptionControlsView(
                     status: viewModel.status,
                     error: viewModel.errorMessage,
@@ -60,7 +60,7 @@ private extension CustomVocabularyDemoView {
                     .onChange(of: model.isCustomVocabularyEnabled) { _, enabled in
                         model.handleToggleChange(enabled)
                     }
-                
+
                 if viewModel.isCustomVocabularyEnabled {
                     HStack {
                         TextField("Identifier", text: $viewModel.vocabularyIdentifier)
@@ -73,7 +73,7 @@ private extension CustomVocabularyDemoView {
 #endif
                             .frame(width: 80)
                     }
-                    
+
                     HStack {
                         Text("Weight")
                         Slider(value: $viewModel.vocabularyWeight, in: 0.0...1.0, step: 0.05)
@@ -81,7 +81,7 @@ private extension CustomVocabularyDemoView {
                             .monospacedDigit()
                             .frame(width: 50, alignment: .trailing)
                     }
-                    
+
                     Button("Reset to Tech Demo") {
                         model.resetToPreset()
                     }
@@ -91,7 +91,7 @@ private extension CustomVocabularyDemoView {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
-    
+
     func vocabularySection(@Bindable _ viewModel: CustomVocabularyDemoViewModel) -> some View {
         GroupBox {
             VStack(alignment: .leading, spacing: 12) {
@@ -122,7 +122,7 @@ private extension CustomVocabularyDemoView {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
-    
+
     func pronunciationsSection(@Bindable _ viewModel: CustomVocabularyDemoViewModel) -> some View {
         GroupBox("Pronunciations") {
             VStack(alignment: .leading, spacing: 12) {
@@ -133,7 +133,7 @@ private extension CustomVocabularyDemoView {
                         Divider()
                     }
                 }
-                
+
                 Button {
                     model.pronunciations.append(.init(grapheme: "", phonemes: []))
                 } label: {
@@ -144,20 +144,27 @@ private extension CustomVocabularyDemoView {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
-    
+
     func contextualStringsSection(@Bindable _ viewModel: CustomVocabularyDemoViewModel) -> some View {
         GroupBox {
             VStack(alignment: .leading, spacing: 8) {
                 Toggle(isOn: $viewModel.contextualStringsEnabled) {
-                    Label("Contextual Strings", systemImage: viewModel.contextualStringsEnabled ? "checkmark.circle.fill" : "circle")
-                        .labelStyle(.titleAndIcon)
+                    Label(
+                        "Contextual Strings",
+                        systemImage: viewModel.contextualStringsEnabled ? "checkmark.circle.fill" : "circle"
+                    )
+                    .labelStyle(.titleAndIcon)
                 }
 
                 if viewModel.contextualStringsEnabled {
                     Text("Comma-separated list to further bias recognition.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
-                    TextField("GraphQL, Static Analysis, Zero-Knowledge", text: $viewModel.contextualTerms, axis: .vertical)
+                    TextField(
+                        "GraphQL, Static Analysis, Zero-Knowledge",
+                        text: $viewModel.contextualTerms,
+                        axis: .vertical
+                    )
 #if os(iOS)
                         .textInputAutocapitalization(.never)
 #endif
@@ -166,30 +173,30 @@ private extension CustomVocabularyDemoView {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
-    
+
     func statusSection(@Bindable _ viewModel: CustomVocabularyDemoViewModel) -> some View {
         GroupBox("Status") {
             VStack(alignment: .leading, spacing: 8) {
                 statusRow(title: "Session", value: model.statusTitleText)
-                
+
                 if let cacheKey = model.cacheKey {
                     statusRow(title: "Cache Key", value: cacheKey)
                 }
-                
+
                 if let duration = model.compilationDuration {
                     statusRow(
                         title: "Compilation",
                         value: String(format: "%.2f s", duration)
                     )
                 }
-                
+
                 if model.isCompiling {
                     HStack(spacing: 8) {
                         ProgressView()
                         Text("Preparing custom vocabulary…")
                     }
                 }
-                
+
                 if let progressFraction = model.progressFraction {
                     VStack(alignment: .leading) {
                         Text("Downloading dictation assets…")
@@ -197,7 +204,7 @@ private extension CustomVocabularyDemoView {
                             .progressViewStyle(.linear)
                     }
                 }
-                
+
                 if let message = model.errorMessage {
                     Label(message, systemImage: "exclamationmark.triangle.fill")
                         .foregroundStyle(.red)
@@ -206,7 +213,7 @@ private extension CustomVocabularyDemoView {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
-    
+
     func statusRow(title: String, value: String) -> some View {
         HStack {
             Text(title)
@@ -234,7 +241,7 @@ private extension CustomVocabularyDemoView {
             return .gray
         }
     }
-    
+
     var buttonIcon: String {
         switch model.status {
         case .idle:
@@ -249,7 +256,7 @@ private extension CustomVocabularyDemoView {
             return "stop.fill"
         }
     }
-    
+
     var showStopButton: Bool {
         switch model.status {
         case .idle, .stopping:
@@ -258,7 +265,7 @@ private extension CustomVocabularyDemoView {
             return true
         }
     }
-    
+
     var statusMessage: String {
         switch model.status {
         case .idle:
@@ -273,7 +280,7 @@ private extension CustomVocabularyDemoView {
             return "Stopping..."
         }
     }
-    
+
     func handlePrimaryAction() {
         switch model.status {
         case .idle:
@@ -288,7 +295,7 @@ private extension CustomVocabularyDemoView {
             break
         }
     }
-    
+
     func handleStopAction() {
         model.stopTranscription()
     }

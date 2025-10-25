@@ -58,51 +58,14 @@ final class CustomVocabularyDemoViewModel {
     func startTranscription() {
         guard status != .transcribing, status != .preparing else { return }
 
-        errorMessage = nil
-        finalText = ""
-        partialText = ""
-        currentTimeRange = ""
-        cacheKey = nil
-        compilationDuration = nil
-
-        transcriptionTask?.cancel()
-        progressTask?.cancel()
+        resetTranscriptionState()
+        cancelExistingTasks()
 
         transcriptionTask = Task { @MainActor in
             do {
-                let stream: AsyncThrowingStream<DictationTranscriber.Result, Error>
-                let startTime = Date()
-
-                if isCustomVocabularyEnabled {
-                    guard let descriptor = buildDescriptor() else {
-                        errorMessage = "Please provide at least one phrase."
-                        return
-                    }
-
-                    isCompiling = true
-                    defer { isCompiling = false }
-                    stream = try await session.startTranscribing(
-                        customVocabulary: descriptor,
-                        contextualStrings: buildContextualStrings()
-                    )
-                    compilationDuration = Date().timeIntervalSince(startTime)
-                    do {
-                        cacheKey = try descriptor.stableCacheKey()
-                    } catch {
-                        cacheKey = nil
-                        errorMessage = "Failed to compute cache key: \(error.localizedDescription)"
-                    }
-                } else {
-                    stream = session.startDictationTranscribing(
-                        contextualStrings: buildContextualStrings()
-                    )
-                }
-
+                let stream = try await prepareTranscriptionStream()
                 monitorDownloadProgress()
-
-                for try await result in stream {
-                    applyDictationResult(result)
-                }
+                try await processTranscriptionStream(stream)
             } catch is CancellationError {
                 // expected when stopped
             } catch {
@@ -110,10 +73,7 @@ final class CustomVocabularyDemoViewModel {
                 isCompiling = false
             }
 
-            progressTask?.cancel()
-            progressTask = nil
-            resetProgressObservation(clearFraction: true)
-            transcriptionTask = nil
+            cleanupTasks()
         }
     }
 
@@ -261,13 +221,13 @@ final class CustomVocabularyDemoViewModel {
     }
 
     private func applyDictationResult(_ result: DictationTranscriber.Result) {
+        print("Received dictation result: \(result.text) (isFinal: \(result.isFinal))")
         if result.isFinal {
             finalText += result.text
             partialText = ""
         } else {
-            var styled = result.text
-            styled.foregroundColor = Color.purple.opacity(0.4)
-            partialText = styled
+            partialText = result.text
+            partialText.foregroundColor = Color.primary.opacity(0.4)
         }
 
         currentTimeRange = ""
@@ -312,5 +272,67 @@ final class CustomVocabularyDemoViewModel {
         if clearFraction {
             progressFraction = nil
         }
+    }
+}
+
+// MARK: - Transcription Helpers
+extension CustomVocabularyDemoViewModel {
+    private func resetTranscriptionState() {
+        errorMessage = nil
+        finalText = ""
+        partialText = ""
+        currentTimeRange = ""
+        cacheKey = nil
+        compilationDuration = nil
+    }
+
+    private func cancelExistingTasks() {
+        transcriptionTask?.cancel()
+        progressTask?.cancel()
+    }
+
+    private func prepareTranscriptionStream() async throws -> AsyncThrowingStream<DictationTranscriber.Result, Error> {
+        let startTime = Date()
+
+        if isCustomVocabularyEnabled {
+            guard let descriptor = buildDescriptor() else {
+                let error = NSError(domain: "CustomVocabularyDemoViewModel", code: 1, userInfo: [NSLocalizedDescriptionKey: "Please provide at least one phrase."])
+                throw SpeechSessionError.customVocabularyCompilationFailed(error)
+            }
+
+            isCompiling = true
+            defer { isCompiling = false }
+            let stream = try await session.startTranscribing(
+                customVocabulary: descriptor,
+                contextualStrings: buildContextualStrings()
+            )
+            compilationDuration = Date().timeIntervalSince(startTime)
+            do {
+                cacheKey = try descriptor.stableCacheKey()
+            } catch {
+                cacheKey = nil
+                errorMessage = "Failed to compute cache key: \(error.localizedDescription)"
+            }
+            return stream
+        } else {
+            return session.startDictationTranscribing(
+                contextualStrings: buildContextualStrings()
+            )
+        }
+    }
+
+    private func processTranscriptionStream(
+        _ stream: AsyncThrowingStream<DictationTranscriber.Result, Error>
+    ) async throws {
+        for try await result in stream {
+            applyDictationResult(result)
+        }
+    }
+
+    private func cleanupTasks() {
+        progressTask?.cancel()
+        progressTask = nil
+        resetProgressObservation(clearFraction: true)
+        transcriptionTask = nil
     }
 }

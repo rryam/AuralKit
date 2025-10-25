@@ -69,15 +69,6 @@ struct TranscriptionTextView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                if !finalText.characters.isEmpty {
-                    Text(finalText)
-                        .font(.body)
-                        .padding()
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(Color.gray.opacity(0.1))
-                        .cornerRadius(12)
-                }
-
                 if !partialText.characters.isEmpty {
                     VStack(alignment: .leading, spacing: 8) {
                         HStack(spacing: 8) {
@@ -99,6 +90,15 @@ struct TranscriptionTextView: View {
                     .background(Color.indigo.opacity(0.1))
                     .cornerRadius(12)
                 }
+
+             //   if !finalText.characters.isEmpty {
+                    Text(finalText)
+                        .font(.body)
+                        .padding()
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(Color.gray.opacity(0.1))
+                        .cornerRadius(12)
+             //   }
 
                 if finalText.characters.isEmpty && partialText.characters.isEmpty {
                     Text(emptyStateMessage)
