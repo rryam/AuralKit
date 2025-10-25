@@ -1,5 +1,5 @@
 import Foundation
-@preconcurrency import AVFoundation
+import AVFoundation
 import Speech
 
 extension SpeechDetector: @retroactive SpeechModule, @unchecked @retroactive Sendable {}

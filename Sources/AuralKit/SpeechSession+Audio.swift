@@ -1,40 +1,6 @@
 import Foundation
 @preconcurrency import AVFoundation
 
-private final class WeakSpeechSessionBox: @unchecked Sendable {
-    weak var value: SpeechSession?
-
-    init(_ value: SpeechSession) {
-        self.value = value
-    }
-}
-
-private func makeAudioTapHandler(for session: SpeechSession) -> AVAudioNodeTapBlock {
-    let weakSession = WeakSpeechSessionBox(session)
-
-    return { buffer, _ in
-        guard let bufferCopy = buffer.copy() as? AVAudioPCMBuffer else {
-            return
-        }
-
-        Task { @MainActor in
-            guard let session = weakSession.value else {
-                return
-            }
-
-            do {
-                try session.processAudioBuffer(bufferCopy)
-            } catch {
-                if SpeechSession.shouldLog(.error) {
-                    SpeechSession.logger.error(
-                        "Audio processing error: \(error.localizedDescription, privacy: .public)"
-                    )
-                }
-            }
-        }
-    }
-}
-
 @MainActor
 extension SpeechSession {
 
@@ -64,7 +30,7 @@ extension SpeechSession {
             onBus: 0,
             bufferSize: Self.microphoneTapBufferSize,
             format: inputFormat,
-            block: makeAudioTapHandler(for: self)
+            block: makeAudioTapHandler()
         )
 
         audioEngine.prepare()
@@ -129,6 +95,30 @@ extension SpeechSession {
             }
         }
 #endif
+    }
+
+    private func makeAudioTapHandler() -> AVAudioNodeTapBlock {
+        return { [weak self] buffer, _ in
+            guard let bufferCopy = buffer.copy() as? AVAudioPCMBuffer else {
+                return
+            }
+
+            Task { @MainActor [weak self] in
+                guard let self else {
+                    return
+                }
+
+                do {
+                    try self.processAudioBuffer(bufferCopy)
+                } catch {
+                    if Self.shouldLog(.error) {
+                        Self.logger.error(
+                            "Audio processing error: \(error.localizedDescription, privacy: .public)"
+                        )
+                    }
+                }
+            }
+        }
     }
 
 #if os(iOS)
