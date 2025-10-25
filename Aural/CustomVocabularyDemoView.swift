@@ -7,18 +7,38 @@ struct CustomVocabularyDemoView: View {
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 24) {
-                    configurationSection
-                    vocabularySection
-                    pronunciationsSection
-                    contextualStringsSection
-                    statusSection
-                    transcriptionOutputSection
-                    controlSection
+            VStack(spacing: 32) {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 24) {
+                        TranscriptionTextView(
+                            finalText: viewModel.finalText,
+                            partialText: viewModel.partialText
+                        )
+                        configurationSection
+                        vocabularySection
+                        pronunciationsSection
+                        contextualStringsSection
+                        statusSection
+                    }
+                    .padding(.horizontal)
+                    .padding(.bottom, 16)
                 }
-                .padding()
+
+                TranscriptionControlsView(
+                    status: viewModel.status,
+                    error: viewModel.errorMessage,
+                    showStopButton: showStopButton,
+                    buttonColor: buttonColor,
+                    buttonIcon: buttonIcon,
+                    statusMessage: statusMessage,
+                    onPrimaryAction: handlePrimaryAction,
+                    onStopAction: handleStopAction
+                )
+                .padding(.horizontal)
             }
+            .padding(.top, 24)
+            .frame(maxWidth: .infinity)
+            .background(TopGradientView())
             .navigationTitle("Custom Vocabulary")
         }
         .onDisappear {
@@ -76,7 +96,7 @@ private extension CustomVocabularyDemoView {
                     VStack(alignment: .leading, spacing: 6) {
                         TextField("Phrase", text: phrase.text)
                         Stepper(value: phrase.count, in: 1...20) {
-                            Text("Count: \(phrase.count.wrappedValue)")
+                            Text("Weight \(phrase.count.wrappedValue)")
                         }
                         Divider()
                     }
@@ -170,54 +190,6 @@ private extension CustomVocabularyDemoView {
         }
     }
 
-    var transcriptionOutputSection: some View {
-        GroupBox("Transcription") {
-            VStack(alignment: .leading, spacing: 12) {
-                if !viewModel.finalText.characters.isEmpty {
-                    Text(viewModel.finalText)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(12)
-                        .background(.thinMaterial)
-                        .cornerRadius(8)
-                }
-
-                if !viewModel.partialText.characters.isEmpty {
-                    Text(viewModel.partialText)
-                        .fontWeight(.semibold)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(12)
-                        .background(Color.indigo.opacity(0.1))
-                        .cornerRadius(8)
-                }
-
-                if viewModel.finalText.characters.isEmpty && viewModel.partialText.characters.isEmpty {
-                    Text("Results will appear here once transcription begins.")
-                        .foregroundStyle(.secondary)
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
-    }
-
-    var controlSection: some View {
-        HStack(spacing: 16) {
-            Button(action: viewModel.startTranscription) {
-                Label(viewModel.startButtonTitle, systemImage: viewModel.startButtonIcon)
-                    .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.borderedProminent)
-            .disabled(viewModel.isStartDisabled)
-
-            Button(action: viewModel.stopTranscription) {
-                Label("Stop", systemImage: "stop.fill")
-                    .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.bordered)
-            .disabled(viewModel.isStopDisabled)
-        }
-        .padding(.top, 8)
-    }
-
     func statusRow(title: String, value: String) -> some View {
         HStack {
             Text(title)
@@ -227,5 +199,80 @@ private extension CustomVocabularyDemoView {
                 .multilineTextAlignment(.trailing)
                 .font(.footnote)
         }
+    }
+}
+
+private extension CustomVocabularyDemoView {
+    var buttonColor: Color {
+        switch viewModel.status {
+        case .idle:
+            return .indigo
+        case .preparing:
+            return .orange
+        case .transcribing:
+            return .red
+        case .paused:
+            return .yellow
+        case .stopping:
+            return .gray
+        }
+    }
+
+    var buttonIcon: String {
+        switch viewModel.status {
+        case .idle:
+            return "mic.fill"
+        case .preparing:
+            return "hourglass"
+        case .transcribing:
+            return "pause.fill"
+        case .paused:
+            return "play.fill"
+        case .stopping:
+            return "stop.fill"
+        }
+    }
+
+    var showStopButton: Bool {
+        switch viewModel.status {
+        case .idle, .stopping:
+            return false
+        case .preparing, .transcribing, .paused:
+            return true
+        }
+    }
+
+    var statusMessage: String {
+        switch viewModel.status {
+        case .idle:
+            return "Ready"
+        case .preparing:
+            return "Preparing session..."
+        case .transcribing:
+            return "Listening..."
+        case .paused:
+            return "Paused — tap to resume or stop"
+        case .stopping:
+            return "Stopping..."
+        }
+    }
+
+    func handlePrimaryAction() {
+        switch viewModel.status {
+        case .idle:
+            viewModel.startTranscription()
+        case .preparing:
+            viewModel.stopTranscription()
+        case .transcribing:
+            viewModel.pauseTranscription()
+        case .paused:
+            viewModel.resumeTranscription()
+        case .stopping:
+            break
+        }
+    }
+
+    func handleStopAction() {
+        viewModel.stopTranscription()
     }
 }

@@ -104,9 +104,8 @@ extension SpeechSession {
 
             let previousRoute = userInfo[AVAudioSessionRouteChangePreviousRouteKey] as? AVAudioSessionRouteDescription
             let previousPortType = previousRoute?.inputs.first?.portType
-
-            Task { [weak self] in
-                guard let self else { return }
+            guard let self else { return }
+            Task {
                 await self.handleRouteChange(reason, previousPortType: previousPortType)
             }
         }
@@ -118,9 +117,8 @@ extension SpeechSession {
         ) { [weak self] notification in
             let typeValue = notification.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt
             let optionsValue = notification.userInfo?[AVAudioSessionInterruptionOptionKey] as? UInt
-
-            Task { @MainActor [weak self] in
-                guard let self else { return }
+            guard let self else { return }
+            Task { @MainActor in
                 await self.handleAudioSessionInterruption(typeValue: typeValue, optionsValue: optionsValue)
             }
         }
@@ -130,8 +128,8 @@ extension SpeechSession {
             object: audioEngine,
             queue: .main
         ) { [weak self] _ in
-            Task { [weak self] in
-                guard let self else { return }
+            guard let self else { return }
+            Task {
                 await self.handleEngineConfigurationChange()
             }
         }

@@ -35,7 +35,7 @@ final class CustomVocabularyDemoViewModel: ObservableObject {
 
     // MARK: - Init / Deinit
 
-    init(session: SpeechSession = SpeechSession(reportingOptions: [])) {
+    init(session: SpeechSession = SpeechSession()) {
         self.session = session
         bindStatusStream()
     }
@@ -61,54 +61,52 @@ final class CustomVocabularyDemoViewModel: ObservableObject {
         transcriptionTask?.cancel()
         progressTask?.cancel()
 
-        transcriptionTask = Task { [weak self] in
-            guard let self else { return }
-
+        transcriptionTask = Task { @MainActor in
             do {
                 let stream: AsyncThrowingStream<DictationTranscriber.Result, Error>
                 let startTime = Date()
 
-                if self.isCustomVocabularyEnabled {
-                    guard let descriptor = self.buildDescriptor() else {
-                        self.errorMessage = "Please provide at least one phrase."
+                if isCustomVocabularyEnabled {
+                    guard let descriptor = buildDescriptor() else {
+                        errorMessage = "Please provide at least one phrase."
                         return
                     }
 
-                    self.isCompiling = true
-                    defer { self.isCompiling = false }
-                    stream = try await self.session.startTranscribing(
+                    isCompiling = true
+                    defer { isCompiling = false }
+                    stream = try await session.startTranscribing(
                         customVocabulary: descriptor,
-                        contextualStrings: self.buildContextualStrings()
+                        contextualStrings: buildContextualStrings()
                     )
-                    self.compilationDuration = Date().timeIntervalSince(startTime)
+                    compilationDuration = Date().timeIntervalSince(startTime)
                     do {
-                        self.cacheKey = try descriptor.stableCacheKey()
+                        cacheKey = try descriptor.stableCacheKey()
                     } catch {
-                        self.cacheKey = nil
-                        self.errorMessage = "Failed to compute cache key: \(error.localizedDescription)"
+                        cacheKey = nil
+                        errorMessage = "Failed to compute cache key: \(error.localizedDescription)"
                     }
                 } else {
-                    stream = self.session.startDictationTranscribing(
-                        contextualStrings: self.buildContextualStrings()
+                    stream = session.startDictationTranscribing(
+                        contextualStrings: buildContextualStrings()
                     )
                 }
 
-                self.monitorDownloadProgress()
+                monitorDownloadProgress()
 
                 for try await result in stream {
-                    self.applyDictationResult(result)
+                    applyDictationResult(result)
                 }
             } catch is CancellationError {
                 // expected when stopped
             } catch {
-                self.errorMessage = error.localizedDescription
-                self.isCompiling = false
+                errorMessage = error.localizedDescription
+                isCompiling = false
             }
 
-            self.progressTask?.cancel()
-            self.progressTask = nil
-            self.resetProgressObservation(clearFraction: true)
-            self.transcriptionTask = nil
+            progressTask?.cancel()
+            progressTask = nil
+            resetProgressObservation(clearFraction: true)
+            transcriptionTask = nil
         }
     }
 
@@ -119,10 +117,25 @@ final class CustomVocabularyDemoViewModel: ObservableObject {
         transcriptionTask?.cancel()
         transcriptionTask = nil
 
-        Task { [weak self] in
-            guard let self else { return }
-            await self.session.stopTranscribing()
-            self.partialText = ""
+        Task { @MainActor in
+            await session.stopTranscribing()
+            partialText = ""
+        }
+    }
+
+    func pauseTranscription() {
+        Task { @MainActor in
+            await session.pauseTranscribing()
+        }
+    }
+
+    func resumeTranscription() {
+        Task { @MainActor in
+            do {
+                try await session.resumeTranscribing()
+            } catch {
+                errorMessage = error.localizedDescription
+            }
         }
     }
 
@@ -179,25 +192,21 @@ final class CustomVocabularyDemoViewModel: ObservableObject {
 
     private func bindStatusStream() {
         statusTask?.cancel()
-        statusTask = Task { [weak self] in
-            guard let self else { return }
-            for await newStatus in self.session.statusStream {
-                await MainActor.run {
-                    self.status = newStatus
-                }
+        statusTask = Task { @MainActor in
+            for await newStatus in session.statusStream {
+                status = newStatus
             }
         }
     }
 
     private func monitorDownloadProgress() {
         progressTask?.cancel()
-        progressTask = Task { [weak self] in
-            guard let self else { return }
+        progressTask = Task { @MainActor in
             while !Task.isCancelled {
-                if let progress = self.session.modelDownloadProgress {
-                    self.track(progress)
+                if let progress = session.modelDownloadProgress {
+                    track(progress)
                 } else {
-                    self.resetProgressObservation(clearFraction: true)
+                    resetProgressObservation(clearFraction: true)
                 }
 
                 do {
@@ -240,9 +249,12 @@ final class CustomVocabularyDemoViewModel: ObservableObject {
     }
 
     private func applyDictationResult(_ result: DictationTranscriber.Result) {
-        guard result.isFinal else { return }
-        finalText += result.text
-        partialText = ""
+        if result.isFinal {
+            finalText += result.text
+            partialText = ""
+        } else {
+            partialText = result.text
+        }
     }
 
     private func track(_ progress: Progress) {
@@ -256,7 +268,7 @@ final class CustomVocabularyDemoViewModel: ObservableObject {
             \.fractionCompleted,
             options: [.initial, .new]
         ) { [weak self] progress, _ in
-            Task { @MainActor [weak self] in
+            Task { @MainActor in
                 self?.progressFraction = progress.fractionCompleted
             }
         }
