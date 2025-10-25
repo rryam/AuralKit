@@ -77,6 +77,17 @@ extension SpeechSession {
                 await self.handleRouteChange(reason, previousPortType: previousPortType)
             }
         }
+
+        interruptionObserver = NotificationCenter.default.addObserver(
+            forName: AVAudioSession.interruptionNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                await self.handleAudioSessionInterruption(notification)
+            }
+        }
 #elseif os(macOS)
         routeChangeObserver = NotificationCenter.default.addObserver(
             forName: .AVAudioEngineConfigurationChange,
@@ -111,6 +122,74 @@ extension SpeechSession {
         }
 
         publishCurrentAudioInputInfo()
+    }
+
+    func handleAudioSessionInterruption(_ notification: Notification) async {
+        guard let userInfo = notification.userInfo,
+              let typeValue = userInfo[AVAudioSessionInterruptionTypeKey] as? UInt,
+              let type = AVAudioSession.InterruptionType(rawValue: typeValue) else {
+            return
+        }
+
+        switch type {
+        case .began:
+            handleInterruptionBegan()
+        case .ended:
+            let optionsValue = userInfo[AVAudioSessionInterruptionOptionKey] as? UInt ?? 0
+            let options = AVAudioSession.InterruptionOptions(rawValue: optionsValue)
+            await handleInterruptionEnded(options: options)
+        @unknown default:
+            break
+        }
+    }
+
+    private func handleInterruptionBegan() {
+        guard streamingMode == .liveMicrophone else {
+            shouldResumeAfterInterruption = false
+            return
+        }
+
+        shouldResumeAfterInterruption = status == .transcribing && isAudioStreaming
+        if shouldResumeAfterInterruption {
+            if Self.shouldLog(.notice) {
+                Self.logger.notice("Audio session interruption began; pausing stream")
+            }
+            stopAudioStreaming()
+            setStatus(.paused)
+        }
+
+        isAudioSessionActive = false
+    }
+
+    private func handleInterruptionEnded(options: AVAudioSession.InterruptionOptions) async {
+        guard shouldResumeAfterInterruption else { return }
+        shouldResumeAfterInterruption = false
+
+        guard options.contains(.shouldResume) else {
+            if Self.shouldLog(.notice) {
+                Self.logger.notice("Audio session interruption ended without resume option; cleaning up session")
+            }
+            prepareForStop()
+            await cleanup(cancelRecognizer: true)
+            await finishStream(error: nil)
+            return
+        }
+
+        do {
+            try await setupAudioSession()
+            try startAudioStreaming()
+            setStatus(.transcribing)
+            if Self.shouldLog(.notice) {
+                Self.logger.notice("Audio session resumed after interruption")
+            }
+        } catch {
+            if Self.shouldLog(.error) {
+                Self.logger.error("Failed to resume after interruption: \(error.localizedDescription, privacy: .public)")
+            }
+            prepareForStop()
+            await cleanup(cancelRecognizer: true)
+            await finishStream(error: error)
+        }
     }
 #elseif os(macOS)
     func handleEngineConfigurationChange() async {

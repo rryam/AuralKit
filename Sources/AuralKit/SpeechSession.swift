@@ -60,6 +60,8 @@ public final class SpeechSession {
 #if os(iOS)
     let audioConfig: AudioSessionConfiguration
     var isAudioSessionActive = false
+    var interruptionObserver: NSObjectProtocol?
+    var shouldResumeAfterInterruption = false
 #endif
 
 #if os(iOS) || os(macOS)
@@ -218,6 +220,11 @@ public final class SpeechSession {
             NotificationCenter.default.removeObserver(observer)
         }
         audioInputConfigurationContinuation?.finish()
+#endif
+#if os(iOS)
+        if let observer = interruptionObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
 #endif
         statusContinuation?.finish()
     }
