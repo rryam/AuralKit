@@ -23,10 +23,6 @@ public struct FileTranscriptionOptions {
     }
 }
 
-private struct SendablePCMBuffer: @unchecked Sendable {
-    let buffer: AVAudioPCMBuffer
-}
-
 @MainActor
 public extension SpeechSession {
     /// Stream transcription results for an audio file from disk.

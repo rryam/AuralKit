@@ -102,6 +102,7 @@ extension SpeechSession {
             guard let bufferCopy = buffer.copy() as? AVAudioPCMBuffer else {
                 return
             }
+            let sendableBuffer = SendablePCMBuffer(buffer: bufferCopy)
 
             Task { @MainActor [weak self] in
                 guard let self else {
@@ -109,7 +110,7 @@ extension SpeechSession {
                 }
 
                 do {
-                    try self.processAudioBuffer(bufferCopy)
+                    try self.processAudioBuffer(sendableBuffer.buffer)
                 } catch {
                     if Self.shouldLog(.error) {
                         Self.logger.error(
