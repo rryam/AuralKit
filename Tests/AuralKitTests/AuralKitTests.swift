@@ -85,10 +85,10 @@ struct SpeechSessionAudioInputStreamTests {
         session.broadcastAudioInputInfo(nil)
 
         let (firstA, firstB) = await (valueA, valueB)
-        #expect(firstA != nil)
-        #expect(firstB != nil)
-        #expect(firstA! == nil)
-        #expect(firstB! == nil)
+        let flattenedA = firstA?.flatMap { $0 }
+        let flattenedB = firstB?.flatMap { $0 }
+        #expect(flattenedA == nil)
+        #expect(flattenedB == nil)
     }
 }
 

@@ -92,14 +92,7 @@ struct TranscriptionView: View {
                 vadEnabled: enableVAD,
                 configurationID: vadConfigurationToken
             )) {
-                guard enableVAD else {
-                    await MainActor.run {
-                        isSpeechDetected = true
-                    }
-                    return
-                }
-
-                guard let stream = session.speechDetectorResultsStream else {
+                guard enableVAD, let stream = session.speechDetectorResultsStream else {
                     await MainActor.run {
                         isSpeechDetected = true
                     }

@@ -153,6 +153,9 @@ extension SpeechSession {
         streamingMode = .inactive
         stopAudioStreaming()
         deactivateAudioSessionIfNeeded()
+#if os(iOS)
+        shouldResumeAfterInterruption = false
+#endif
         await stopTranscriberAndCleanup()
         setStatus(.idle)
         if Self.shouldLog(.debug) {
