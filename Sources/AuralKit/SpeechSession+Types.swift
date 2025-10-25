@@ -1,4 +1,5 @@
 import Foundation
+import AVFoundation
 import Speech
 
 extension SpeechSession {
@@ -32,5 +33,9 @@ extension SpeechSession {
     struct VoiceActivationConfiguration {
         let detectionOptions: SpeechDetector.DetectionOptions
         let reportResults: Bool
+    }
+
+    struct SendablePCMBuffer: @unchecked Sendable {
+        let buffer: AVAudioPCMBuffer
     }
 }

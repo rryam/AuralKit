@@ -1,5 +1,5 @@
 import Foundation
-@preconcurrency import AVFoundation
+import AVFoundation
 import Speech
 
 /// Configuration used by `SpeechSession` when transcribing an audio file from disk.
@@ -258,8 +258,10 @@ private extension SpeechSession {
                 throw SpeechSessionError.conversionBufferCreationFailed
             }
 
+            let sendableBuffer = SendablePCMBuffer(buffer: bufferCopy)
+
             try await MainActor.run {
-                try self.processAudioBuffer(bufferCopy)
+                try self.processAudioBuffer(sendableBuffer.buffer)
             }
 
             processedFrames += AVAudioFramePosition(buffer.frameLength)
