@@ -83,9 +83,12 @@ extension SpeechSession {
             object: nil,
             queue: .main
         ) { [weak self] notification in
+            let typeValue = notification.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt
+            let optionsValue = notification.userInfo?[AVAudioSessionInterruptionOptionKey] as? UInt
+
             Task { @MainActor [weak self] in
                 guard let self else { return }
-                await self.handleAudioSessionInterruption(notification)
+                await self.handleAudioSessionInterruption(typeValue: typeValue, optionsValue: optionsValue)
             }
         }
 #elseif os(macOS)
@@ -124,9 +127,8 @@ extension SpeechSession {
         publishCurrentAudioInputInfo()
     }
 
-    func handleAudioSessionInterruption(_ notification: Notification) async {
-        guard let userInfo = notification.userInfo,
-              let typeValue = userInfo[AVAudioSessionInterruptionTypeKey] as? UInt,
+    func handleAudioSessionInterruption(typeValue: UInt?, optionsValue: UInt?) async {
+        guard let typeValue,
               let type = AVAudioSession.InterruptionType(rawValue: typeValue) else {
             return
         }
@@ -135,8 +137,8 @@ extension SpeechSession {
         case .began:
             handleInterruptionBegan()
         case .ended:
-            let optionsValue = userInfo[AVAudioSessionInterruptionOptionKey] as? UInt ?? 0
-            let options = AVAudioSession.InterruptionOptions(rawValue: optionsValue)
+            let value = optionsValue ?? 0
+            let options = AVAudioSession.InterruptionOptions(rawValue: value)
             await handleInterruptionEnded(options: options)
         @unknown default:
             break

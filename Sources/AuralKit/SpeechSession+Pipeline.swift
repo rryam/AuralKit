@@ -179,7 +179,7 @@ extension SpeechSession {
 
     // MARK: - Helper Methods
 
-    private func setupAudioSession() async throws {
+    func setupAudioSession() async throws {
 #if os(iOS)
         try await MainActor.run {
             let audioSession = AVAudioSession.sharedInstance()
