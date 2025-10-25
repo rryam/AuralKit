@@ -4,4 +4,4 @@
 - [x] Handle AVAudioSession interruptions to pause and resume streaming reliably.
 - [x] Support multi-subscriber AsyncStreams for status and audio-input updates.
 - [x] Ensure the demo's VAD indicator restarts its task when toggling voice activation.
-- [ ] Add regression tests covering the new broadcast stream behavior.
+- [x] Add regression tests covering the new broadcast stream behavior.

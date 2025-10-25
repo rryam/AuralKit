@@ -19,6 +19,30 @@ struct SpeechSessionStateTests {
         #expect(session.modelDownloadProgress == nil)
         #expect(session.status == .idle)
     }
+
+    @Test("Status stream broadcasts updates to multiple subscribers")
+    @MainActor
+    func statusStreamBroadcastsToMultipleSubscribers() async {
+        let session = SpeechSession()
+
+        var iteratorA = session.statusStream.makeAsyncIterator()
+        var iteratorB = session.statusStream.makeAsyncIterator()
+
+        let firstA = await iteratorA.next()
+        let firstB = await iteratorB.next()
+
+        #expect(firstA == .some(.idle))
+        #expect(firstB == .some(.idle))
+
+        async let nextA = iteratorA.next()
+        async let nextB = iteratorB.next()
+
+        session.setStatus(.preparing)
+
+        let (valueA, valueB) = await (nextA, nextB)
+        #expect(valueA == .some(.preparing))
+        #expect(valueB == .some(.preparing))
+    }
 }
 
 @Suite("SpeechSession Voice Activation")
@@ -41,6 +65,30 @@ struct SpeechSessionVoiceActivationTests {
         #expect(session.isVoiceActivationEnabled == false)
         #expect(session.speechDetectorResultsStream == nil)
         #expect(session.isSpeechDetected == true)
+    }
+}
+
+@Suite("SpeechSession Audio Input Stream")
+struct SpeechSessionAudioInputStreamTests {
+
+    @Test("Audio input stream fans out nil updates")
+    @MainActor
+    func audioInputStreamBroadcastsNil() async {
+        let session = SpeechSession()
+
+        var iteratorA = session.audioInputConfigurationStream.makeAsyncIterator()
+        var iteratorB = session.audioInputConfigurationStream.makeAsyncIterator()
+
+        async let valueA = iteratorA.next()
+        async let valueB = iteratorB.next()
+
+        session.broadcastAudioInputInfo(nil)
+
+        let (firstA, firstB) = await (valueA, valueB)
+        #expect(firstA != nil)
+        #expect(firstB != nil)
+        #expect(firstA! == nil)
+        #expect(firstB! == nil)
     }
 }
 
