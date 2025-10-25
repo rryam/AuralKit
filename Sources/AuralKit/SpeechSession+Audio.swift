@@ -100,11 +100,14 @@ extension SpeechSession {
     private func makeAudioTapHandler() -> AVAudioNodeTapBlock {
         return { [weak self] buffer, _ in
             guard let bufferCopy = buffer.copy() as? AVAudioPCMBuffer else {
+                if Self.shouldLog(.error) {
+                    Self.logger.error("Failed to copy audio buffer for processing.")
+                }
                 return
             }
             let sendableBuffer = SendablePCMBuffer(buffer: bufferCopy)
 
-            Task { @MainActor [weak self] in
+            Task { @MainActor in
                 guard let self else {
                     return
                 }
