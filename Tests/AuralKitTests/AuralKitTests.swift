@@ -107,6 +107,7 @@ struct SpeechSessionAudioInputStreamTests {
             valueB.cancel()
         }
 
+        await Task.yield()
         session.broadcastAudioInputInfo(nil)
 
         let firstA = try await awaitResult {
