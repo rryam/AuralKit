@@ -3,29 +3,22 @@ import AuralKit
 
 struct ContentView: View {
     private enum DemoTab: Hashable {
-        case quickStart
-        case advanced
+        case transcribe
         case customVocabulary
         case history
         case settings
     }
 
-    @State private var selectedTab: DemoTab = .quickStart
+    @State private var selectedTab: DemoTab = .transcribe
     @State private var transcriptionManager = TranscriptionManager()
 
     var body: some View {
         TabView(selection: $selectedTab) {
-            TranscriptionView()
+            TranscriptionExperienceView(manager: transcriptionManager)
                 .tabItem {
-                    Label("Quick Start", systemImage: "bolt.waveform")
+                    Label("Transcribe", systemImage: "waveform")
                 }
-                .tag(DemoTab.quickStart)
-
-            AdvancedTranscriptionView(manager: transcriptionManager)
-                .tabItem {
-                    Label("Advanced", systemImage: "mic.circle.fill")
-                }
-                .tag(DemoTab.advanced)
+                .tag(DemoTab.transcribe)
 
             CustomVocabularyDemoView()
                 .tabItem {

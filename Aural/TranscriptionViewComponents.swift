@@ -8,7 +8,7 @@ struct TranscriptionSettingsView: View {
     @Binding var presetChoice: DemoTranscriberPreset
     @Binding var enableVAD: Bool
     @Binding var vadSensitivity: SpeechDetector.SensitivityLevel
-    @Binding var isSpeechDetected: Bool
+    let isSpeechDetected: Bool
     
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -63,7 +63,9 @@ struct TranscriptionSettingsView: View {
 struct TranscriptionTextView: View {
     let finalText: AttributedString
     let partialText: AttributedString
-    
+    var currentTimeRange: String? = nil
+    var emptyStateMessage: String = "Results will appear here once transcription begins."
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
@@ -75,19 +77,37 @@ struct TranscriptionTextView: View {
                         .background(Color.gray.opacity(0.1))
                         .cornerRadius(12)
                 }
-                
+
                 if !partialText.characters.isEmpty {
-                    HStack(spacing: 8) {
-                        ProgressView()
-                            .scaleEffect(0.8)
-                        Text(partialText)
-                            .font(.body)
-                            .italic()
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack(spacing: 8) {
+                            ProgressView()
+                                .scaleEffect(0.8)
+                            Text(partialText)
+                                .font(.body)
+                                .italic()
+                        }
+
+                        if let currentTimeRange, !currentTimeRange.isEmpty {
+                            Label(currentTimeRange, systemImage: "clock")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
                     }
                     .padding()
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(Color.indigo.opacity(0.1))
                     .cornerRadius(12)
+                }
+
+                if finalText.characters.isEmpty && partialText.characters.isEmpty {
+                    Text(emptyStateMessage)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding()
+                        .background(Color.gray.opacity(0.08))
+                        .cornerRadius(12)
                 }
             }
             .padding()
@@ -106,6 +126,7 @@ struct TranscriptionControlsView: View {
     let statusMessage: String
     let onPrimaryAction: () -> Void
     let onStopAction: () -> Void
+    var animationScale: CGFloat = 1.0
     
     var body: some View {
         VStack(spacing: 16) {
@@ -124,6 +145,7 @@ struct TranscriptionControlsView: View {
                     Circle()
                         .fill(buttonColor)
                         .frame(width: 80, height: 80)
+                        .scaleEffect(animationScale)
                     Image(systemName: buttonIcon)
                         .font(.system(size: 30))
                         .foregroundStyle(.white)

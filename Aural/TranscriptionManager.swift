@@ -20,9 +20,27 @@ class TranscriptionManager {
     }
     var error: String?
     var currentTimeRange = ""
+    var isVoiceActivationEnabled: Bool = false {
+        didSet {
+            guard oldValue != isVoiceActivationEnabled else { return }
+            handleVoiceActivationChanged()
+        }
+    }
+    var voiceActivationSensitivity: SpeechDetector.SensitivityLevel = .medium {
+        didSet {
+            guard oldValue != voiceActivationSensitivity else { return }
+            if isVoiceActivationEnabled {
+                handleVoiceActivationChanged()
+            }
+        }
+    }
+    var isSpeechDetected: Bool = true
+    var micInput: AudioInputInfo?
 
     private var transcriptionTask: Task<Void, Never>?
     private var statusTask: Task<Void, Never>?
+    private var audioInputTask: Task<Void, Never>?
+    private var speechDetectorTask: Task<Void, Never>?
     private var speechSession: SpeechSession?
 
     init() {}
@@ -46,10 +64,13 @@ class TranscriptionManager {
         volatileText = ""
         finalizedText = ""
         currentTimeRange = ""
+        isSpeechDetected = true
 
         let session = SpeechSession(locale: selectedLocale, preset: selectedPreset.preset)
         speechSession = session
         observeStatus(from: session)
+        observeAudioInput(from: session)
+        applyVoiceActivationConfiguration(to: session)
 
         transcriptionTask = Task { @MainActor in
             do {
@@ -106,6 +127,7 @@ class TranscriptionManager {
         Task { @MainActor in
             await self.speechSession?.stopTranscribing()
         }
+        stopAuxiliaryTasks()
     }
 
     func pauseTranscription() {
@@ -176,8 +198,72 @@ class TranscriptionManager {
         transcriptionTask = nil
         statusTask?.cancel()
         statusTask = nil
+        stopAuxiliaryTasks()
         speechSession = nil
         status = .idle
+    }
+
+    private func observeAudioInput(from session: SpeechSession) {
+        audioInputTask?.cancel()
+        audioInputTask = Task {
+            for await info in session.audioInputConfigurationStream {
+                await MainActor.run {
+                    self.micInput = info
+                }
+            }
+        }
+    }
+
+    private func observeSpeechDetector(from session: SpeechSession) {
+        speechDetectorTask?.cancel()
+        guard let stream = session.speechDetectorResultsStream else {
+            isSpeechDetected = true
+            return
+        }
+
+        speechDetectorTask = Task {
+            for await result in stream {
+                await MainActor.run {
+                    self.isSpeechDetected = result.speechDetected
+                }
+            }
+        }
+    }
+
+    private func stopAuxiliaryTasks() {
+        audioInputTask?.cancel()
+        audioInputTask = nil
+        speechDetectorTask?.cancel()
+        speechDetectorTask = nil
+        micInput = nil
+        isSpeechDetected = true
+    }
+
+    private func applyVoiceActivationConfiguration(to session: SpeechSession) {
+        if isVoiceActivationEnabled {
+            session.configureVoiceActivation(
+                detectionOptions: .init(sensitivityLevel: voiceActivationSensitivity),
+                reportResults: true
+            )
+            isSpeechDetected = true
+            observeSpeechDetector(from: session)
+        } else {
+            session.disableVoiceActivation()
+            speechDetectorTask?.cancel()
+            speechDetectorTask = nil
+            isSpeechDetected = true
+        }
+    }
+
+    private func handleVoiceActivationChanged() {
+        guard let session = speechSession else {
+            if !isVoiceActivationEnabled {
+                isSpeechDetected = true
+            }
+            return
+        }
+
+        applyVoiceActivationConfiguration(to: session)
     }
 }
 
