@@ -18,7 +18,7 @@ extension SpeechSession {
         }
 
         guard let vocabulary else {
-            clearCustomVocabularyArtifacts(removeDescriptor: true)
+            await clearCustomVocabularyArtifacts(removeDescriptor: true)
             return
         }
 
@@ -110,15 +110,32 @@ extension SpeechSession {
         return startDictationTranscribing(contextualStrings: contextualStrings)
     }
 
-    func clearCustomVocabularyArtifacts(removeDescriptor: Bool) {
+    func clearCustomVocabularyArtifacts(removeDescriptor: Bool) async {
         if let directory = customVocabularyOutputDirectory {
-            do {
-                try FileManager.default.removeItem(at: directory)
-            } catch {
+            let maxAttempts = 3
+            let retryDelay = Duration.milliseconds(50)
+            var attempts = 0
+            var lastError: Error?
+
+            while attempts < maxAttempts {
+                do {
+                    try FileManager.default.removeItem(at: directory)
+                    lastError = nil
+                    break
+                } catch {
+                    lastError = error
+                    attempts += 1
+                    if attempts < maxAttempts {
+                        try? await Task.sleep(for: retryDelay)
+                    }
+                }
+            }
+
+            if let lastError {
                 logCustomVocabularyError(
                     "Failed to delete vocabulary directory during cleanup.",
                     path: directory.path,
-                    error: error
+                    error: lastError
                 )
             }
         }

@@ -38,7 +38,9 @@ public struct FileTranscriptionOptions {
             resolved.append(contentsOf: fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask))
             resolved.append(fileManager.temporaryDirectory)
             resolved.append(URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true))
+            #if os(macOS)
             resolved.append(fileManager.homeDirectoryForCurrentUser)
+            #endif
         }
 
         var unique: [String: URL] = [:]
