@@ -113,7 +113,7 @@ extension SpeechSession {
                 }
 
                 do {
-                    try self.processAudioBuffer(sendableBuffer.buffer)
+                    try await self.processAudioBuffer(sendableBuffer)
                 } catch {
                     if Self.shouldLog(.error) {
                         Self.logger.error(

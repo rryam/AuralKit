@@ -10,16 +10,43 @@ public struct FileTranscriptionOptions {
     /// Maximum allowed duration for the audio file. Files longer than this will fail validation.
     public var maxDuration: TimeInterval?
 
+    /// Directories considered safe for audio file reads. Defaults to the app sandbox directories.
+    public var allowedDirectories: [URL]
+
     /// Creates a new set of file transcription options.
     /// - Parameters:
     ///   - contextualStrings: Tag-keyed terms that bias recognition toward domain-specific vocabulary.
     ///   - maxDuration: Upper limit for the audio length; longer files trigger `.audioFileTooLong`.
+    ///   - allowedDirectories: Whitelisted directories that file URLs must reside in after resolving symlinks.
     public init(
         contextualStrings: [AnalysisContext.ContextualStringsTag: [String]]? = nil,
-        maxDuration: TimeInterval? = nil
+        maxDuration: TimeInterval? = nil,
+        allowedDirectories: [URL]? = nil
     ) {
         self.contextualStrings = contextualStrings
         self.maxDuration = maxDuration
+        self.allowedDirectories = FileTranscriptionOptions.prepareAllowedDirectories(allowedDirectories)
+    }
+
+    private static func prepareAllowedDirectories(_ directories: [URL]?) -> [URL] {
+        let fileManager = FileManager.default
+        var resolved = directories?.filter(\.isFileURL) ?? []
+
+        if resolved.isEmpty {
+            resolved.append(contentsOf: fileManager.urls(for: .documentDirectory, in: .userDomainMask))
+            resolved.append(contentsOf: fileManager.urls(for: .cachesDirectory, in: .userDomainMask))
+            resolved.append(contentsOf: fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask))
+            resolved.append(fileManager.temporaryDirectory)
+            resolved.append(URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true))
+            resolved.append(fileManager.homeDirectoryForCurrentUser)
+        }
+
+        var unique: [String: URL] = [:]
+        for directory in resolved {
+            let sanitized = directory.standardizedFileURL.resolvingSymlinksInPath()
+            unique[sanitized.path] = sanitized
+        }
+        return Array(unique.values)
     }
 }
 
@@ -109,7 +136,7 @@ private extension SpeechSession {
         progressHandler: (@Sendable (Double) -> Void)?
     ) async {
         do {
-            let validation = try validateAudioFile(at: audioFileURL, maxDuration: options.maxDuration)
+            let validation = try validateAudioFile(at: audioFileURL, options: options)
             try await ensureSpeechRecognitionAuthorization(context: "for file transcription")
             try await setUpFilePipeline(
                 with: streamContinuation,
@@ -148,15 +175,16 @@ private extension SpeechSession {
 
     func validateAudioFile(
         at url: URL,
-        maxDuration: TimeInterval?
+        options: FileTranscriptionOptions
     ) throws -> (file: AVAudioFile, totalFrames: AVAudioFramePosition) {
-        guard FileManager.default.fileExists(atPath: url.path) else {
-            throw SpeechSessionError.audioFileNotFound(url)
-        }
+        let safeURL = try sanitizeAudioFileURL(
+            url,
+            allowedDirectories: options.allowedDirectories
+        )
 
         let audioFile: AVAudioFile
         do {
-            audioFile = try AVAudioFile(forReading: url)
+            audioFile = try AVAudioFile(forReading: safeURL)
         } catch {
             throw SpeechSessionError.audioFileReadFailed(error)
         }
@@ -169,7 +197,7 @@ private extension SpeechSession {
             throw SpeechSessionError.audioFileUnsupportedFormat(description)
         }
 
-        if let maxDuration {
+        if let maxDuration = options.maxDuration {
             let duration = Double(totalFrames) / audioFile.processingFormat.sampleRate
             if duration > maxDuration {
                 throw SpeechSessionError.audioFileTooLong(maximum: maxDuration, actual: duration)
@@ -177,6 +205,39 @@ private extension SpeechSession {
         }
 
         return (audioFile, totalFrames)
+    }
+
+    func sanitizeAudioFileURL(
+        _ url: URL,
+        allowedDirectories: [URL]
+    ) throws -> URL {
+        guard url.isFileURL else {
+            throw SpeechSessionError.audioFileInvalidURL(url)
+        }
+
+        guard !url.pathComponents.contains("..") else {
+            throw SpeechSessionError.audioFileInvalidURL(url)
+        }
+
+        let standardized = url.standardizedFileURL.resolvingSymlinksInPath()
+        let targetComponents = standardized.pathComponents
+        let allowedComponentSets = allowedDirectories
+            .map { $0.standardizedFileURL.resolvingSymlinksInPath().pathComponents }
+
+        guard FileManager.default.fileExists(atPath: standardized.path) else {
+            throw SpeechSessionError.audioFileNotFound(standardized)
+        }
+
+        let isWithinAllowedDirectory = allowedComponentSets.contains { allowedComponents in
+            guard allowedComponents.count <= targetComponents.count else { return false }
+            return targetComponents.starts(with: allowedComponents)
+        }
+
+        guard isWithinAllowedDirectory else {
+            throw SpeechSessionError.audioFileOutsideAllowedDirectories(standardized)
+        }
+
+        return standardized
     }
 
     func setUpFilePipeline(
@@ -260,9 +321,7 @@ private extension SpeechSession {
 
             let sendableBuffer = SendablePCMBuffer(buffer: bufferCopy)
 
-            try await MainActor.run {
-                try self.processAudioBuffer(sendableBuffer.buffer)
-            }
+            try await self.processAudioBuffer(sendableBuffer)
 
             processedFrames += AVAudioFramePosition(buffer.frameLength)
 

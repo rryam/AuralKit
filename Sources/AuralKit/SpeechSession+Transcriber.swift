@@ -199,13 +199,15 @@ extension SpeechSession {
         }
     }
 
-    func processAudioBuffer(_ buffer: AVAudioPCMBuffer) throws {
+    func processAudioBuffer(_ buffer: SendablePCMBuffer) async throws {
         guard let inputBuilder, let analyzerFormat else {
             throw SpeechSessionError.invalidAudioDataType
         }
 
-        let converted = try converter.convertBuffer(buffer, to: analyzerFormat)
-        let input = AnalyzerInput(buffer: converted)
+        let input = try await audioProcessingActor.makeAnalyzerInput(
+            from: buffer,
+            analyzerFormat: analyzerFormat
+        )
         inputBuilder.yield(input)
     }
 
