@@ -5,7 +5,7 @@ import OSLog
 
 private let customVocabularyLogger = Logger(subsystem: "com.auralkit.speech", category: "CustomVocabulary")
 
-private func logCustomVocabularyError(_ message: StaticString, path: String, error: Error) {
+func logCustomVocabularyError(_ message: StaticString, path: String, error: Error) {
     Task { @MainActor in
         guard SpeechSession.shouldLog(.error) else { return }
         customVocabularyLogger.error("\(message) path: \(path, privacy: .public)")
@@ -199,10 +199,8 @@ final class CustomVocabularyCompiler: CustomVocabularyCompiling, @unchecked Send
         let assetURL = fileManager.temporaryDirectory
             .appendingPathComponent("auralkit-custom-vocabulary-\(cacheKey).bin")
 
-        removeItemWithRetry(
-            at: assetURL,
-            contextMessage: "Failed to delete temp vocabulary asset."
-        )
+        // Clean up any existing temp file before creating new one
+        try? fileManager.removeItem(at: assetURL)
 
         return CompilationPaths(
             outputDirectory: outputDirectory,
@@ -238,10 +236,19 @@ final class CustomVocabularyCompiler: CustomVocabularyCompiling, @unchecked Send
         let modelData = descriptor.makeModelData()
 
         defer {
-            removeItemWithRetry(
-                at: paths.assetURL,
-                contextMessage: "Failed to clean up temp vocabulary asset."
-            )
+            // Best-effort cleanup of temp asset file
+            do {
+                try fileManager.removeItem(at: paths.assetURL)
+            } catch {
+                // Only log if file still exists after failed attempt
+                if fileManager.fileExists(atPath: paths.assetURL.path) {
+                    logCustomVocabularyError(
+                        "Failed to clean up temp vocabulary asset.",
+                        path: paths.assetURL.path,
+                        error: error
+                    )
+                }
+            }
         }
 
         do {
@@ -254,35 +261,6 @@ final class CustomVocabularyCompiler: CustomVocabularyCompiling, @unchecked Send
             }.value
         } catch {
             throw SpeechSessionError.customVocabularyCompilationFailed(error)
-        }
-    }
-
-    private func removeItemWithRetry(
-        at url: URL,
-        contextMessage: StaticString,
-        maxAttempts: Int = 3,
-        retryDelay: TimeInterval = 0.05
-    ) {
-        guard fileManager.fileExists(atPath: url.path) else { return }
-
-        var attempts = 0
-        var lastError: Error?
-
-        while attempts < maxAttempts {
-            do {
-                try fileManager.removeItem(at: url)
-                return
-            } catch {
-                lastError = error
-                attempts += 1
-                if attempts < maxAttempts {
-                    Thread.sleep(forTimeInterval: retryDelay)
-                }
-            }
-        }
-
-        if let lastError {
-            logCustomVocabularyError(contextMessage, path: url.path, error: lastError)
         }
     }
 }

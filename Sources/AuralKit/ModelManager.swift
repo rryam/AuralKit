@@ -98,10 +98,8 @@ class ModelManager: @unchecked Sendable {
             } catch {
                 currentDownloadProgress = nil
                 logger.error("Asset download failed: \(error.localizedDescription, privacy: .public)")
-                if let urlError = error as? URLError, urlError.code == .notConnectedToInternet {
-                    throw SpeechSessionError.modelDownloadNoInternet
-                }
 
+                // Check for network connectivity errors
                 let nsError = error as NSError
                 if nsError.domain == NSURLErrorDomain,
                    nsError.code == URLError.notConnectedToInternet.rawValue {

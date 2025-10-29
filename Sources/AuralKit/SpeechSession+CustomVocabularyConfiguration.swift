@@ -112,30 +112,14 @@ extension SpeechSession {
 
     func clearCustomVocabularyArtifacts(removeDescriptor: Bool) async {
         if let directory = customVocabularyOutputDirectory {
-            let maxAttempts = 3
-            let retryDelay = Duration.milliseconds(50)
-            var attempts = 0
-            var lastError: Error?
-
-            while attempts < maxAttempts {
-                do {
-                    try FileManager.default.removeItem(at: directory)
-                    lastError = nil
-                    break
-                } catch {
-                    lastError = error
-                    attempts += 1
-                    if attempts < maxAttempts {
-                        try? await Task.sleep(for: retryDelay)
-                    }
-                }
-            }
-
-            if let lastError {
+            // Best-effort cleanup of vocabulary directory
+            do {
+                try FileManager.default.removeItem(at: directory)
+            } catch {
                 logCustomVocabularyError(
                     "Failed to delete vocabulary directory during cleanup.",
                     path: directory.path,
-                    error: lastError
+                    error: error
                 )
             }
         }
@@ -147,15 +131,5 @@ extension SpeechSession {
         if removeDescriptor {
             customVocabularyDescriptor = nil
         }
-    }
-}
-
-private let customVocabularyLogger = Logger(subsystem: "com.auralkit.speech", category: "CustomVocabulary")
-
-private func logCustomVocabularyError(_ message: StaticString, path: String, error: Error) {
-    Task { @MainActor in
-        guard SpeechSession.shouldLog(.error) else { return }
-        customVocabularyLogger.error("\(message) path: \(path, privacy: .public)")
-        customVocabularyLogger.error("error: \(error.localizedDescription, privacy: .public)")
     }
 }
