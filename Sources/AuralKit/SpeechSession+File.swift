@@ -217,10 +217,6 @@ private extension SpeechSession {
             throw SpeechSessionError.audioFileInvalidURL(url)
         }
 
-        guard !url.pathComponents.contains("..") else {
-            throw SpeechSessionError.audioFileInvalidURL(url)
-        }
-
         let standardized = url.standardizedFileURL.resolvingSymlinksInPath()
         let targetComponents = standardized.pathComponents
         let allowedComponentSets = allowedDirectories

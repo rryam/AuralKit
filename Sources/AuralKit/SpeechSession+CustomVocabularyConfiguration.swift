@@ -18,7 +18,7 @@ extension SpeechSession {
         }
 
         guard let vocabulary else {
-            await clearCustomVocabularyArtifacts(removeDescriptor: true)
+            clearCustomVocabularyArtifacts(removeDescriptor: true)
             return
         }
 
@@ -110,7 +110,7 @@ extension SpeechSession {
         return startDictationTranscribing(contextualStrings: contextualStrings)
     }
 
-    func clearCustomVocabularyArtifacts(removeDescriptor: Bool) async {
+    func clearCustomVocabularyArtifacts(removeDescriptor: Bool) {
         if let directory = customVocabularyOutputDirectory {
             // Best-effort cleanup of vocabulary directory
             do {
