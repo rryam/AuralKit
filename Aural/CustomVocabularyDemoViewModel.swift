@@ -171,7 +171,7 @@ final class CustomVocabularyDemoViewModel {
         progressTask?.cancel()
         progressTask = Task { @MainActor in
             while !Task.isCancelled {
-                if let progress = session.modelDownloadProgress {
+                if let progress = await session.modelDownloadProgress {
                     track(progress)
                 } else {
                     resetProgressObservation(clearFraction: true)

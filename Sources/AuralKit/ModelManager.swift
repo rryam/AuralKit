@@ -4,7 +4,7 @@ import OSLog
 
 // MARK: - Model Manager
 
-class ModelManager: @unchecked Sendable {
+actor ModelManager {
 
     private let logger = Logger(subsystem: "com.auralkit.speech", category: "ModelManager")
 

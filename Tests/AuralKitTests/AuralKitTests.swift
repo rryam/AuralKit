@@ -7,9 +7,9 @@ struct SpeechSessionStateTests {
 
     @Test("Model download progress starts nil")
     @MainActor
-    func modelDownloadProgressStartsNil() {
+    func modelDownloadProgressStartsNil() async {
         let session = SpeechSession()
-        #expect(session.modelDownloadProgress == nil)
+        #expect(await session.modelDownloadProgress == nil)
     }
 
     @Test("Stop transcribing without session is a no-op")
@@ -17,7 +17,7 @@ struct SpeechSessionStateTests {
     func stopTranscribingWithoutSessionIsNoOp() async {
         let session = SpeechSession()
         await session.stopTranscribing()
-        #expect(session.modelDownloadProgress == nil)
+        #expect(await session.modelDownloadProgress == nil)
         #expect(session.status == .idle)
     }
 
