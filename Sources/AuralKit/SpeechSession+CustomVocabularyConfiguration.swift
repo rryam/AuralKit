@@ -41,7 +41,12 @@ extension SpeechSession {
             return
         }
 
-        let compilation = try await customVocabularyCompiler.compile(descriptor: vocabulary)
+        // Offload compilation to background task to avoid blocking main actor UI
+        // Capture compiler before detached task to avoid cross-actor access
+        let compiler = customVocabularyCompiler
+        let compilation = try await Task.detached(priority: .userInitiated) {
+            try await compiler.compile(descriptor: vocabulary)
+        }.value
 
         if let previousDirectory = customVocabularyOutputDirectory,
            previousDirectory != compilation.outputDirectory {

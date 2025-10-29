@@ -4,11 +4,14 @@ import OSLog
 
 // MARK: - Model Manager
 
-class ModelManager: @unchecked Sendable {
+actor ModelManager {
 
     private let logger = Logger(subsystem: "com.auralkit.speech", category: "ModelManager")
 
     private(set) var currentDownloadProgress: Progress?
+
+    // Track locales reserved by this ModelManager instance to avoid releasing others' reservations
+    private var reservedLocales: Set<String> = []
 
     /// Ensure the speech model for the given locale is available
     func ensureModel(module: any LocaleDependentSpeechModule, locale: Locale) async throws {
@@ -70,12 +73,14 @@ class ModelManager: @unchecked Sendable {
         let target = locale.identifier(.bcp47)
         if existingReservations.contains(where: { $0.identifier(.bcp47) == target }) {
             logger.debug("Locale \(target) already reserved")
+            // Don't track it - it was reserved by another session
             return
         }
 
         do {
             try await AssetInventory.reserve(locale: locale)
             logger.info("Reserved locale \(target)")
+            reservedLocales.insert(target)
         } catch {
             logger.error("Failed to reserve locale \(target): \(error.localizedDescription, privacy: .public)")
             throw SpeechSessionError.modelReservationFailed(locale, error)
@@ -115,12 +120,20 @@ class ModelManager: @unchecked Sendable {
     }
 
     /// Release reserved locales so other clients can access them
+    /// Only releases locales that were reserved by this ModelManager instance
     func releaseLocales() async {
-        let reserved = await AssetInventory.reservedLocales
-        for locale in reserved {
-            await AssetInventory.release(reservedLocale: locale)
+        let allReserved = await AssetInventory.reservedLocales
+        // Only release locales tracked by this instance
+        var releasedCount = 0
+        for locale in allReserved {
+            let target = locale.identifier(.bcp47)
+            if reservedLocales.contains(target) {
+                await AssetInventory.release(reservedLocale: locale)
+                reservedLocales.remove(target)
+                releasedCount += 1
+            }
         }
         currentDownloadProgress = nil
-        logger.debug("Released reserved locales")
+        logger.debug("Released \(releasedCount) reserved locale(s)")
     }
 }

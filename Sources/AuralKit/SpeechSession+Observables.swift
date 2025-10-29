@@ -39,7 +39,9 @@ extension SpeechSession {
 
     /// Progress of the ongoing model download, if any.
     public var modelDownloadProgress: Progress? {
-        modelManager.currentDownloadProgress
+        get async {
+            await modelManager.currentDownloadProgress
+        }
     }
 
     /// Returns `true` when voice activation has been configured for the session.

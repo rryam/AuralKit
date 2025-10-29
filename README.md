@@ -409,7 +409,7 @@ public actor SpeechSession {
     public init(locale: Locale = .current)
 
     /// Current speech model download progress, if any
-    public var modelDownloadProgress: Progress? { get }
+    public var modelDownloadProgress: Progress? { get async }
 
     /// Start transcribing - returns stream of SpeechTranscriber.Result
     public func startTranscribing() async -> AsyncThrowingStream<SpeechTranscriber.Result, Error>
