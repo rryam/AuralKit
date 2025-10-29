@@ -196,8 +196,10 @@ final class CustomVocabularyCompiler: CustomVocabularyCompiling, @unchecked Send
 
         let languageModelURL = outputDirectory.appendingPathComponent("languageModel.bin")
         let vocabularyURL = outputDirectory.appendingPathComponent("vocabulary.bin")
+        // Use UUID to ensure unique temp file per compilation invocation, preventing races
+        let uniqueID = UUID().uuidString
         let assetURL = fileManager.temporaryDirectory
-            .appendingPathComponent("auralkit-custom-vocabulary-\(cacheKey).bin")
+            .appendingPathComponent("auralkit-custom-vocabulary-\(uniqueID).bin")
 
         // Clean up any existing temp file before creating new one
         try? fileManager.removeItem(at: assetURL)
@@ -252,8 +254,9 @@ final class CustomVocabularyCompiler: CustomVocabularyCompiling, @unchecked Send
         }
 
         do {
-            try await modelData.export(to: paths.assetURL)
+            // Offload heavy I/O work to background to avoid blocking main actor
             try await Task.detached(priority: .userInitiated) {
+                try await modelData.export(to: paths.assetURL)
                 try await SFSpeechLanguageModel.prepareCustomLanguageModel(
                     for: paths.assetURL,
                     configuration: configuration
