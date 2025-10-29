@@ -35,9 +35,9 @@ public final class SpeechSession {
 
     // MARK: - Properties
 
-    let converter = BufferConverter()
     let modelManager = ModelManager()
     var customVocabularyCompiler: any CustomVocabularyCompiling
+    let audioProcessingActor = AudioProcessingActor()
 
     lazy var audioEngine = AVAudioEngine()
     var isAudioStreaming = false

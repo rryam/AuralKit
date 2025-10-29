@@ -29,6 +29,12 @@ public enum SpeechSessionError: LocalizedError {
     /// Audio file is missing or cannot be accessed.
     case audioFileNotFound(URL)
 
+    /// Audio file URL is invalid or not accessible via file:// scheme.
+    case audioFileInvalidURL(URL)
+
+    /// Audio file resides outside of the allowed directory scope.
+    case audioFileOutsideAllowedDirectories(URL)
+
     /// Audio file format is not supported for transcription.
     case audioFileUnsupportedFormat(String)
 

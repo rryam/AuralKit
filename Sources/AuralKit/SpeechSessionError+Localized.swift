@@ -52,6 +52,24 @@ public extension SpeechSessionError {
                                                    comment: "Error when the requested audio file cannot be located"),
                           url.path)
 
+        case .audioFileInvalidURL(let url):
+            return String(
+                format: NSLocalizedString(
+                    "The provided URL '%@' is not a valid file path.",
+                    comment: "Error when a non-file URL is supplied for transcription"
+                ),
+                url.absoluteString
+            )
+
+        case .audioFileOutsideAllowedDirectories(let url):
+            return String(
+                format: NSLocalizedString(
+                    "The audio file at '%@' is outside the allowed directories.",
+                    comment: "Error when audio file path resolves outside the trusted directories"
+                ),
+                url.path
+            )
+
         case .audioFileUnsupportedFormat(let description):
             return String(format: NSLocalizedString("Audio file format is not supported: %@.",
                                                    comment: "Error when audio file format cannot be processed"),
@@ -176,6 +194,16 @@ public extension SpeechSessionError {
             return NSLocalizedString("The specified audio file could not be found.",
                                      comment: "Failure reason for missing audio file")
 
+        case .audioFileInvalidURL:
+            return NSLocalizedString("Only local file URLs are supported for offline transcription.",
+                                     comment: "Failure reason for invalid audio file URL")
+
+        case .audioFileOutsideAllowedDirectories:
+            return NSLocalizedString(
+                "The audio file must live inside one of the approved sandbox directories.",
+                comment: "Failure reason when audio file path is not inside allowed directories"
+            )
+
         case .audioFileUnsupportedFormat:
             return NSLocalizedString("The audio encoding is not compatible with the transcription pipeline.",
                                      comment: "Failure reason for unsupported audio file format")
@@ -271,6 +299,19 @@ public extension SpeechSessionError {
             return NSLocalizedString(
                 "Verify the file path and ensure the audio asset is bundled with the app or accessible on disk.",
                 comment: "Recovery suggestion for missing audio file"
+            )
+
+        case .audioFileInvalidURL:
+            return NSLocalizedString(
+                "Pass a local file URL (file://) that points to content your app has permission to read.",
+                comment: "Recovery suggestion for invalid audio file URL"
+            )
+
+        case .audioFileOutsideAllowedDirectories:
+            return NSLocalizedString(
+                "Move the audio file into an allowed sandbox directory or extend " +
+                "'allowedDirectories' in FileTranscriptionOptions.",
+                comment: "Recovery suggestion when audio file path is not inside allowed directories"
             )
 
         case .audioFileUnsupportedFormat:
