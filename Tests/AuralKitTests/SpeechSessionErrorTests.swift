@@ -39,30 +39,29 @@ struct SpeechSessionErrorTests {
         ]
     }
 
-    @Test("all error cases have non-empty errorDescription")
-    func allErrorsHaveDescription() {
-        for error in Self.allErrors {
-            let description = error.errorDescription
-            #expect(description != nil, "Missing errorDescription for \(error)")
-            #expect(description?.isEmpty == false, "Empty errorDescription for \(error)")
+    enum LocalizedProperty: String, CaseIterable, Sendable {
+        case errorDescription
+        case failureReason
+        case recoverySuggestion
+
+        func value(for error: SpeechSessionError) -> String? {
+            switch self {
+            case .errorDescription:
+                return error.errorDescription
+            case .failureReason:
+                return error.failureReason
+            case .recoverySuggestion:
+                return error.recoverySuggestion
+            }
         }
     }
 
-    @Test("all error cases have non-empty failureReason")
-    func allErrorsHaveFailureReason() {
+    @Test("all error cases have non-empty localized strings", arguments: LocalizedProperty.allCases)
+    func allErrorsHaveNonEmptyLocalizedStrings(property: LocalizedProperty) {
         for error in Self.allErrors {
-            let reason = error.failureReason
-            #expect(reason != nil, "Missing failureReason for \(error)")
-            #expect(reason?.isEmpty == false, "Empty failureReason for \(error)")
-        }
-    }
-
-    @Test("all error cases have non-empty recoverySuggestion")
-    func allErrorsHaveRecoverySuggestion() {
-        for error in Self.allErrors {
-            let suggestion = error.recoverySuggestion
-            #expect(suggestion != nil, "Missing recoverySuggestion for \(error)")
-            #expect(suggestion?.isEmpty == false, "Empty recoverySuggestion for \(error)")
+            let value = property.value(for: error)
+            #expect(value != nil, "Missing \(property.rawValue) for \(error)")
+            #expect(value?.isEmpty == false, "Empty \(property.rawValue) for \(error)")
         }
     }
 }

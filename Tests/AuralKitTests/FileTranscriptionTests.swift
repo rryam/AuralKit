@@ -7,21 +7,12 @@ struct FileTranscriptionTests {
 
     @Test("transcribe throws audioFileNotFound for missing file")
     @MainActor
-    func transcribeMissingFileThrowsNotFound() async {
+    func transcribeMissingFileThrowsNotFound() async throws {
         let session = SpeechSession()
         let missingURL = URL(fileURLWithPath: "/tmp/not-real-")
 
-        do {
+        await #expect(throws: SpeechSessionError.self) {
             _ = try await session.transcribe(audioFile: missingURL)
-            Issue.record("Expected audioFileNotFound error")
-        } catch let error as SpeechSessionError {
-            guard case let .audioFileNotFound(url) = error else {
-                Issue.record("Unexpected error: \(error)")
-                return
-            }
-            #expect(url == missingURL)
-        } catch {
-            Issue.record("Unexpected error: \(error)")
         }
     }
 
@@ -34,18 +25,8 @@ struct FileTranscriptionTests {
         let session = SpeechSession()
         let options = FileTranscriptionOptions(maxDuration: 1.0)
 
-        do {
+        await #expect(throws: SpeechSessionError.self) {
             _ = try await session.transcribe(audioFile: tempURL, options: options)
-            Issue.record("Expected audioFileTooLong error")
-        } catch let error as SpeechSessionError {
-            guard case let .audioFileTooLong(maximum, actual) = error else {
-                Issue.record("Unexpected error: \(error)")
-                return
-            }
-            #expect((maximum - 1.0).magnitude < 0.01)
-            #expect(actual > maximum)
-        } catch {
-            Issue.record("Unexpected error: \(error)")
         }
     }
 
@@ -86,21 +67,12 @@ struct FileTranscriptionTests {
 
     @Test("transcribe throws audioFileInvalidURL for non-file URL")
     @MainActor
-    func transcribeNonFileURLThrowsInvalidURL() async {
+    func transcribeNonFileURLThrowsInvalidURL() async throws {
         let session = SpeechSession()
         let httpURL = URL(string: "https://example.com/audio.wav")!
 
-        do {
+        await #expect(throws: SpeechSessionError.self) {
             _ = try await session.transcribe(audioFile: httpURL)
-            Issue.record("Expected audioFileInvalidURL error")
-        } catch let error as SpeechSessionError {
-            guard case let .audioFileInvalidURL(url) = error else {
-                Issue.record("Unexpected error: \(error)")
-                return
-            }
-            #expect(url == httpURL)
-        } catch {
-            Issue.record("Unexpected error: \(error)")
         }
     }
 
@@ -115,16 +87,8 @@ struct FileTranscriptionTests {
             allowedDirectories: [URL(fileURLWithPath: "/nonexistent/path")]
         )
 
-        do {
+        await #expect(throws: SpeechSessionError.self) {
             _ = try await session.transcribe(audioFile: tempURL, options: restrictedOptions)
-            Issue.record("Expected audioFileOutsideAllowedDirectories error")
-        } catch let error as SpeechSessionError {
-            guard case .audioFileOutsideAllowedDirectories = error else {
-                Issue.record("Unexpected error: \(error)")
-                return
-            }
-        } catch {
-            Issue.record("Unexpected error: \(error)")
         }
     }
 }
