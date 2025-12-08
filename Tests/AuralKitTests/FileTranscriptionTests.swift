@@ -83,4 +83,48 @@ struct FileTranscriptionTests {
 
         return tempURL
     }
+
+    @Test("transcribe throws audioFileInvalidURL for non-file URL")
+    @MainActor
+    func transcribeNonFileURLThrowsInvalidURL() async {
+        let session = SpeechSession()
+        let httpURL = URL(string: "https://example.com/audio.wav")!
+
+        do {
+            _ = try await session.transcribe(audioFile: httpURL)
+            Issue.record("Expected audioFileInvalidURL error")
+        } catch let error as SpeechSessionError {
+            guard case let .audioFileInvalidURL(url) = error else {
+                Issue.record("Unexpected error: \(error)")
+                return
+            }
+            #expect(url == httpURL)
+        } catch {
+            Issue.record("Unexpected error: \(error)")
+        }
+    }
+
+    @Test("transcribe throws audioFileOutsideAllowedDirectories for restricted path")
+    @MainActor
+    func transcribeOutsideAllowedDirectoriesThrows() async throws {
+        let tempURL = try createSilenceAudioFile(duration: 0.5)
+        defer { try? FileManager.default.removeItem(at: tempURL) }
+
+        let session = SpeechSession()
+        let restrictedOptions = FileTranscriptionOptions(
+            allowedDirectories: [URL(fileURLWithPath: "/nonexistent/path")]
+        )
+
+        do {
+            _ = try await session.transcribe(audioFile: tempURL, options: restrictedOptions)
+            Issue.record("Expected audioFileOutsideAllowedDirectories error")
+        } catch let error as SpeechSessionError {
+            guard case .audioFileOutsideAllowedDirectories = error else {
+                Issue.record("Unexpected error: \(error)")
+                return
+            }
+        } catch {
+            Issue.record("Unexpected error: \(error)")
+        }
+    }
 }
