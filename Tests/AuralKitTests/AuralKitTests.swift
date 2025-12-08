@@ -21,6 +21,28 @@ struct SpeechSessionStateTests {
         #expect(session.status == .idle)
     }
 
+    @Test("Pause when idle does nothing")
+    @MainActor
+    func pauseWhenIdleDoesNothing() async {
+        let session = SpeechSession()
+        #expect(session.status == .idle)
+
+        await session.pauseTranscribing()
+
+        #expect(session.status == .idle)
+    }
+
+    @Test("Resume when idle does nothing")
+    @MainActor
+    func resumeWhenIdleDoesNothing() async throws {
+        let session = SpeechSession()
+        #expect(session.status == .idle)
+
+        try await session.resumeTranscribing()
+
+        #expect(session.status == .idle)
+    }
+
     @Test("Status stream broadcasts updates to multiple subscribers")
     @MainActor
     func statusStreamBroadcastsToMultipleSubscribers() async throws {
@@ -82,6 +104,19 @@ struct SpeechSessionVoiceActivationTests {
         session.disableVoiceActivation()
         #expect(session.isVoiceActivationEnabled == false)
         #expect(session.speechDetectorResultsStream == nil)
+        #expect(session.isSpeechDetected == true)
+    }
+
+    @Test("Disabling voice activation resets isSpeechDetected")
+    @MainActor
+    func disablingVoiceActivationResetsSpeechDetected() {
+        let session = SpeechSession()
+
+        session.configureVoiceActivation(reportResults: true)
+        session.isSpeechDetected = false
+
+        session.disableVoiceActivation()
+
         #expect(session.isSpeechDetected == true)
     }
 }
