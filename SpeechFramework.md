@@ -394,7 +394,7 @@ public protocol DataInsertable {
 @available(macOS 26.0, iOS 26.0, *)
 @available(tvOS, unavailable)
 @available(watchOS, unavailable)
-final public class DictationTranscriber : LocaleDependentSpeechModule {
+final public class DictationTranscriber : SpeechModule, LocaleDependentSpeechModule {
 
     /**
      Creates a transcriber according to a preset.
@@ -2197,7 +2197,7 @@ extension SpeechAnalyzer {
 @available(macOS 26.0, iOS 26.0, *)
 @available(tvOS, unavailable)
 @available(watchOS, unavailable)
-final public class SpeechDetector {
+final public class SpeechDetector : SpeechModule {
 
     /**
      Creates a speech detector.
@@ -2333,6 +2333,13 @@ final public class SpeechDetector {
         public var hashValue: Int { get }
     }
 
+    /**
+     An asynchronous sequence containing this module's analysis results. Results are added to the sequence as they are created.
+     
+     Each module has its own result sequence and data structure.
+     
+     If there is an error in the overall analysis, all modules will throw the error from their individual result sequence.
+     */
     final public var results: some Sendable & AsyncSequence<SpeechDetector.Result, any Error> { get }
 
     /**
@@ -2388,6 +2395,15 @@ final public class SpeechDetector {
         public var description: String { get }
     }
 
+    /**
+         The audio formats that this module is able to analyze, given its configuration.
+         
+         If the audio format doesn't matter, then there will be one format listed with a sample rate of `kAudioStreamAnyRate` and other values 0.
+         
+         If assets are necessary yet not installed on device, then the list will be empty.
+    
+         This property may be accessed before the module is added to the analyzer.
+         */
     final public var availableCompatibleAudioFormats: [AVAudioFormat] { get }
 
     @available(iOS 26.0, macOS 26.0, *)
@@ -2508,7 +2524,7 @@ extension SpeechModuleResult {
 @available(macOS 26.0, iOS 26.0, *)
 @available(tvOS, unavailable)
 @available(watchOS, unavailable)
-final public class SpeechTranscriber : LocaleDependentSpeechModule {
+final public class SpeechTranscriber : SpeechModule, LocaleDependentSpeechModule {
 
     /**
      Creates a general-purpose transcriber according to a preset.
