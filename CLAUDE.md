@@ -5,16 +5,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Build Commands
 
 ```bash
-# Build the package
+# Build the Swift package
 swift build
 
-# Build for specific platform
-swift build -Xswiftc "-target" -Xswiftc "arm64-apple-macosx26.0"
-
-# Build and test the Xcode project
+# Build the Xcode project (demo app)
 xcodebuild -project Aural.xcodeproj -scheme Aural -configuration Debug build
 
-# Clean and build
+# Clean and rebuild Xcode project
 xcodebuild clean -project Aural.xcodeproj -scheme Aural -configuration Debug build
 ```
 
