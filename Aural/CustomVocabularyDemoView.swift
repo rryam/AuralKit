@@ -41,7 +41,6 @@ struct CustomVocabularyDemoView: View {
             }
             .padding(.top, 24)
             .frame(maxWidth: .infinity)
-            .background(TopGradientView())
             .navigationTitle("Custom Vocabulary")
         }
         .onDisappear {

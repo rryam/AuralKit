@@ -48,7 +48,6 @@ struct TranscriptionView: View {
             }
             .padding(.top, 24)
             .frame(maxWidth: .infinity)
-            .background(TopGradientView())
             .navigationTitle("Transcribe")
 #if os(iOS)
             .navigationBarTitleDisplayMode(.large)
