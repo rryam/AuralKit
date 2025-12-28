@@ -4,14 +4,21 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Build Commands
 
+**Swift Package (AuralKit):**
 ```bash
-# Build the Swift package
 swift build
+swift test
+swiftlint lint
+```
 
-# Build the Xcode project (demo app)
+**Demo App (Aural.xcodeproj):**
+Use xcodebuild MCP tools for the demo app:
+- `build_device` - Build for connected device
+- `test_device` - Run tests on device
+- `list_devices` - List available devices
+- Or use xcodebuild CLI:
+```bash
 xcodebuild -project Aural.xcodeproj -scheme Aural -configuration Debug build
-
-# Clean and rebuild Xcode project
 xcodebuild clean -project Aural.xcodeproj -scheme Aural -configuration Debug build
 ```
 
