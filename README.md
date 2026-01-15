@@ -1,5 +1,4 @@
 # AuralKit
-[![Star History Chart](https://api.star-history.com/svg?repos=rryam/AuralKit&type=Date)](https://star-history.com/#rryam/AuralKit&Date)
 
 
 [![Swift](https://img.shields.io/badge/Swift-6.2-orange.svg)](https://swift.org)
@@ -500,3 +499,5 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 ## License
 
 AuralKit is available under the MIT License. See the [LICENSE](LICENSE) file for more info.
+
+[![Star History Chart](https://api.star-history.com/svg?repos=rryam/AuralKit&type=Date)](https://star-history.com/#rryam/AuralKit&Date)
