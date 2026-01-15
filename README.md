@@ -1,4 +1,6 @@
 # AuralKit
+[![Star History Chart](https://api.star-history.com/svg?repos=rryam/AuralKit&type=Date)](https://star-history.com/#rryam/AuralKit&Date)
+
 
 [![Swift](https://img.shields.io/badge/Swift-6.2-orange.svg)](https://swift.org)
 [![Platforms](https://img.shields.io/badge/Platforms-iOS%2026%2B%20|%20macOS%2026%2B-blue.svg)](https://developer.apple.com)
