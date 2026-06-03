@@ -11,6 +11,18 @@ enum TestTimeoutError: LocalizedError {
     }
 }
 
+final class AsyncStreamProbe<Element: Sendable>: @unchecked Sendable {
+    private var iterator: AsyncStream<Element>.Iterator
+
+    init(_ stream: AsyncStream<Element>) {
+        iterator = stream.makeAsyncIterator()
+    }
+
+    func next() async -> Element? {
+        await iterator.next()
+    }
+}
+
 @MainActor
 func awaitResult<T: Sendable>(
     timeout seconds: TimeInterval = 1.0,
