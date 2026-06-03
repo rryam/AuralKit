@@ -3,8 +3,10 @@ import AVFoundation
 import Speech
 
 // SpeechDetector gained native SpeechModule and Sendable conformances in Xcode 26.2.
-// This extension is required for Xcode 26.0/26.1 and causes a harmless warning on 26.2+.
+// Keep this shim for Xcode 26.0/26.1 while avoiding duplicate conformances in newer SDKs.
+#if compiler(<6.3)
 extension SpeechDetector: @retroactive SpeechModule, @unchecked @retroactive Sendable {}
+#endif
 
 @MainActor
 extension SpeechSession {
