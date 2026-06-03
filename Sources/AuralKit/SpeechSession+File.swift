@@ -331,9 +331,9 @@ private extension SpeechSession {
             }
         }
 
-        await MainActor.run {
-            self.inputBuilder?.finish()
-        }
+        guard !Task.isCancelled else { return false }
+
+        try await self.finishAnalyzerInput()
 
         return !Task.isCancelled && processedFrames >= totalFrames
     }
