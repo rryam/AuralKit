@@ -31,7 +31,8 @@ final class CustomVocabularyDemoViewModel {
 
     // MARK: - Private state
 
-    private let locale = Locale(identifier: "en_US")
+    private static let demoLocale = Locale(identifier: "en_US")
+    private let locale = demoLocale
     @ObservationIgnored private let session: SpeechSession
     @ObservationIgnored private var statusTask: Task<Void, Never>?
     @ObservationIgnored private var transcriptionTask: Task<Void, Never>?
@@ -41,7 +42,7 @@ final class CustomVocabularyDemoViewModel {
 
     // MARK: - Init / Deinit
 
-    init(session: SpeechSession = SpeechSession()) {
+    init(session: SpeechSession = SpeechSession(locale: demoLocale)) {
         self.session = session
         bindStatusStream()
     }
