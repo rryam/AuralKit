@@ -48,24 +48,24 @@ struct SpeechSessionStateTests {
     func statusStreamBroadcastsToMultipleSubscribers() async throws {
         let session = SpeechSession()
 
-        var iteratorA = session.statusStream.makeAsyncIterator()
-        var iteratorB = session.statusStream.makeAsyncIterator()
+        let probeA = AsyncStreamProbe(session.statusStream)
+        let probeB = AsyncStreamProbe(session.statusStream)
 
         let firstA = try await awaitResult {
-            await iteratorA.next()
+            await probeA.next()
         }
         let firstB = try await awaitResult {
-            await iteratorB.next()
+            await probeB.next()
         }
 
         #expect(firstA == .some(.idle))
         #expect(firstB == .some(.idle))
 
         let nextA = Task {
-            await iteratorA.next()
+            await probeA.next()
         }
         let nextB = Task {
-            await iteratorB.next()
+            await probeB.next()
         }
         defer {
             nextA.cancel()
@@ -129,14 +129,14 @@ struct SpeechSessionAudioInputStreamTests {
     func audioInputStreamBroadcastsNil() async throws {
         let session = SpeechSession()
 
-        var iteratorA = session.audioInputConfigurationStream.makeAsyncIterator()
-        var iteratorB = session.audioInputConfigurationStream.makeAsyncIterator()
+        let probeA = AsyncStreamProbe(session.audioInputConfigurationStream)
+        let probeB = AsyncStreamProbe(session.audioInputConfigurationStream)
 
         let valueA = Task {
-            await iteratorA.next()
+            await probeA.next()
         }
         let valueB = Task {
-            await iteratorB.next()
+            await probeB.next()
         }
         defer {
             valueA.cancel()
