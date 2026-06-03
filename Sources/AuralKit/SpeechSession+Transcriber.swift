@@ -215,14 +215,18 @@ extension SpeechSession {
         inputBuilder.yield(input)
     }
 
-    func stopTranscriberAndCleanup() async {
+    func finishAnalyzerInput() async throws {
         inputBuilder?.finish()
+        try await analyzer?.finalizeAndFinishThroughEndOfInput()
+    }
+
+    func stopTranscriberAndCleanup() async {
         if Self.shouldLog(.debug) {
             Self.logger.debug("Stopping transcriber and cleaning up")
         }
 
         do {
-            try await analyzer?.finalizeAndFinishThroughEndOfInput()
+            try await finishAnalyzerInput()
         } catch {
             // Finalization failed, but we still need to clean up resources
             // Log for debugging but don't propagate since stop() is best-effort cleanup
