@@ -26,8 +26,7 @@ let package = Package(
             dependencies: ["AuralKit"],
             path: "Aural",
             exclude: [
-                "Info.plist",
-                "NoiseShader.metal"
+                "Info.plist"
             ],
             resources: [
                 .process("Assets.xcassets")
