@@ -215,9 +215,7 @@ extension SpeechSession {
             Self.logger.info("Analyzer started")
         }
 
-        if voiceActivationConfiguration != nil {
-            startSpeechDetectorMonitoring()
-        }
+        startSpeechDetectorMonitoringIfNeeded()
     }
 
     func processAudioBuffer(_ buffer: SendablePCMBuffer) async throws {

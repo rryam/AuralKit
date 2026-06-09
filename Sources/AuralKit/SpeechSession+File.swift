@@ -140,9 +140,11 @@ private extension SpeechSession {
         do {
             let validation = try validateAudioFile(at: audioFileURL, options: options)
             try await ensureSpeechRecognitionAuthorization(context: "for file transcription")
+            let shouldUseNativeAnalyzer = shouldUseNativeFileAnalyzer(progressHandler: progressHandler)
             try await setUpFilePipeline(
                 with: streamContinuation,
-                contextualStrings: options.contextualStrings
+                contextualStrings: options.contextualStrings,
+                startAnalyzerImmediately: !shouldUseNativeAnalyzer
             )
             let handler = progressHandler
             fileIngestionTask = Task<Void, Never> { [weak self] in
@@ -240,26 +242,16 @@ private extension SpeechSession {
 
     func setUpFilePipeline(
         with streamContinuation: AsyncThrowingStream<SpeechTranscriber.Result, Error>.Continuation,
-        contextualStrings: [AnalysisContext.ContextualStringsTag: [String]]?
+        contextualStrings: [AnalysisContext.ContextualStringsTag: [String]]?,
+        startAnalyzerImmediately: Bool
     ) async throws {
         if Self.shouldLog(.notice) {
             Self.logger.notice("Starting file transcription pipeline")
         }
 
-#if swift(>=6.4)
-        let shouldUseNativeAnalyzer: Bool
-        if #available(iOS 27.0, macOS 27.0, *) {
-            shouldUseNativeAnalyzer = inputProviderPreference == .automatic
-        } else {
-            shouldUseNativeAnalyzer = false
-        }
-#else
-        let shouldUseNativeAnalyzer = false
-#endif
-
         let transcriber = try await setUpSpeechTranscriber(
             contextualStrings: contextualStrings,
-            startAnalyzerImmediately: !shouldUseNativeAnalyzer
+            startAnalyzerImmediately: startAnalyzerImmediately
         )
         activeResultKind = .speech
 
@@ -300,7 +292,9 @@ private extension SpeechSession {
         progressHandler: (@Sendable (Double) -> Void)?
     ) async throws -> Bool {
 #if swift(>=6.4)
-        if #available(iOS 27.0, macOS 27.0, *), await shouldUseNativeAssetInputProvider {
+        if #available(iOS 27.0, macOS 27.0, *),
+           progressHandler == nil,
+           await shouldUseNativeAssetInputProvider {
             return try await feedAudioFileWithNativeAnalyzer(payload.file, progressHandler: progressHandler)
         }
 #endif
@@ -356,6 +350,15 @@ private extension SpeechSession {
         try await self.finishAnalyzerInput()
 
         return !Task.isCancelled && processedFrames >= totalFrames
+    }
+
+    func shouldUseNativeFileAnalyzer(progressHandler: (@Sendable (Double) -> Void)?) -> Bool {
+#if swift(>=6.4)
+        if #available(iOS 27.0, macOS 27.0, *) {
+            return inputProviderPreference == .automatic && progressHandler == nil
+        }
+#endif
+        return false
     }
 
 }

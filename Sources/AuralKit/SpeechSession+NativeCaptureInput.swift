@@ -76,6 +76,7 @@ extension SpeechSession {
                 await self?.finishFromNativeCaptureAnalysis(error)
             }
         }
+        startSpeechDetectorMonitoringIfNeeded()
 
         _ = startPreparedNativeCaptureStreaming()
     }

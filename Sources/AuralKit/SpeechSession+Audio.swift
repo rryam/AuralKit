@@ -304,6 +304,22 @@ extension SpeechSession {
             Self.logger.debug("Resetting audio engine")
         }
         let wasStreaming = isAudioStreaming
+        let wasUsingNativeCapture = nativeCaptureSession != nil
+
+        if wasUsingNativeCapture {
+            tearDownNativeCaptureStreaming()
+            isAudioStreaming = false
+
+            guard wasStreaming else { return }
+            guard try await setUpNativeCaptureStreamingIfAvailable() else {
+                throw SpeechSessionError.recognitionStreamSetupFailed
+            }
+
+            if Self.shouldLog(.debug) {
+                Self.logger.debug("Native capture session reset complete")
+            }
+            return
+        }
 
         if wasStreaming {
             audioEngine.inputNode.removeTap(onBus: 0)
