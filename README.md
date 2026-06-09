@@ -20,6 +20,7 @@ AuralKit is a simple, lightweight Swift wrapper for speech-to-text transcription
 - Audio input monitoring for device route changes on iOS and macOS
 - Async streams for lifecycle status, audio inputs, and transcription results
 - Device capability helper to inspect available transcribers and locales
+- Xcode 27-ready file transcription path that can use Speech's native analyzer file input when built with Swift 6.4+
 - SwiftUI-friendly API that mirrors Apple's sample project design
 
 ## Table of Contents

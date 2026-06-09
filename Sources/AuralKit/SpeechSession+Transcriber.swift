@@ -14,7 +14,8 @@ extension SpeechSession {
     // MARK: - Transcriber Setup and Cleanup
 
     func setUpSpeechTranscriber(
-        contextualStrings: [AnalysisContext.ContextualStringsTag: [String]]? = nil
+        contextualStrings: [AnalysisContext.ContextualStringsTag: [String]]? = nil,
+        startAnalyzerImmediately: Bool = true
     ) async throws -> SpeechTranscriber {
         if Self.shouldLog(.notice) {
             Self.logger.notice("Setting up transcriber")
@@ -24,7 +25,9 @@ extension SpeechSession {
         let modules = configureModules(transcriber: transcriber)
         try await ensureModels(modules: modules)
         try await configureAnalyzerContext(contextualStrings: contextualStrings)
-        try await startAnalyzer(modules: modules)
+        if startAnalyzerImmediately {
+            try await startAnalyzer(modules: modules)
+        }
 
         return transcriber
     }

@@ -246,7 +246,21 @@ private extension SpeechSession {
             Self.logger.notice("Starting file transcription pipeline")
         }
 
-        let transcriber = try await setUpSpeechTranscriber(contextualStrings: contextualStrings)
+#if swift(>=6.4)
+        let shouldUseNativeAnalyzer: Bool
+        if #available(iOS 27.0, macOS 27.0, *) {
+            shouldUseNativeAnalyzer = inputProviderPreference == .automatic
+        } else {
+            shouldUseNativeAnalyzer = false
+        }
+#else
+        let shouldUseNativeAnalyzer = false
+#endif
+
+        let transcriber = try await setUpSpeechTranscriber(
+            contextualStrings: contextualStrings,
+            startAnalyzerImmediately: !shouldUseNativeAnalyzer
+        )
         activeResultKind = .speech
 
         recognizerTask = Task<Void, Never> { [weak self] in
@@ -285,6 +299,12 @@ private extension SpeechSession {
         _ payload: (file: AVAudioFile, totalFrames: AVAudioFramePosition),
         progressHandler: (@Sendable (Double) -> Void)?
     ) async throws -> Bool {
+#if swift(>=6.4)
+        if #available(iOS 27.0, macOS 27.0, *), await shouldUseNativeAssetInputProvider {
+            return try await feedAudioFileWithNativeAnalyzer(payload.file, progressHandler: progressHandler)
+        }
+#endif
+
         var processedFrames: AVAudioFramePosition = 0
         let frameCapacity: AVAudioFrameCount = 4096
         let file = payload.file

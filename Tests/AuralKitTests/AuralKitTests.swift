@@ -12,6 +12,14 @@ struct SpeechSessionStateTests {
         #expect(await session.modelDownloadProgress == nil)
     }
 
+    @Test("Input provider preference can force legacy pipeline")
+    @MainActor
+    func inputProviderPreferenceCanForceLegacyPipeline() {
+        let session = SpeechSession(inputProviderPreference: .legacy)
+
+        #expect(session.inputProviderPreference == .legacy)
+    }
+
     @Test("Stop transcribing without session is a no-op")
     @MainActor
     func stopTranscribingWithoutSessionIsNoOp() async {

@@ -46,6 +46,7 @@ public final class SpeechSession {
     let preset: SpeechTranscriber.Preset?
     let reportingOptions: Set<SpeechTranscriber.ReportingOption>
     let attributeOptions: Set<SpeechTranscriber.ResultAttributeOption>
+    let inputProviderPreference: InputProviderPreference
 
     var statusContinuations: [UUID: AsyncStream<Status>.Continuation] = [:]
 
@@ -116,12 +117,14 @@ public final class SpeechSession {
         locale: Locale = .current,
         preset: SpeechTranscriber.Preset? = nil,
         reportingOptions: Set<SpeechTranscriber.ReportingOption> = defaultReportingOptions,
-        attributeOptions: Set<SpeechTranscriber.ResultAttributeOption> = defaultAttributeOptions
+        attributeOptions: Set<SpeechTranscriber.ResultAttributeOption> = defaultAttributeOptions,
+        inputProviderPreference: InputProviderPreference = .automatic
     ) {
         self.locale = locale
         self.preset = preset
         self.reportingOptions = reportingOptions
         self.attributeOptions = attributeOptions
+        self.inputProviderPreference = inputProviderPreference
         self.customVocabularyCompiler = CustomVocabularyCompiler()
 #if os(iOS)
         self.audioConfig = AudioSessionConfiguration.default
@@ -149,12 +152,14 @@ public final class SpeechSession {
         preset: SpeechTranscriber.Preset? = nil,
         reportingOptions: Set<SpeechTranscriber.ReportingOption> = defaultReportingOptions,
         attributeOptions: Set<SpeechTranscriber.ResultAttributeOption> = defaultAttributeOptions,
-        audioConfig: AudioSessionConfiguration = .default
+        audioConfig: AudioSessionConfiguration = .default,
+        inputProviderPreference: InputProviderPreference = .automatic
     ) {
         self.locale = locale
         self.preset = preset
         self.reportingOptions = reportingOptions
         self.attributeOptions = attributeOptions
+        self.inputProviderPreference = inputProviderPreference
         self.audioConfig = audioConfig
         self.customVocabularyCompiler = CustomVocabularyCompiler()
 #if os(iOS) || os(macOS)
