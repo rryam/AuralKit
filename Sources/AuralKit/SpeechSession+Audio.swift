@@ -13,6 +13,12 @@ extension SpeechSession {
             throw SpeechSessionError.recognitionStreamSetupFailed
         }
 
+#if swift(>=6.4)
+        if #available(iOS 27.0, macOS 27.0, *), startPreparedNativeCaptureStreaming() {
+            return
+        }
+#endif
+
         if Self.shouldLog(.debug) {
             Self.logger.debug("Starting audio streaming")
         }
@@ -43,6 +49,13 @@ extension SpeechSession {
 
     func stopAudioStreaming() {
         guard isAudioStreaming else { return }
+
+#if swift(>=6.4)
+        if #available(iOS 27.0, macOS 27.0, *), stopPreparedNativeCaptureStreaming() {
+            return
+        }
+#endif
+
         if Self.shouldLog(.debug) {
             Self.logger.debug("Stopping audio streaming")
         }
@@ -291,6 +304,19 @@ extension SpeechSession {
             Self.logger.debug("Resetting audio engine")
         }
         let wasStreaming = isAudioStreaming
+        let wasUsingNativeCapture = nativeCaptureSession != nil
+
+        if wasUsingNativeCapture {
+            guard wasStreaming else { return }
+            guard try restartNativeCaptureStreamingIfAvailable() else {
+                throw SpeechSessionError.recognitionStreamSetupFailed
+            }
+
+            if Self.shouldLog(.debug) {
+                Self.logger.debug("Native capture session reset complete")
+            }
+            return
+        }
 
         if wasStreaming {
             audioEngine.inputNode.removeTap(onBus: 0)

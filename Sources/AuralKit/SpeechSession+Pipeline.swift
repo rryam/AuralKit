@@ -81,7 +81,11 @@ extension SpeechSession {
             try await ensurePermissions()
             try await setupAudioSession()
 
-            let transcriber = try await setUpSpeechTranscriber(contextualStrings: contextualStrings)
+            let shouldUseNativeCapture = shouldUseNativeCaptureInputProvider
+            let transcriber = try await setUpSpeechTranscriber(
+                contextualStrings: contextualStrings,
+                startAnalyzerImmediately: !shouldUseNativeCapture
+            )
             if Self.shouldLog(.info) {
                 Self.logger.info("Transcriber prepared with modules")
             }
@@ -91,7 +95,9 @@ extension SpeechSession {
                 streamContinuation: streamContinuation
             )
 
-            try startAudioStreaming()
+            if !(try await setUpNativeCaptureStreamingIfAvailable()) {
+                try startAudioStreaming()
+            }
 
             streamingMode = .liveMicrophone
             setStatus(.transcribing)
@@ -118,7 +124,11 @@ extension SpeechSession {
             try await ensurePermissions()
             try await setupAudioSession()
 
-            let transcriber = try await setUpDictationTranscriber(contextualStrings: contextualStrings)
+            let shouldUseNativeCapture = shouldUseNativeCaptureInputProvider
+            let transcriber = try await setUpDictationTranscriber(
+                contextualStrings: contextualStrings,
+                startAnalyzerImmediately: !shouldUseNativeCapture
+            )
             if Self.shouldLog(.info) {
                 Self.logger.info("Dictation transcriber prepared with modules")
             }
@@ -128,7 +138,9 @@ extension SpeechSession {
                 streamContinuation: streamContinuation
             )
 
-            try startAudioStreaming()
+            if !(try await setUpNativeCaptureStreamingIfAvailable()) {
+                try startAudioStreaming()
+            }
 
             streamingMode = .liveMicrophone
             setStatus(.transcribing)
@@ -191,6 +203,7 @@ extension SpeechSession {
         streamingMode = .inactive
         activeResultKind = nil
         stopAudioStreaming()
+        tearDownNativeCaptureStreaming()
         deactivateAudioSessionIfNeeded()
 #if os(iOS)
         shouldResumeAfterInterruption = false

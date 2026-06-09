@@ -14,7 +14,8 @@ extension SpeechSession {
     // MARK: - Transcriber Setup and Cleanup
 
     func setUpSpeechTranscriber(
-        contextualStrings: [AnalysisContext.ContextualStringsTag: [String]]? = nil
+        contextualStrings: [AnalysisContext.ContextualStringsTag: [String]]? = nil,
+        startAnalyzerImmediately: Bool = true
     ) async throws -> SpeechTranscriber {
         if Self.shouldLog(.notice) {
             Self.logger.notice("Setting up transcriber")
@@ -24,13 +25,16 @@ extension SpeechSession {
         let modules = configureModules(transcriber: transcriber)
         try await ensureModels(modules: modules)
         try await configureAnalyzerContext(contextualStrings: contextualStrings)
-        try await startAnalyzer(modules: modules)
+        if startAnalyzerImmediately {
+            try await startAnalyzer(modules: modules)
+        }
 
         return transcriber
     }
 
     func setUpDictationTranscriber(
-        contextualStrings: [AnalysisContext.ContextualStringsTag: [String]]? = nil
+        contextualStrings: [AnalysisContext.ContextualStringsTag: [String]]? = nil,
+        startAnalyzerImmediately: Bool = true
     ) async throws -> DictationTranscriber {
         if Self.shouldLog(.notice) {
             Self.logger.notice("Setting up dictation transcriber")
@@ -40,7 +44,9 @@ extension SpeechSession {
         let modules = configureModules(transcriber: transcriber)
         try await ensureModels(modules: modules)
         try await configureAnalyzerContext(contextualStrings: contextualStrings)
-        try await startAnalyzer(modules: modules)
+        if startAnalyzerImmediately {
+            try await startAnalyzer(modules: modules)
+        }
 
         return transcriber
     }
@@ -116,7 +122,16 @@ extension SpeechSession {
 
         modules.append(transcriber)
 
+#if swift(>=6.4)
+        if #available(iOS 27.0, macOS 27.0, *) {
+            analyzer = SpeechAnalyzer(modules: modules, options: analyzerConfiguration.nativeOptions)
+        } else {
+            analyzer = SpeechAnalyzer(modules: modules)
+        }
+#else
         analyzer = SpeechAnalyzer(modules: modules)
+#endif
+        activeModules = modules
         if Self.shouldLog(.debug) {
             Self.logger.debug("Analyzer instantiated with \(modules.count, privacy: .public) module(s)")
         }
@@ -193,14 +208,14 @@ extension SpeechSession {
             throw SpeechSessionError.recognitionStreamSetupFailed
         }
 
+        try await prepareAnalyzerForStartIfNeeded(in: format)
+
         try await analyzer.start(inputSequence: inputSequence)
         if Self.shouldLog(.info) {
             Self.logger.info("Analyzer started")
         }
 
-        if voiceActivationConfiguration != nil {
-            startSpeechDetectorMonitoring()
-        }
+        startSpeechDetectorMonitoringIfNeeded()
     }
 
     func processAudioBuffer(_ buffer: SendablePCMBuffer) async throws {
@@ -241,6 +256,7 @@ extension SpeechSession {
         inputSequence = nil
         analyzerFormat = nil
         analyzer = nil
+        activeModules = nil
         transcriber = nil
         dictationTranscriber = nil
         if Self.shouldLog(.debug) {
