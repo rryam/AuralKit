@@ -29,6 +29,19 @@ extension SpeechSession {
         }
 #endif
     }
+
+    func restartNativeCaptureStreamingIfAvailable() throws -> Bool {
+#if swift(>=6.4)
+        if #available(iOS 27.0, macOS 27.0, *) {
+            guard stopPreparedNativeCaptureStreaming(),
+                  startPreparedNativeCaptureStreaming() else {
+                throw SpeechSessionError.recognitionStreamSetupFailed
+            }
+            return true
+        }
+#endif
+        return false
+    }
 }
 
 #if swift(>=6.4)

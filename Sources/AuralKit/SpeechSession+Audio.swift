@@ -307,11 +307,8 @@ extension SpeechSession {
         let wasUsingNativeCapture = nativeCaptureSession != nil
 
         if wasUsingNativeCapture {
-            tearDownNativeCaptureStreaming()
-            isAudioStreaming = false
-
             guard wasStreaming else { return }
-            guard try await setUpNativeCaptureStreamingIfAvailable() else {
+            guard try restartNativeCaptureStreamingIfAvailable() else {
                 throw SpeechSessionError.recognitionStreamSetupFailed
             }
 
