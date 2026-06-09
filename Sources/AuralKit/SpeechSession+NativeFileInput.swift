@@ -36,12 +36,6 @@ extension SpeechSession {
             try await analyzer.finalizeAndFinishThroughEndOfInput()
         }
 
-        if let progressHandler {
-            await MainActor.run {
-                progressHandler(1.0)
-            }
-        }
-
         return !Task.isCancelled
     }
 }
