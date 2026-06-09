@@ -13,6 +13,12 @@ extension SpeechSession {
             throw SpeechSessionError.recognitionStreamSetupFailed
         }
 
+#if swift(>=6.4)
+        if #available(iOS 27.0, macOS 27.0, *), startPreparedNativeCaptureStreaming() {
+            return
+        }
+#endif
+
         if Self.shouldLog(.debug) {
             Self.logger.debug("Starting audio streaming")
         }
@@ -43,6 +49,13 @@ extension SpeechSession {
 
     func stopAudioStreaming() {
         guard isAudioStreaming else { return }
+
+#if swift(>=6.4)
+        if #available(iOS 27.0, macOS 27.0, *), stopPreparedNativeCaptureStreaming() {
+            return
+        }
+#endif
+
         if Self.shouldLog(.debug) {
             Self.logger.debug("Stopping audio streaming")
         }

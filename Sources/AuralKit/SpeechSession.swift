@@ -47,6 +47,7 @@ public final class SpeechSession {
     let reportingOptions: Set<SpeechTranscriber.ReportingOption>
     let attributeOptions: Set<SpeechTranscriber.ResultAttributeOption>
     let inputProviderPreference: InputProviderPreference
+    let analyzerConfiguration: AnalyzerConfiguration
 
     var statusContinuations: [UUID: AsyncStream<Status>.Continuation] = [:]
 
@@ -66,9 +67,12 @@ public final class SpeechSession {
     var dictationTranscriber: DictationTranscriber?
     var speechDetector: SpeechDetector?
     var analyzer: SpeechAnalyzer?
+    var activeModules: [any SpeechModule]?
     var inputSequence: AsyncStream<AnalyzerInput>?
     var inputBuilder: AsyncStream<AnalyzerInput>.Continuation?
     var analyzerFormat: AVAudioFormat?
+    var nativeCaptureSession: AVCaptureSession?
+    var nativeCaptureAnalysisTask: Task<Void, Never>?
     var voiceActivationConfiguration: VoiceActivationConfiguration?
     var customVocabularyDescriptor: CustomVocabulary?
     var customVocabularyConfiguration: SFSpeechLanguageModel.Configuration?
@@ -118,13 +122,15 @@ public final class SpeechSession {
         preset: SpeechTranscriber.Preset? = nil,
         reportingOptions: Set<SpeechTranscriber.ReportingOption> = defaultReportingOptions,
         attributeOptions: Set<SpeechTranscriber.ResultAttributeOption> = defaultAttributeOptions,
-        inputProviderPreference: InputProviderPreference = .automatic
+        inputProviderPreference: InputProviderPreference = .automatic,
+        analyzerConfiguration: AnalyzerConfiguration = .default
     ) {
         self.locale = locale
         self.preset = preset
         self.reportingOptions = reportingOptions
         self.attributeOptions = attributeOptions
         self.inputProviderPreference = inputProviderPreference
+        self.analyzerConfiguration = analyzerConfiguration
         self.customVocabularyCompiler = CustomVocabularyCompiler()
 #if os(iOS)
         self.audioConfig = AudioSessionConfiguration.default
@@ -153,13 +159,15 @@ public final class SpeechSession {
         reportingOptions: Set<SpeechTranscriber.ReportingOption> = defaultReportingOptions,
         attributeOptions: Set<SpeechTranscriber.ResultAttributeOption> = defaultAttributeOptions,
         audioConfig: AudioSessionConfiguration = .default,
-        inputProviderPreference: InputProviderPreference = .automatic
+        inputProviderPreference: InputProviderPreference = .automatic,
+        analyzerConfiguration: AnalyzerConfiguration = .default
     ) {
         self.locale = locale
         self.preset = preset
         self.reportingOptions = reportingOptions
         self.attributeOptions = attributeOptions
         self.inputProviderPreference = inputProviderPreference
+        self.analyzerConfiguration = analyzerConfiguration
         self.audioConfig = audioConfig
         self.customVocabularyCompiler = CustomVocabularyCompiler()
 #if os(iOS) || os(macOS)
