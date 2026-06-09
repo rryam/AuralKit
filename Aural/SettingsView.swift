@@ -63,7 +63,7 @@ struct SettingsView: View {
                         Text("AuralKit Demo")
                             .font(.caption)
                             .foregroundStyle(.secondary)
-                        Text("Version 1.5.2")
+                        Text("Version 2.0.0")
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                     }

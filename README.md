@@ -96,7 +96,7 @@ Or add it to your `Package.swift`:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/rryam/AuralKit", from: "1.5.2")
+    .package(url: "https://github.com/rryam/AuralKit", from: "2.0.0")
 ]
 ```
 
