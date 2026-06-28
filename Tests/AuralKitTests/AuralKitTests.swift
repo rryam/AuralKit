@@ -1,6 +1,9 @@
 import Testing
 import Speech
 @testable import AuralKit
+#if canImport(ScreenCaptureKit)
+import ScreenCaptureKit
+#endif
 
 @Suite("SpeechSession State")
 struct SpeechSessionStateTests {
@@ -355,3 +358,15 @@ private actor SpeechSessionLoggingLock {
         try await body()
     }
 }
+
+#if canImport(ScreenCaptureKit)
+@Suite("SpeechSession Screen Capture")
+struct SpeechSessionScreenCaptureTests {
+    @Test("Screen capture options expose audio defaults")
+    func screenCaptureOptionsDefaults() {
+        let options = SpeechSession.ScreenCaptureTranscriptionOptions()
+
+        #expect(options.excludesCurrentProcessAudio == true)
+    }
+}
+#endif

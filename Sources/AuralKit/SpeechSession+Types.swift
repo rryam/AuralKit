@@ -18,6 +18,7 @@ extension SpeechSession {
         case inactive
         case liveMicrophone
         case filePlayback
+        case screenCapture
     }
 
     enum TranscriptionResultKind: Equatable, Sendable {

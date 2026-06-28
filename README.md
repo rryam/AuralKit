@@ -22,6 +22,7 @@ AuralKit is a simple, lightweight Swift wrapper for speech-to-text transcription
 - Device capability helper to inspect available transcribers and locales
 - Xcode 27-ready file transcription path that can use Speech's native analyzer file input when built with Swift 6.4+
 - Xcode 27-ready live capture and analyzer preheating configuration with Xcode 26 fallbacks
+- ScreenCaptureKit-backed transcription for selected content audio on iOS 27+ and macOS 14+
 - SwiftUI-friendly API that mirrors Apple's sample project design
 
 ## Table of Contents
@@ -34,6 +35,7 @@ AuralKit is a simple, lightweight Swift wrapper for speech-to-text transcription
 - [Usage](#usage)
   - [Simple Transcription](#simple-transcription)
   - [Partial Results](#partial-results)
+  - [Screen Capture Audio](#screen-capture-audio)
 - [Session Observability](#session-observability)
   - [Monitoring Model Downloads](#monitoring-model-downloads)
   - [Status Updates](#status-updates)
@@ -272,6 +274,35 @@ struct ContentView: View {
 
 The `TranscriptionManager` in the demo app adds language selection, history tracking, and export.
 
+### Screen Capture Audio
+
+On OS versions where ScreenCaptureKit can stream selected content audio, AuralKit can transcribe audio chosen with the system picker:
+
+```swift
+let session = SpeechSession()
+
+for try await result in session.startTranscribingScreenCapture() {
+    if result.isFinal {
+        print(String(result.text.characters))
+    }
+}
+```
+
+Customize current-process audio behavior with `ScreenCaptureTranscriptionOptions`:
+
+```swift
+let options = SpeechSession.ScreenCaptureTranscriptionOptions(
+    excludesCurrentProcessAudio: true
+)
+
+let stream = session.startTranscribingScreenCapture(
+    options: options,
+    contextualStrings: ["AuralKit", "ScreenCaptureKit"]
+)
+```
+
+Screen capture transcription still returns normal `SpeechTranscriber.Result` values. AuralKit handles the ScreenCaptureKit stream, converts audio `CMSampleBuffer`s into analyzer-compatible buffers, and feeds the existing SpeechAnalyzer pipeline.
+
 ### Error Handling
 
 AuralKit surfaces detailed `SpeechSessionError` values so you can present actionable messaging:
@@ -486,6 +517,9 @@ Add to your `Info.plist`:
 
 <key>NSSpeechRecognitionUsageDescription</key>
 <string>This app needs speech recognition to convert your speech to text.</string>
+
+<key>NSScreenCaptureUsageDescription</key>
+<string>This app needs screen capture access to transcribe selected content audio.</string>
 ```
 
 ## Requirements
@@ -493,6 +527,7 @@ Add to your `Info.plist`:
 - iOS 26.0+ / macOS 26.0+
 - Swift 6.2+
 - Microphone and speech recognition permissions
+- Screen capture transcription requires iOS 27+ or macOS 14+ ScreenCaptureKit support and `NSScreenCaptureUsageDescription`
 
 ## Contributing
 

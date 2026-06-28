@@ -73,6 +73,7 @@ public final class SpeechSession {
     var analyzerFormat: AVAudioFormat?
     var nativeCaptureSession: AVCaptureSession?
     var nativeCaptureAnalysisTask: Task<Void, Never>?
+    var screenCaptureInputProvider: AnyObject?
     var voiceActivationConfiguration: VoiceActivationConfiguration?
     var customVocabularyDescriptor: CustomVocabulary?
     var customVocabularyConfiguration: SFSpeechLanguageModel.Configuration?
@@ -350,7 +351,11 @@ public final class SpeechSession {
     /// Safe to call only when the session is actively transcribing. Additional calls are ignored.
     public func pauseTranscribing() async {
         guard status == .transcribing else { return }
-        stopAudioStreaming()
+        if streamingMode == .screenCapture {
+            await pauseScreenCaptureStreamingIfNeeded()
+        } else {
+            stopAudioStreaming()
+        }
         setStatus(.paused)
     }
 
@@ -360,7 +365,11 @@ public final class SpeechSession {
     public func resumeTranscribing() async throws {
         guard status == .paused else { return }
         do {
-            try startAudioStreaming()
+            if streamingMode == .screenCapture {
+                try await resumeScreenCaptureStreamingIfNeeded()
+            } else {
+                try startAudioStreaming()
+            }
             setStatus(.transcribing)
         } catch {
             prepareForStop()

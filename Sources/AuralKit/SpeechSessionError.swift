@@ -56,6 +56,15 @@ public enum SpeechSessionError: LocalizedError {
     /// Failed to set up analysis context with contextual strings.
     case contextSetupFailed(Error)
 
+    /// Screen capture is not available on this OS or device.
+    case screenCaptureUnavailable
+
+    /// The user cancelled the screen capture picker.
+    case screenCaptureSelectionCancelled
+
+    /// Screen capture failed to start or produce usable audio.
+    case screenCaptureFailed(Error?)
+
     /// Custom vocabulary can only be configured while the session is idle.
     case customVocabularyRequiresIdleSession
 
