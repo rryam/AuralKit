@@ -257,7 +257,9 @@ private final class ScreenCaptureAudioInputProvider: NSObject, SCStreamOutput, S
                 try await beginCapture(with: selectedFilter)
                 resumeSelection()
             } catch {
-                resumeSelection(throwing: error)
+                if !resumeSelection(throwing: error) {
+                    onFailure(SpeechSessionError.screenCaptureFailed(error))
+                }
             }
         }
     }
@@ -270,7 +272,11 @@ private final class ScreenCaptureAudioInputProvider: NSObject, SCStreamOutput, S
 
     func contentSharingPickerStartDidFailWithError(_ error: any Error) {
         Task { @MainActor [weak self] in
-            self?.resumeSelection(throwing: SpeechSessionError.screenCaptureFailed(error))
+            guard let self else { return }
+            let wrappedError = SpeechSessionError.screenCaptureFailed(error)
+            if !self.resumeSelection(throwing: wrappedError) {
+                self.onFailure(wrappedError)
+            }
         }
     }
 
@@ -328,15 +334,17 @@ private final class ScreenCaptureAudioInputProvider: NSObject, SCStreamOutput, S
         isRunning = true
     }
 
+    @discardableResult
     @MainActor
-    private func resumeSelection(throwing error: Error? = nil) {
-        guard let selectionContinuation else { return }
+    private func resumeSelection(throwing error: Error? = nil) -> Bool {
+        guard let selectionContinuation else { return false }
         self.selectionContinuation = nil
         if let error {
             selectionContinuation.resume(throwing: error)
         } else {
             selectionContinuation.resume()
         }
+        return true
     }
 
     private func makeSourceFormat(from sampleBuffer: CMSampleBuffer) -> AVAudioFormat? {
