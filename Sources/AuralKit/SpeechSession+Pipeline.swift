@@ -202,6 +202,7 @@ extension SpeechSession {
 
         streamingMode = .inactive
         activeResultKind = nil
+        await stopScreenCaptureStreamingIfNeeded()
         stopAudioStreaming()
         tearDownNativeCaptureStreaming()
         deactivateAudioSessionIfNeeded()
@@ -291,7 +292,7 @@ extension SpeechSession {
     private func deactivateAudioSessionIfNeeded() {}
 #endif
 
-    private func createSpeechRecognizerTask(
+    func createSpeechRecognizerTask(
         transcriber: SpeechTranscriber,
         streamContinuation: AsyncThrowingStream<SpeechTranscriber.Result, Error>.Continuation
     ) -> Task<Void, Never> {

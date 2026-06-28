@@ -132,6 +132,33 @@ public extension SpeechSessionError {
                                                    comment: "Error when analysis context setup fails"),
                           underlyingError.localizedDescription)
 
+        case .screenCaptureUnavailable:
+            return NSLocalizedString(
+                "Screen capture transcription is not available on this OS or device.",
+                comment: "Error when ScreenCaptureKit capture cannot be used"
+            )
+
+        case .screenCaptureSelectionCancelled:
+            return NSLocalizedString(
+                "Screen capture selection was cancelled.",
+                comment: "Error when user cancels ScreenCaptureKit content picker"
+            )
+
+        case .screenCaptureFailed(let underlyingError):
+            if let underlyingError {
+                return String(
+                    format: NSLocalizedString(
+                        "Screen capture transcription failed: %@",
+                        comment: "Error when ScreenCaptureKit capture fails with underlying error"
+                    ),
+                    underlyingError.localizedDescription
+                )
+            }
+            return NSLocalizedString(
+                "Screen capture transcription failed.",
+                comment: "Generic ScreenCaptureKit capture failure"
+            )
+
         case .customVocabularyRequiresIdleSession:
             return NSLocalizedString(
                 "Custom vocabulary can only be configured when the session is idle.",
@@ -236,6 +263,24 @@ public extension SpeechSessionError {
             return NSLocalizedString(
                 "Unable to configure the speech analyzer with the provided contextual strings.",
                 comment: "Failure reason when context setup fails"
+            )
+
+        case .screenCaptureUnavailable:
+            return NSLocalizedString(
+                "ScreenCaptureKit audio capture requires a supported OS and device.",
+                comment: "Failure reason when ScreenCaptureKit is unavailable"
+            )
+
+        case .screenCaptureSelectionCancelled:
+            return NSLocalizedString(
+                "No screen, window, or app was selected for transcription.",
+                comment: "Failure reason when user cancels ScreenCaptureKit picker"
+            )
+
+        case .screenCaptureFailed:
+            return NSLocalizedString(
+                "The selected content could not be captured as audio for speech recognition.",
+                comment: "Failure reason when ScreenCaptureKit capture fails"
             )
 
         case .customVocabularyRequiresIdleSession:
@@ -347,6 +392,24 @@ public extension SpeechSessionError {
         case .contextSetupFailed:
             return NSLocalizedString("Try starting transcription again or simplify the contextual strings provided.",
                                      comment: "Recovery suggestion when context setup fails")
+
+        case .screenCaptureUnavailable:
+            return NSLocalizedString(
+                "Run on iOS 27, iPadOS 27, macOS 14, or newer with ScreenCaptureKit support.",
+                comment: "Recovery suggestion when ScreenCaptureKit is unavailable"
+            )
+
+        case .screenCaptureSelectionCancelled:
+            return NSLocalizedString(
+                "Start capture again and choose the screen, window, or app audio you want to transcribe.",
+                comment: "Recovery suggestion when user cancels ScreenCaptureKit picker"
+            )
+
+        case .screenCaptureFailed:
+            return NSLocalizedString(
+                "Add NSScreenCaptureUsageDescription, grant screen recording permission, and try again.",
+                comment: "Recovery suggestion when ScreenCaptureKit capture fails"
+            )
 
         case .customVocabularyRequiresIdleSession:
             return NSLocalizedString(
