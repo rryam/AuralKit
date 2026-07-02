@@ -438,12 +438,13 @@ Use the returned metadata to populate locale pickers, display download guidance,
 ### SpeechSession
 
 ```swift
-public actor SpeechSession {
+@MainActor
+public final class SpeechSession {
     // Initialize with a locale
     public init(locale: Locale = .current)
 
     /// Current speech model download progress, if any
-    public var modelDownloadProgress: Progress? { get async }
+    public var modelDownloadProgress: Progress? { get }
 
     /// Start transcribing - returns stream of SpeechTranscriber.Result
     public func startTranscribing() async -> AsyncThrowingStream<SpeechTranscriber.Result, Error>
