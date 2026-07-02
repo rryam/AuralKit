@@ -309,7 +309,7 @@ AuralKit surfaces detailed `SpeechSessionError` values so you can present action
 
 ```swift
 do {
-    let stream = await kit.startTranscribing()
+    let stream = session.startTranscribing()
     for try await segment in stream {
         // Use the transcription
     }
@@ -447,7 +447,7 @@ public final class SpeechSession {
     public var modelDownloadProgress: Progress? { get }
 
     /// Start transcribing - returns stream of SpeechTranscriber.Result
-    public func startTranscribing() async -> AsyncThrowingStream<SpeechTranscriber.Result, Error>
+    public func startTranscribing() -> AsyncThrowingStream<SpeechTranscriber.Result, Error>
 
     /// Stop transcribing
     public func stopTranscribing() async
