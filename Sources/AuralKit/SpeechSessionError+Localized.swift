@@ -1,5 +1,7 @@
 import Foundation
 
+// swiftlint:disable file_length
+
 public extension SpeechSessionError {
     var errorDescription: String? {
         switch self {

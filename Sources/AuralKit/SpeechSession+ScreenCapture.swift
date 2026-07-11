@@ -3,6 +3,8 @@ import CoreMedia
 import Foundation
 import Speech
 
+// swiftlint:disable file_length
+
 #if canImport(ScreenCaptureKit)
 @preconcurrency import ScreenCaptureKit
 
@@ -249,7 +251,11 @@ private final class ScreenCaptureAudioInputProvider: NSObject, SCStreamOutput, S
         isRunning = false
     }
 
-    func contentSharingPicker(_ picker: SCContentSharingPicker, didUpdateWith filter: SCContentFilter, for stream: SCStream?) {
+    func contentSharingPicker(
+        _ picker: SCContentSharingPicker,
+        didUpdateWith filter: SCContentFilter,
+        for stream: SCStream?
+    ) {
         nonisolated(unsafe) let selectedFilter = filter
         Task { @MainActor [weak self] in
             guard let self else { return }
