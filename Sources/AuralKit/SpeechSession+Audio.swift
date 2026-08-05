@@ -226,14 +226,15 @@ extension SpeechSession {
             if Self.shouldLog(.notice) {
                 Self.logger.notice("Audio session interruption ended without resume option; cleaning up session")
             }
-            prepareForStop()
-            await cleanup(cancelRecognizer: true, generation: generation)
-            await finishStream(error: nil)
+            await finishInterruptedSession(error: nil, generation: generation)
             return
         }
 
         do {
             try await setupAudioSession()
+            // The session can be stopped and restarted while the audio session is being
+            // reconfigured; a stale interruption must not resume or tear down the newer stream.
+            guard generation == sessionGeneration else { return }
             try startAudioStreaming()
             setStatus(.transcribing)
             if Self.shouldLog(.notice) {
@@ -244,10 +245,20 @@ extension SpeechSession {
                 let description = error.localizedDescription
                 Self.logger.error("Failed to resume after interruption: \(description, privacy: .public)")
             }
-            prepareForStop()
-            await cleanup(cancelRecognizer: true, generation: generation)
-            await finishStream(error: error)
+            await finishInterruptedSession(error: error, generation: generation)
         }
+    }
+
+    /// Tear down the session that owned `generation` after a failed or non-resumable interruption.
+    ///
+    /// Every step is gated on the generation still being current, so an interruption belonging
+    /// to a session that has already been stopped cannot mark a newer session `.stopping` or
+    /// finish its stream.
+    private func finishInterruptedSession(error: Error?, generation: Int) async {
+        guard generation == sessionGeneration else { return }
+        prepareForStop()
+        await cleanup(cancelRecognizer: true, generation: generation)
+        await finishStream(error: error, generation: generation)
     }
 #elseif os(macOS)
     func handleEngineConfigurationChange() async {

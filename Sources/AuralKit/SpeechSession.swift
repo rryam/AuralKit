@@ -351,7 +351,7 @@ public final class SpeechSession {
         let generation = sessionGeneration
         prepareForStop()
         await cleanup(cancelRecognizer: true, generation: generation)
-        await finishStream(error: nil)
+        await finishStream(error: nil, generation: generation)
     }
 
     /// Pause capture without tearing down the analyzer pipeline.
@@ -384,7 +384,7 @@ public final class SpeechSession {
         } catch {
             prepareForStop()
             await cleanup(cancelRecognizer: true, generation: generation)
-            await finishStream(error: error)
+            await finishStream(error: error, generation: generation)
             throw error
         }
     }

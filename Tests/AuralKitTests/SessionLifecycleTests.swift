@@ -99,6 +99,29 @@ struct SpeechSessionLifecycleTests {
         session.setStatus(.idle)
     }
 
+    /// A teardown belonging to an older stream must never finish the current stream. This
+    /// guards paths (such as the audio-interruption handler) that capture a generation before
+    /// an await and reach `finishStream` after the session has moved on.
+    @Test("Stale finishStream leaves the current stream open")
+    @MainActor
+    func staleFinishStreamLeavesCurrentStreamOpen() async throws {
+        let session = SpeechSession()
+
+        let staleGeneration = session.beginStreamGeneration()
+        _ = session.beginStreamGeneration()
+
+        let (_, continuation) = AsyncThrowingStream<SpeechTranscriber.Result, Error>.makeStream()
+        session.continuation = .speech(continuation)
+
+        await session.finishStream(error: SpeechSessionError.invalidAudioDataType, generation: staleGeneration)
+
+        #expect(session.continuation != nil)
+
+        // The current generation still owns the stream and can finish it.
+        await session.finishStream(error: nil, generation: session.sessionGeneration)
+        #expect(session.continuation == nil)
+    }
+
     /// Pausing is only meaningful for live capture; during file transcription it must be
     /// refused (previously, resuming a "paused" file session started the microphone).
     @Test("Pause is refused during file transcription")

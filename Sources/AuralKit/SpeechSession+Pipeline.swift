@@ -89,7 +89,7 @@ extension SpeechSession {
         guard generation == sessionGeneration else { return }
         prepareForStop()
         await cleanup(cancelRecognizer: true, generation: generation)
-        await finishStream(error: nil)
+        await finishStream(error: nil, generation: generation)
     }
 
     var isPausableStreamingMode: Bool {
@@ -219,7 +219,7 @@ extension SpeechSession {
         }
         await cleanup(cancelRecognizer: true, generation: generation)
         guard generation == sessionGeneration else { return }
-        await finishStream(error: nil)
+        await finishStream(error: nil, generation: generation)
     }
 
     func finishWithStartupError(_ error: Error, generation: Int) async {
@@ -235,7 +235,7 @@ extension SpeechSession {
         }
         prepareForStop()
         await cleanup(cancelRecognizer: true, generation: generation)
-        await finishStream(error: error)
+        await finishStream(error: error, generation: generation)
     }
 
     func finishFromRecognizerTask(error: Error?, generation: Int) async {
@@ -253,7 +253,7 @@ extension SpeechSession {
         }
         prepareForStop()
         await cleanup(cancelRecognizer: false, generation: generation)
-        await finishStream(error: error)
+        await finishStream(error: error, generation: generation)
     }
 
     /// Tear down the active pipeline.
@@ -310,7 +310,12 @@ extension SpeechSession {
         }
     }
 
-    func finishStream(error: Error?) async {
+    /// Finish the active consumer stream.
+    ///
+    /// Generation-guarded so a teardown belonging to an older stream can never finish (or
+    /// error out) the stream of a session that has since started.
+    func finishStream(error: Error?, generation: Int) async {
+        guard generation == sessionGeneration else { return }
         guard let continuation else { return }
         self.continuation = nil
 
