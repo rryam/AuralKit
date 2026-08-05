@@ -47,7 +47,7 @@ swift test -v
 
 ### Core Architecture
 
-- **SpeechSession** (`SpeechSession.swift`) - Main `actor` entry point; coordinates permission checks, audio engine lifecycle, and async streams
+- **SpeechSession** (`SpeechSession.swift`) - Main `@MainActor` class entry point; coordinates permission checks, audio engine lifecycle, and async streams
 - **Extensions** split concerns:
   - `SpeechSession+Pipeline.swift` - Permissions, audio session activation, stream wiring, teardown
   - `SpeechSession+Transcriber.swift` - Analyzer graph building, optional module installation (SpeechDetector), audio buffer feeding
@@ -70,7 +70,7 @@ The `Aural/` directory contains a SwiftUI demo app showcasing live transcription
 
 ## Key Patterns
 
-- `SpeechSession` is an `actor` - all methods are isolated and thread-safe
+- `SpeechSession` is a `@MainActor` final class - all methods are main-actor isolated
 - Transcriptions return `AttributedString` with `audioTimeRange` in runs for timing metadata
 - Voice activation (VAD) is opt-in via `SpeechDetector` module on supported platforms
 - Locale models auto-download with progress available via `modelDownloadProgress`

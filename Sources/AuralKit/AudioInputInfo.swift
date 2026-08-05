@@ -163,14 +163,15 @@ public extension AudioInputInfo {
     }
 
     private static func specificDeviceIcon(for normalizedName: String) -> String? {
+        // Only match AirPods variants; bare "pro"/"max" substrings appear in plenty of
+        // unrelated device names (e.g. USB "Procaster" microphones).
+        guard normalizedName.contains("airpods") else { return nil }
         if normalizedName.contains("pro") {
             return "airpods.pro"
         } else if normalizedName.contains("max") {
             return "airpods.max"
-        } else if normalizedName.contains("airpods") {
-            return "airpods"
         }
-        return nil
+        return "airpods"
     }
 
     private static func iconForPortType(_ type: AVAudioSession.Port, normalizedName: String) -> String {

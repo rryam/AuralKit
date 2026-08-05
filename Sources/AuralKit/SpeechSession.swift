@@ -95,8 +95,11 @@ public final class SpeechSession {
     // Stream state management
     var continuation: TranscriptionContinuation?
     var recognizerTask: Task<Void, Never>?
+    var pipelineTask: Task<Void, Never>?
     var fileIngestionTask: Task<Void, Never>?
     var streamingMode: StreamingMode = .inactive
+    /// Incremented for every accepted start so stale termination handlers can be ignored.
+    var sessionGeneration: Int = 0
 
     // Notification Handling
     var routeChangeObserver: NSObjectProtocol?
@@ -291,23 +294,27 @@ public final class SpeechSession {
     ) -> AsyncThrowingStream<SpeechTranscriber.Result, Error> {
         let (stream, newContinuation) = AsyncThrowingStream<SpeechTranscriber.Result, Error>.makeStream()
 
-        newContinuation.onTermination = { [weak self] _ in
-            Task { @MainActor [weak self] in
-                guard let self else { return }
-                await self.cleanup(cancelRecognizer: true)
-            }
-        }
-
         guard continuation == nil, recognizerTask == nil, streamingMode == .inactive else {
             newContinuation.finish(throwing: SpeechSessionError.recognitionStreamSetupFailed)
             return stream
         }
 
+        let generation = beginStreamGeneration()
+        newContinuation.onTermination = { [weak self] _ in
+            Task { @MainActor [weak self] in
+                await self?.handleStreamTermination(generation: generation)
+            }
+        }
+
         setStatus(.preparing)
         continuation = .speech(newContinuation)
-        Task { @MainActor [weak self] in
+        pipelineTask = Task { @MainActor [weak self] in
             guard let self else { return }
-            await self.startSpeechPipeline(with: newContinuation, contextualStrings: contextualStrings)
+            await self.startSpeechPipeline(
+                with: newContinuation,
+                contextualStrings: contextualStrings,
+                generation: generation
+            )
         }
         return stream
     }
@@ -341,16 +348,18 @@ public final class SpeechSession {
     /// Safe to call even if `startTranscribing()` has not been invoked or the stream has already
     /// completed; the method simply waits for cleanup and returns.
     public func stopTranscribing() async {
+        let generation = sessionGeneration
         prepareForStop()
-        await cleanup(cancelRecognizer: true)
+        await cleanup(cancelRecognizer: true, generation: generation)
         await finishStream(error: nil)
     }
 
     /// Pause capture without tearing down the analyzer pipeline.
     ///
-    /// Safe to call only when the session is actively transcribing. Additional calls are ignored.
+    /// Safe to call only when the session is actively transcribing live audio (microphone or
+    /// screen capture). Calls during file transcription or in any other state are ignored.
     public func pauseTranscribing() async {
-        guard status == .transcribing else { return }
+        guard status == .transcribing, isPausableStreamingMode else { return }
         if streamingMode == .screenCapture {
             await pauseScreenCaptureStreamingIfNeeded()
         } else {
@@ -363,7 +372,8 @@ public final class SpeechSession {
     ///
     /// - Throws: `SpeechSessionError` if audio streaming cannot restart.
     public func resumeTranscribing() async throws {
-        guard status == .paused else { return }
+        guard status == .paused, isPausableStreamingMode else { return }
+        let generation = sessionGeneration
         do {
             if streamingMode == .screenCapture {
                 try await resumeScreenCaptureStreamingIfNeeded()
@@ -373,7 +383,7 @@ public final class SpeechSession {
             setStatus(.transcribing)
         } catch {
             prepareForStop()
-            await cleanup(cancelRecognizer: true)
+            await cleanup(cancelRecognizer: true, generation: generation)
             await finishStream(error: error)
             throw error
         }

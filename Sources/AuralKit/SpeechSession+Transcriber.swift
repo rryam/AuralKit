@@ -24,7 +24,9 @@ extension SpeechSession {
         let transcriber = try createSpeechTranscriber()
         let modules = configureModules(transcriber: transcriber)
         try await ensureModels(modules: modules)
+        try Task.checkCancellation()
         try await configureAnalyzerContext(contextualStrings: contextualStrings)
+        try Task.checkCancellation()
         if startAnalyzerImmediately {
             try await startAnalyzer(modules: modules)
         }
@@ -43,7 +45,9 @@ extension SpeechSession {
         let transcriber = try createDictationTranscriber()
         let modules = configureModules(transcriber: transcriber)
         try await ensureModels(modules: modules)
+        try Task.checkCancellation()
         try await configureAnalyzerContext(contextualStrings: contextualStrings)
+        try Task.checkCancellation()
         if startAnalyzerImmediately {
             try await startAnalyzer(modules: modules)
         }
@@ -235,19 +239,22 @@ extension SpeechSession {
         try await analyzer?.finalizeAndFinishThroughEndOfInput()
     }
 
-    func stopTranscriberAndCleanup() async {
+    /// State captured by `detachTranscriberState()` for asynchronous finalization.
+    struct DetachedTranscriberState {
+        let inputBuilder: AsyncStream<AnalyzerInput>.Continuation?
+        let analyzer: SpeechAnalyzer?
+    }
+
+    /// Synchronously clear all transcriber-related session state and return the pieces that
+    /// still need asynchronous finalization.
+    ///
+    /// Clearing everything in one synchronous step means concurrent teardowns and subsequent
+    /// session starts never observe a half-torn-down pipeline.
+    func detachTranscriberState() -> DetachedTranscriberState {
         if Self.shouldLog(.debug) {
             Self.logger.debug("Stopping transcriber and cleaning up")
         }
-
-        do {
-            try await finishAnalyzerInput()
-        } catch {
-            // Finalization failed, but we still need to clean up resources
-            // Log for debugging but don't propagate since stop() is best-effort cleanup
-        }
-
-        await modelManager.releaseLocales()
+        let detached = DetachedTranscriberState(inputBuilder: inputBuilder, analyzer: analyzer)
 
         tearDownSpeechDetectorStream()
         speechDetector = nil
@@ -259,6 +266,22 @@ extension SpeechSession {
         activeModules = nil
         transcriber = nil
         dictationTranscriber = nil
+
+        return detached
+    }
+
+    /// Finish the detached analyzer input and finalize the detached analyzer.
+    ///
+    /// Operates only on the captured references, never on live session state, so it is safe to
+    /// run even after a newer session has started.
+    func finalizeDetachedTranscriberState(_ detached: DetachedTranscriberState) async {
+        detached.inputBuilder?.finish()
+        do {
+            try await detached.analyzer?.finalizeAndFinishThroughEndOfInput()
+        } catch {
+            // Finalization failed, but we still need to clean up resources
+            // Log for debugging but don't propagate since stop() is best-effort cleanup
+        }
         if Self.shouldLog(.debug) {
             Self.logger.debug("Transcriber cleanup complete")
         }

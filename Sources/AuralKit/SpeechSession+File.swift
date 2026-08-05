@@ -68,28 +68,29 @@ public extension SpeechSession {
     ) -> AsyncThrowingStream<SpeechTranscriber.Result, Error> {
         let (stream, newContinuation) = AsyncThrowingStream<SpeechTranscriber.Result, Error>.makeStream()
 
-        newContinuation.onTermination = { [weak self] _ in
-            Task { @MainActor [weak self] in
-                guard let self else { return }
-                await self.cleanup(cancelRecognizer: true)
-            }
-        }
-
         guard continuation == nil, recognizerTask == nil, streamingMode == .inactive else {
             newContinuation.finish(throwing: SpeechSessionError.recognitionStreamSetupFailed)
             return stream
         }
 
+        let generation = beginStreamGeneration()
+        newContinuation.onTermination = { [weak self] _ in
+            Task { @MainActor [weak self] in
+                await self?.handleStreamTermination(generation: generation)
+            }
+        }
+
         setStatus(.preparing)
         continuation = .speech(newContinuation)
 
-        Task { @MainActor [weak self] in
+        pipelineTask = Task { @MainActor [weak self] in
             guard let self else { return }
             await self.startFilePipeline(
                 with: newContinuation,
                 audioFileURL: audioFile,
                 options: options,
-                progressHandler: progressHandler
+                progressHandler: progressHandler,
+                generation: generation
             )
         }
 
@@ -135,25 +136,25 @@ private extension SpeechSession {
         with streamContinuation: AsyncThrowingStream<SpeechTranscriber.Result, Error>.Continuation,
         audioFileURL: URL,
         options: FileTranscriptionOptions,
-        progressHandler: (@Sendable (Double) -> Void)?
+        progressHandler: (@Sendable (Double) -> Void)?,
+        generation: Int
     ) async {
         do {
+            try Task.checkCancellation()
             let validation = try validateAudioFile(at: audioFileURL, options: options)
             try await ensureSpeechRecognitionAuthorization(context: "for file transcription")
+            try Task.checkCancellation()
             let shouldUseNativeAnalyzer = shouldUseNativeFileAnalyzer(progressHandler: progressHandler)
             try await setUpFilePipeline(
                 with: streamContinuation,
                 contextualStrings: options.contextualStrings,
-                startAnalyzerImmediately: !shouldUseNativeAnalyzer
+                startAnalyzerImmediately: !shouldUseNativeAnalyzer,
+                generation: generation
             )
+            try Task.checkCancellation()
             let handler = progressHandler
             fileIngestionTask = Task<Void, Never> { [weak self] in
                 guard let self else { return }
-                defer {
-                    Task { @MainActor [weak self] in
-                        self?.fileIngestionTask = nil
-                    }
-                }
 
                 do {
                     let completed = try await self.feedAudioFile(validation, progressHandler: handler)
@@ -166,14 +167,18 @@ private extension SpeechSession {
                 } catch is CancellationError {
                     // Swallow cancellation triggered by cleanup.
                 } catch {
-                    await self.finishWithStartupError(error)
+                    await self.finishWithStartupError(error, generation: generation)
                 }
             }
+        } catch is CancellationError {
+            pipelineTask = nil
+            await finishCancelledPipelineSetup(generation: generation)
         } catch {
             if Self.shouldLog(.error) {
                 Self.logger.error("File transcription pipeline failed: \(error.localizedDescription, privacy: .public)")
             }
-            await finishWithStartupError(error)
+            pipelineTask = nil
+            await finishWithStartupError(error, generation: generation)
         }
     }
 
@@ -243,7 +248,8 @@ private extension SpeechSession {
     func setUpFilePipeline(
         with streamContinuation: AsyncThrowingStream<SpeechTranscriber.Result, Error>.Continuation,
         contextualStrings: [AnalysisContext.ContextualStringsTag: [String]]?,
-        startAnalyzerImmediately: Bool
+        startAnalyzerImmediately: Bool,
+        generation: Int
     ) async throws {
         if Self.shouldLog(.notice) {
             Self.logger.notice("Starting file transcription pipeline")
@@ -253,32 +259,14 @@ private extension SpeechSession {
             contextualStrings: contextualStrings,
             startAnalyzerImmediately: startAnalyzerImmediately
         )
+        try Task.checkCancellation()
         activeResultKind = .speech
 
-        recognizerTask = Task<Void, Never> { [weak self] in
-                guard let self else { return }
-
-                do {
-                    for try await result in transcriber.results {
-                        streamContinuation.yield(result)
-                    }
-                    if Self.shouldLog(.notice) {
-                        Self.logger.notice("File recognizer task completed without error")
-                    }
-                    await self.finishFromRecognizerTask(error: nil)
-                } catch is CancellationError {
-                    if Self.shouldLog(.debug) {
-                        Self.logger.debug("File recognizer task cancelled")
-                    }
-                } catch {
-                    if Self.shouldLog(.error) {
-                        Self.logger.error(
-                            "File recognizer task failed: \(error.localizedDescription, privacy: .public)"
-                        )
-                    }
-                    await self.finishFromRecognizerTask(error: error)
-                }
-        }
+        recognizerTask = createSpeechRecognizerTask(
+            transcriber: transcriber,
+            streamContinuation: streamContinuation,
+            generation: generation
+        )
 
         streamingMode = .filePlayback
         setStatus(.transcribing)
