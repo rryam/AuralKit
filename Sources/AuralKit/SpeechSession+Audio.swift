@@ -1,5 +1,6 @@
 import Foundation
 @preconcurrency import AVFoundation
+import Speech
 
 @MainActor
 extension SpeechSession {
@@ -22,6 +23,11 @@ extension SpeechSession {
         if Self.shouldLog(.debug) {
             Self.logger.debug("Starting audio streaming")
         }
+
+        guard let inputBuilder, let analyzerFormat else {
+            throw SpeechSessionError.invalidAudioDataType
+        }
+
         audioEngine.inputNode.removeTap(onBus: 0)
 
         let inputFormat = audioEngine.inputNode.outputFormat(forBus: 0)
@@ -36,7 +42,7 @@ extension SpeechSession {
             onBus: 0,
             bufferSize: Self.microphoneTapBufferSize,
             format: inputFormat,
-            block: makeAudioTapHandler()
+            block: makeAudioTapHandler(inputBuilder: inputBuilder, analyzerFormat: analyzerFormat)
         )
 
         audioEngine.prepare()
@@ -110,27 +116,42 @@ extension SpeechSession {
 #endif
     }
 
-    private func makeAudioTapHandler() -> AVAudioNodeTapBlock {
-        return { [weak self] buffer, _ in
-            guard let bufferCopy = buffer.copy() as? AVAudioPCMBuffer else {
-                if Self.shouldLog(.error) {
-                    Self.logger.error("Failed to copy audio buffer for processing.")
+    /// Build a tap block that converts and forwards buffers synchronously on the tap thread.
+    ///
+    /// Converting inline (rather than hopping through per-buffer tasks) guarantees analyzer
+    /// input arrives in capture order and keeps working across cleanup: yields into a finished
+    /// stream are simply dropped. A fresh converter is captured per installation so a route or
+    /// device change (which reinstalls the tap with a new format) never reuses a stale converter.
+    private func makeAudioTapHandler(
+        inputBuilder: AsyncStream<AnalyzerInput>.Continuation,
+        analyzerFormat: AVAudioFormat
+    ) -> AVAudioNodeTapBlock {
+        let converter = BufferConverter()
+        return { buffer, _ in
+            do {
+                let converted = try converter.convertBuffer(buffer, to: analyzerFormat)
+                let input: AVAudioPCMBuffer
+                if converted === buffer {
+                    // Passthrough: the engine reuses the tap buffer, so hand the analyzer a copy.
+                    guard let bufferCopy = buffer.copy() as? AVAudioPCMBuffer else {
+                        Task { @MainActor in
+                            if Self.shouldLog(.error) {
+                                Self.logger.error("Failed to copy audio buffer for processing.")
+                            }
+                        }
+                        return
+                    }
+                    input = bufferCopy
+                } else {
+                    input = converted
                 }
-                return
-            }
-            let sendableBuffer = SendablePCMBuffer(buffer: bufferCopy)
-
-            Task { @MainActor in
-                guard let self else {
-                    return
-                }
-
-                do {
-                    try await self.processAudioBuffer(sendableBuffer)
-                } catch {
+                inputBuilder.yield(AnalyzerInput(buffer: input))
+            } catch {
+                let description = error.localizedDescription
+                Task { @MainActor in
                     if Self.shouldLog(.error) {
                         Self.logger.error(
-                            "Audio processing error: \(error.localizedDescription, privacy: .public)"
+                            "Audio processing error: \(description, privacy: .public)"
                         )
                     }
                 }
@@ -199,19 +220,21 @@ extension SpeechSession {
     private func handleInterruptionEnded(options: AVAudioSession.InterruptionOptions) async {
         guard shouldResumeAfterInterruption else { return }
         shouldResumeAfterInterruption = false
+        let generation = sessionGeneration
 
         guard options.contains(.shouldResume) else {
             if Self.shouldLog(.notice) {
                 Self.logger.notice("Audio session interruption ended without resume option; cleaning up session")
             }
-            prepareForStop()
-            await cleanup(cancelRecognizer: true)
-            await finishStream(error: nil)
+            await finishInterruptedSession(error: nil, generation: generation)
             return
         }
 
         do {
             try await setupAudioSession()
+            // The session can be stopped and restarted while the audio session is being
+            // reconfigured; a stale interruption must not resume or tear down the newer stream.
+            guard generation == sessionGeneration else { return }
             try startAudioStreaming()
             setStatus(.transcribing)
             if Self.shouldLog(.notice) {
@@ -222,10 +245,20 @@ extension SpeechSession {
                 let description = error.localizedDescription
                 Self.logger.error("Failed to resume after interruption: \(description, privacy: .public)")
             }
-            prepareForStop()
-            await cleanup(cancelRecognizer: true)
-            await finishStream(error: error)
+            await finishInterruptedSession(error: error, generation: generation)
         }
+    }
+
+    /// Tear down the session that owned `generation` after a failed or non-resumable interruption.
+    ///
+    /// Every step is gated on the generation still being current, so an interruption belonging
+    /// to a session that has already been stopped cannot mark a newer session `.stopping` or
+    /// finish its stream.
+    private func finishInterruptedSession(error: Error?, generation: Int) async {
+        guard generation == sessionGeneration else { return }
+        prepareForStop()
+        await cleanup(cancelRecognizer: true, generation: generation)
+        await finishStream(error: error, generation: generation)
     }
 #elseif os(macOS)
     func handleEngineConfigurationChange() async {

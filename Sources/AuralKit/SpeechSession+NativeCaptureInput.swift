@@ -12,10 +12,10 @@ extension SpeechSession {
         return false
     }
 
-    func setUpNativeCaptureStreamingIfAvailable() async throws -> Bool {
+    func setUpNativeCaptureStreamingIfAvailable(generation: Int) async throws -> Bool {
 #if swift(>=6.4)
         if #available(iOS 27.0, macOS 27.0, *), shouldUseNativeCaptureInputProvider {
-            try await setUpNativeCaptureStreaming()
+            try await setUpNativeCaptureStreaming(generation: generation)
             return true
         }
 #endif
@@ -51,7 +51,7 @@ extension SpeechSession {
         inputProviderPreference == .automatic
     }
 
-    func setUpNativeCaptureStreaming() async throws {
+    func setUpNativeCaptureStreaming(generation: Int) async throws {
         guard !isAudioStreaming else {
             throw SpeechSessionError.recognitionStreamSetupFailed
         }
@@ -70,9 +70,11 @@ extension SpeechSession {
             compatibleWith: modules,
             priority: analyzerConfiguration.priority
         )
+        try Task.checkCancellation()
         nativeCaptureSession = provider.captureSession
 
         try await prepareAnalyzerForStartIfNeeded(in: nil)
+        try Task.checkCancellation()
 
         let analyzerInputs = provider.analyzerInputs
         nativeCaptureAnalysisTask = Task<Void, Never> { [weak self, analyzer, analyzerInputs] in
@@ -86,7 +88,7 @@ extension SpeechSession {
             } catch is CancellationError {
                 // Cancellation is expected during explicit cleanup.
             } catch {
-                await self?.finishFromNativeCaptureAnalysis(error)
+                await self?.finishFromNativeCaptureAnalysis(error, generation: generation)
             }
         }
         startSpeechDetectorMonitoringIfNeeded()
@@ -125,9 +127,10 @@ extension SpeechSession {
         nativeCaptureSession = nil
     }
 
-    func finishFromNativeCaptureAnalysis(_ error: Error) async {
+    func finishFromNativeCaptureAnalysis(_ error: Error, generation: Int) async {
+        guard generation == sessionGeneration else { return }
         nativeCaptureAnalysisTask = nil
-        await finishFromRecognizerTask(error: error)
+        await finishFromRecognizerTask(error: error, generation: generation)
     }
 }
 #endif

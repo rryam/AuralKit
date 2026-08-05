@@ -11,7 +11,10 @@ class BufferConverter: @unchecked Sendable {
             return buffer
         }
 
-        if converter == nil || converter?.outputFormat != format {
+        // Recreate the converter when either side of the conversion changes; feeding a buffer
+        // whose format differs from the converter's input format is invalid (e.g. after an
+        // audio route or device change alters the capture format mid-session).
+        if converter == nil || converter?.outputFormat != format || converter?.inputFormat != inputFormat {
             converter = AVAudioConverter(from: inputFormat, to: format)
             // Sacrifice quality of first samples to avoid timestamp drift from source
             converter?.primeMethod = .none

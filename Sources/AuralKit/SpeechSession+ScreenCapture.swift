@@ -42,26 +42,27 @@ public extension SpeechSession {
     ) -> AsyncThrowingStream<SpeechTranscriber.Result, Error> {
         let (stream, newContinuation) = AsyncThrowingStream<SpeechTranscriber.Result, Error>.makeStream()
 
-        newContinuation.onTermination = { [weak self] _ in
-            Task { @MainActor [weak self] in
-                guard let self else { return }
-                await self.cleanup(cancelRecognizer: true)
-            }
-        }
-
         guard continuation == nil, recognizerTask == nil, streamingMode == .inactive else {
             newContinuation.finish(throwing: SpeechSessionError.recognitionStreamSetupFailed)
             return stream
         }
 
+        let generation = beginStreamGeneration()
+        newContinuation.onTermination = { [weak self] _ in
+            Task { @MainActor [weak self] in
+                await self?.handleStreamTermination(generation: generation)
+            }
+        }
+
         setStatus(.preparing)
         continuation = .speech(newContinuation)
-        Task { @MainActor [weak self] in
+        pipelineTask = Task { @MainActor [weak self] in
             guard let self else { return }
             await self.startScreenCapturePipeline(
                 with: newContinuation,
                 options: options,
-                contextualStrings: contextualStrings
+                contextualStrings: contextualStrings,
+                generation: generation
             )
         }
         return stream
@@ -90,20 +91,26 @@ extension SpeechSession {
     func startScreenCapturePipeline(
         with streamContinuation: AsyncThrowingStream<SpeechTranscriber.Result, Error>.Continuation,
         options: ScreenCaptureTranscriptionOptions,
-        contextualStrings: [AnalysisContext.ContextualStringsTag: [String]]?
+        contextualStrings: [AnalysisContext.ContextualStringsTag: [String]]?,
+        generation: Int
     ) async {
         do {
             if Self.shouldLog(.notice) {
                 Self.logger.notice("Starting screen capture pipeline setup")
             }
 
+            try Task.checkCancellation()
             try await ensureSpeechRecognitionAuthorization(context: "for screen capture transcription")
+            try Task.checkCancellation()
             let transcriber = try await setUpSpeechTranscriber(contextualStrings: contextualStrings)
+            try Task.checkCancellation()
             recognizerTask = createSpeechRecognizerTask(
                 transcriber: transcriber,
-                streamContinuation: streamContinuation
+                streamContinuation: streamContinuation,
+                generation: generation
             )
-            try await setUpScreenCaptureStreaming(options: options)
+            try await setUpScreenCaptureStreaming(options: options, generation: generation)
+            try Task.checkCancellation()
 
             streamingMode = .screenCapture
             setStatus(.transcribing)
@@ -111,15 +118,19 @@ extension SpeechSession {
             if Self.shouldLog(.info) {
                 Self.logger.info("Pipeline started (mode: screen capture)")
             }
+        } catch is CancellationError {
+            pipelineTask = nil
+            await finishCancelledPipelineSetup(generation: generation)
         } catch {
             if Self.shouldLog(.error) {
                 Self.logger.error("Screen capture pipeline failed: \(error.localizedDescription, privacy: .public)")
             }
-            await finishWithStartupError(error)
+            pipelineTask = nil
+            await finishWithStartupError(error, generation: generation)
         }
     }
 
-    func setUpScreenCaptureStreaming(options: ScreenCaptureTranscriptionOptions) async throws {
+    func setUpScreenCaptureStreaming(options: ScreenCaptureTranscriptionOptions, generation: Int) async throws {
         guard let analyzerFormat, let inputBuilder else {
             throw SpeechSessionError.invalidAudioDataType
         }
@@ -130,7 +141,7 @@ extension SpeechSession {
             inputContinuation: inputBuilder,
             onFailure: { [weak self] error in
                 Task { @MainActor [weak self] in
-                    await self?.finishFromRecognizerTask(error: error)
+                    await self?.finishFromRecognizerTask(error: error, generation: generation)
                 }
             }
         )
@@ -158,16 +169,14 @@ extension SpeechSession {
     }
 
     func stopScreenCaptureStreamingIfNeeded() async {
-        guard #available(iOS 27.0, macOS 14.0, *) else {
-            screenCaptureInputProvider = nil
-            return
-        }
-        guard let provider = screenCaptureInputProvider as? ScreenCaptureAudioInputProvider else {
-            screenCaptureInputProvider = nil
-            return
-        }
-        await provider.stop()
+        // Detach synchronously so concurrent teardowns or a subsequent session never observe
+        // a provider that is already being stopped.
+        let detachedProvider = screenCaptureInputProvider
         screenCaptureInputProvider = nil
+
+        guard #available(iOS 27.0, macOS 14.0, *) else { return }
+        guard let provider = detachedProvider as? ScreenCaptureAudioInputProvider else { return }
+        await provider.stop()
     }
 }
 
@@ -180,7 +189,8 @@ private final class ScreenCaptureAudioInputProvider: NSObject, SCStreamOutput, S
     private let inputContinuation: AsyncStream<AnalyzerInput>.Continuation
     private let onFailure: @Sendable (Error) -> Void
     private let sampleQueue = DispatchQueue(label: "com.auralkit.screencapture.audio", qos: .userInitiated)
-    private let audioProcessingActor = AudioProcessingActor()
+    // Only touched on `sampleQueue`, which serializes access.
+    private let bufferConverter = BufferConverter()
 
     private var stream: SCStream?
     private var selectionContinuation: CheckedContinuation<Void, Error>?
@@ -362,18 +372,16 @@ private final class ScreenCaptureAudioInputProvider: NSObject, SCStreamOutput, S
         return AVAudioFormat(streamDescription: &sourceDescription)
     }
 
+    /// Convert and forward a captured buffer synchronously on `sampleQueue`.
+    ///
+    /// Inline conversion preserves capture order for the analyzer; the caller passes an
+    /// already-copied buffer, so a passthrough conversion is safe to forward directly.
     private func processAudioBuffer(_ buffer: AVAudioPCMBuffer) {
-        let sendableBuffer = SpeechSession.SendablePCMBuffer(buffer: buffer)
-        Task { [audioProcessingActor, inputContinuation, onFailure, targetFormat] in
-            do {
-                let input = try await audioProcessingActor.makeAnalyzerInput(
-                    from: sendableBuffer,
-                    analyzerFormat: targetFormat
-                )
-                inputContinuation.yield(input)
-            } catch {
-                onFailure(error)
-            }
+        do {
+            let converted = try bufferConverter.convertBuffer(buffer, to: targetFormat)
+            inputContinuation.yield(AnalyzerInput(buffer: converted))
+        } catch {
+            onFailure(error)
         }
     }
 
