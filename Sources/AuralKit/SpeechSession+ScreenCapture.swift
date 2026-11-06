@@ -376,7 +376,8 @@ final class ScreenCaptureAudioInputProvider: NSObject, ScreenCaptureInput, SCStr
     func stream(_ stream: SCStream, didStopWithError error: any Error) {
         Task { @MainActor [weak self] in
             guard let self, !self.consumeIntentionalStop(for: stream),
-                  !self.stopped, (self.transitions.stream as? NativeScreenCaptureStream)?.stream === stream else { return }
+                  !self.stopped,
+                  (self.transitions.stream as? NativeScreenCaptureStream)?.stream === stream else { return }
             self.onFailure(SpeechSessionError.screenCaptureFailed(error))
         }
     }

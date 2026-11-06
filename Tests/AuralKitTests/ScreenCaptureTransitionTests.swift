@@ -3,111 +3,6 @@ import Speech
 import Testing
 @testable import AuralKit
 
-private enum CaptureFixtureError: Error { case deadline, startFailed }
-
-/// Each waiter owns its deadline and can be removed by cancellation. No timeout
-/// task group can be stranded joining a checked continuation that ignores cancel.
-@MainActor
-private final class CaptureGate {
-    private var opened = false
-    private var waiters: [UUID: CheckedContinuation<Void, Error>] = [:]
-    var waiterCount: Int { waiters.count }
-
-    func wait(timeoutNanoseconds: UInt64 = 3_000_000_000) async throws {
-        try Task.checkCancellation()
-        if opened { return }
-        let id = UUID()
-        let deadline = Task { @MainActor in
-            do { try await Task.sleep(nanoseconds: timeoutNanoseconds) } catch { return }
-            self.remove(id, error: CaptureFixtureError.deadline)
-        }
-        defer { deadline.cancel() }
-        try await withTaskCancellationHandler {
-            try await withCheckedThrowingContinuation { continuation in
-                if Task.isCancelled { continuation.resume(throwing: CancellationError()) }
-                else { waiters[id] = continuation }
-            }
-        } onCancel: {
-            Task { @MainActor in self.remove(id, error: CancellationError()) }
-        }
-    }
-
-    private func remove(_ id: UUID, error: Error) {
-        waiters.removeValue(forKey: id)?.resume(throwing: error)
-    }
-
-    func open() {
-        opened = true
-        let pending = waiters.values
-        waiters.removeAll()
-        for waiter in pending { waiter.resume() }
-    }
-}
-
-/// Async cleanup opens all gates before joining every task admitted by the test,
-/// including on a failed readiness wait. Errors remain visible to the test body.
-@MainActor
-private final class CaptureFixture {
-    private var gates: [CaptureGate] = []
-    private var joins: [Task<Void, Never>] = []
-    private var cancellations: [() -> Void] = []
-    func gate() -> CaptureGate {
-        let gate = CaptureGate()
-        gates.append(gate)
-        return gate
-    }
-    func track<Value: Sendable, Failure: Error>(_ task: Task<Value, Failure>) -> Task<Value, Failure> {
-        cancellations.append { task.cancel() }
-        joins.append(Task { _ = await task.result })
-        return task
-    }
-    func releaseAll() { gates.forEach { $0.open() } }
-    func cleanUp() async {
-        releaseAll()
-        cancellations.forEach { $0() }
-        for join in joins { await join.value }
-    }
-}
-
-@MainActor
-private func withCaptureFixture(_ body: (CaptureFixture) async throws -> Void) async throws {
-    let fixture = CaptureFixture()
-    do {
-        try await body(fixture)
-        await fixture.cleanUp()
-    } catch {
-        await fixture.cleanUp()
-        throw error
-    }
-}
-
-@available(iOS 26.0, macOS 26.0, *)
-@MainActor
-private final class ControlledCaptureStream: ScreenCaptureStream {
-    var starts = 0
-    var stops = 0
-    var capturing = false
-    var startEntered: CaptureGate?
-    var startRelease: CaptureGate?
-    var stopEntered: CaptureGate?
-    var stopRelease: CaptureGate?
-    var startError: Error?
-
-    func startCapture() async throws {
-        starts += 1
-        startEntered?.open()
-        try await startRelease?.wait()
-        if let startError { throw startError }
-        capturing = true
-    }
-    func stopCapture() async throws {
-        stops += 1
-        stopEntered?.open()
-        try await stopRelease?.wait()
-        capturing = false
-    }
-}
-
 @Suite("Screen capture transitions")
 struct ScreenCaptureTransitionTests {
     @Test("Cancellation removes a readiness waiter")
@@ -122,8 +17,10 @@ struct ScreenCaptureTransitionTests {
             })
             try await entered.wait()
             wait.cancel()
-            do { try await wait.value; Issue.record("Cancelled wait returned successfully") }
-            catch is CancellationError {} // Expected, including cancellation before registration.
+            do {
+                try await wait.value
+                Issue.record("Cancelled wait returned successfully")
+            } catch is CancellationError {} // Expected, including cancellation before registration.
             #expect(gate.waiterCount == 0)
         }
     }
@@ -178,7 +75,8 @@ struct ScreenCaptureTransitionTests {
         guard #available(iOS 26.0, macOS 26.0, *) else { return }
         try await withCaptureFixture { fixture in
             let owner = ScreenCaptureTransitions()
-            let old = ControlledCaptureStream(), obsolete = ControlledCaptureStream(), current = ControlledCaptureStream()
+            let old = ControlledCaptureStream()
+            let obsolete = ControlledCaptureStream(), current = ControlledCaptureStream()
             let entered = fixture.gate(), release = fixture.gate()
             try await fixture.track(owner.replace { old }).value
             old.stopEntered = entered; old.stopRelease = release
@@ -293,8 +191,9 @@ private final class PublicCaptureFixture {
             let ready = fixture.gate()
             let statuses = session.statusStream
             fixture.track(Task { @MainActor in
-                for await status in statuses {
-                    if status == .transcribing { ready.open(); return }
+                for await status in statuses where status == .transcribing {
+                    ready.open()
+                    return
                 }
             })
             try await ready.wait()
@@ -309,7 +208,10 @@ private final class PublicCaptureFixture {
 }
 
 extension ScreenCaptureTransitionTests {
-    @Test("Public stop joins pending setup or resume and concurrent stop through finalization", arguments: [false, true])
+    @Test(
+        "Public stop joins pending setup or resume and concurrent stop through finalization",
+        arguments: [false, true]
+    )
     @MainActor
     func publicStopJoinsSetupUnwindAndConcurrentStop(afterPause: Bool) async throws {
         guard #available(iOS 27.0, macOS 26.0, *) else { return }
