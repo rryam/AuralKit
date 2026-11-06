@@ -91,21 +91,14 @@ struct SpeechSessionStateTests {
         let nextB = Task {
             await probeB.next()
         }
-        defer {
-            nextA.cancel()
-            nextB.cancel()
-        }
+        try await withOwnedTasks([nextA, nextB]) {
+            session.setStatus(.preparing)
 
-        session.setStatus(.preparing)
-
-        let valueA = try await awaitResult {
-            await nextA.value
+            let valueA = try await awaitResult(task: nextA)
+            let valueB = try await awaitResult(task: nextB)
+            #expect(valueA == .some(.preparing))
+            #expect(valueB == .some(.preparing))
         }
-        let valueB = try await awaitResult {
-            await nextB.value
-        }
-        #expect(valueA == .some(.preparing))
-        #expect(valueB == .some(.preparing))
     }
 }
 
@@ -162,24 +155,17 @@ struct SpeechSessionAudioInputStreamTests {
         let valueB = Task {
             await probeB.next()
         }
-        defer {
-            valueA.cancel()
-            valueB.cancel()
-        }
+        try await withOwnedTasks([valueA, valueB]) {
+            await Task.yield()
+            session.broadcastAudioInputInfo(nil)
 
-        await Task.yield()
-        session.broadcastAudioInputInfo(nil)
-
-        let firstA = try await awaitResult {
-            await valueA.value
+            let firstA = try await awaitResult(task: valueA)
+            let firstB = try await awaitResult(task: valueB)
+            let flattenedA = firstA?.flatMap { $0 }
+            let flattenedB = firstB?.flatMap { $0 }
+            #expect(flattenedA == nil)
+            #expect(flattenedB == nil)
         }
-        let firstB = try await awaitResult {
-            await valueB.value
-        }
-        let flattenedA = firstA?.flatMap { $0 }
-        let flattenedB = firstB?.flatMap { $0 }
-        #expect(flattenedA == nil)
-        #expect(flattenedB == nil)
     }
 }
 
