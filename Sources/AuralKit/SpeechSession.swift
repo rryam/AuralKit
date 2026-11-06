@@ -360,11 +360,15 @@ public final class SpeechSession {
     /// screen capture). Calls during file transcription or in any other state are ignored.
     public func pauseTranscribing() async {
         guard status == .transcribing, isPausableStreamingMode else { return }
+        let generation = sessionGeneration
         if streamingMode == .screenCapture {
             await pauseScreenCaptureStreamingIfNeeded()
         } else {
             stopAudioStreaming()
         }
+        // A paused capture call can finish after stop has published idle, even in the
+        // same generation; it must not publish paused over that terminal status.
+        guard generation == sessionGeneration, status == .transcribing, isPausableStreamingMode else { return }
         setStatus(.paused)
     }
 
@@ -380,8 +384,13 @@ public final class SpeechSession {
             } else {
                 try startAudioStreaming()
             }
+            // A late start may have compensated for stop while this caller was suspended.
+            // Generation alone is insufficient until a successor actually begins.
+            guard generation == sessionGeneration, status == .paused, isPausableStreamingMode else { return }
             setStatus(.transcribing)
         } catch {
+            // A late failure belongs to the detached provider, not a successor session.
+            guard generation == sessionGeneration, status == .paused, isPausableStreamingMode else { throw error }
             prepareForStop()
             await cleanup(cancelRecognizer: true, generation: generation)
             await finishStream(error: error, generation: generation)
