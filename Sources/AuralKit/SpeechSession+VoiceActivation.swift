@@ -43,9 +43,13 @@ extension SpeechSession {
     func startSpeechDetectorMonitoring() {
         guard let detector = speechDetector else { return }
 
-        monitorSpeechDetectorResults(detector.results, speechDetected: { $0.speechDetected }) { [weak self] result in
-            self?.handleSpeechDetectorResult(result)
-        }
+        monitorSpeechDetectorResults(
+            detector.results,
+            speechDetected: { $0.speechDetected },
+            onResult: { [weak self] result in
+                self?.handleSpeechDetectorResult(result)
+            }
+        )
     }
 
     /// Native detector results and controlled sequences share the same owning reader.

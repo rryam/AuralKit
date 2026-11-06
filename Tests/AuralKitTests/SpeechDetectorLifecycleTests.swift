@@ -48,8 +48,7 @@ struct SpeechDetectorLifecycleTests {
             let currentID = try #require(fixture.session.speechDetectorMonitorID)
             input.yield(false)
             try await fixture.waitUntil { fixture.values == [false] }
-            if failed { await source.fail() }
-            else { await source.finish() }
+            if failed { await source.fail() } else { await source.finish() }
             #expect(old.isCancelled)
             await old.value
             #expect(!fixture.session.isSpeechDetected)
@@ -115,8 +114,7 @@ struct SpeechDetectorLifecycleTests {
             input.yield(false)
             try await fixture.waitUntil { fixture.values == [false] }
             #expect(!fixture.session.isSpeechDetected)
-            if failed { input.finish(throwing: DetectorTestError.failed) }
-            else { input.finish() }
+            if failed { input.finish(throwing: DetectorTestError.failed) } else { input.finish() }
             await task.value
             #expect(fixture.session.isSpeechDetected)
             #expect(fixture.session.speechDetectorMonitorID == nil)
@@ -129,8 +127,7 @@ struct SpeechDetectorLifecycleTests {
     @MainActor
     private func withFixture(_ operation: @MainActor (DetectorFixture) async throws -> Void) async throws {
         let fixture = DetectorFixture()
-        do { try await operation(fixture) }
-        catch { await fixture.cleanup(); throw error }
+        do { try await operation(fixture) } catch { await fixture.cleanup(); throw error }
         await fixture.cleanup()
     }
 }
@@ -209,9 +206,13 @@ private final class DetectorFixture {
 
     func monitor<Sequence: AsyncSequence>(_ results: Sequence) throws -> Task<Void, Never>
     where Sequence: Sendable, Sequence.Element == Bool {
-        session.monitorSpeechDetectorResults(results, speechDetected: { $0 }) { [unowned self] detected in
-            values.append(detected)
-        }
+        session.monitorSpeechDetectorResults(
+            results,
+            speechDetected: { $0 },
+            onResult: { [unowned self] detected in
+                values.append(detected)
+            }
+        )
         let task = try #require(session.speechDetectorResultsTask)
         tasks.append(task)
         return task
