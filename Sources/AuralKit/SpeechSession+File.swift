@@ -84,13 +84,15 @@ public extension SpeechSession {
         continuation = .speech(newContinuation)
 
         let run = FileTranscriptionRun(
-            finalize: { [self] in
+            finalize: { [self] inputFinalizationStarted in
                 prepareForStop()
                 streamingMode = .inactive
                 activeResultKind = nil
                 let detached = detachTranscriberState()
                 detached.inputBuilder?.finish()
-                try await detached.analyzer?.finalizeAndFinishThroughEndOfInput()
+                if !inputFinalizationStarted {
+                    try await detached.analyzer?.finalizeAndFinishThroughEndOfInput()
+                }
             },
             complete: { [self] error in
                 await modelManager.releaseLocales()
@@ -328,9 +330,16 @@ private extension SpeechSession {
 
         guard processedFrames >= totalFrames else { return false }
 
-        try await self.finishAnalyzerInput()
+        try await finishFileInput()
 
         return !Task.isCancelled && processedFrames >= totalFrames
+    }
+
+    func finishFileInput() async throws {
+        guard let run = fileTranscription else {
+            throw SpeechSessionError.recognitionStreamSetupFailed
+        }
+        try await run.finishInput { try await self.finishAnalyzerInput() }
     }
 
     func shouldUseNativeFileAnalyzer(progressHandler: (@Sendable (Double) -> Void)?) -> Bool {

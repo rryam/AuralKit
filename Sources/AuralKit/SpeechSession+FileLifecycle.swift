@@ -10,11 +10,12 @@ final class FileTranscriptionRun {
     private(set) var terminalTask: Task<Void, Never>?
     private var stoppingInput = false
     private var terminalError: Error?
-    private let finalize: @MainActor () async throws -> Void
+    private var inputFinalizationStarted = false
+    private let finalize: @MainActor (Bool) async throws -> Void
     private let complete: @MainActor (Error?) async -> Void
 
     init(
-        finalize: @escaping @MainActor () async throws -> Void,
+        finalize: @escaping @MainActor (Bool) async throws -> Void,
         complete: @escaping @MainActor (Error?) async -> Void
     ) {
         self.finalize = finalize
@@ -28,7 +29,7 @@ final class FileTranscriptionRun {
                 try Task.checkCancellation()
                 try await operation()
             } catch {
-                requestRetirement(error: error)
+                requestRetirement(error: error, ownerCancelled: Task.isCancelled)
             }
         }
     }
@@ -47,7 +48,7 @@ final class FileTranscriptionRun {
                     ))
                 }
             } catch {
-                requestRetirement(error: error)
+                requestRetirement(error: error, ownerCancelled: Task.isCancelled)
             }
         }
         // Setup can install a child after stop has already latched retirement.
@@ -67,39 +68,59 @@ final class FileTranscriptionRun {
                 try Task.checkCancellation()
                 requestRetirement(cancelInput: false)
             } catch {
-                requestRetirement(error: error)
+                requestRetirement(error: error, ownerCancelled: Task.isCancelled)
             }
+        }
+    }
+
+    /// Called at the actual normal-feed finalization boundary, before suspension.
+    /// Even a failed attempt must not be repeated by terminal cleanup.
+    func finishInput(_ operation: @MainActor () async throws -> Void) async throws {
+        precondition(!inputFinalizationStarted)
+        inputFinalizationStarted = true
+        do {
+            try await operation()
+        } catch {
+            record(error, ownerCancelled: Task.isCancelled)
+            // A failed normal finalization cannot promise result EOF either.
+            resultTask?.cancel()
+            throw error
+        }
+    }
+
+    private func record(_ error: Error?, ownerCancelled: Bool) {
+        guard let error else { return }
+        if error is CancellationError {
+            if !ownerCancelled, terminalError == nil { terminalError = error }
+        } else if terminalError == nil || terminalError is CancellationError {
+            terminalError = error
         }
     }
 
     /// Latch synchronously before any suspension. Concurrent callers receive
     /// the same work, including callers arriving during finalization/drain.
     @discardableResult
-    func requestRetirement(error: Error? = nil, cancelInput: Bool = true) -> Task<Void, Never> {
-        if let terminalTask {
-            if !stoppingInput, cancelInput {
-                terminalError = error
-                stoppingInput = true
-                setupTask?.cancel()
-                ingestionTask?.cancel()
-            }
-            return terminalTask
-        }
-        terminalError = error
-        stoppingInput = cancelInput
-        if cancelInput {
+    func requestRetirement(
+        error: Error? = nil, cancelInput: Bool = true, ownerCancelled: Bool = false
+    ) -> Task<Void, Never> {
+        // Error priority is independent of the latch used to cancel producers.
+        // A real failure supersedes cancellation, but never an earlier real failure.
+        record(error, ownerCancelled: ownerCancelled)
+        if cancelInput, !stoppingInput {
+            stoppingInput = true
             setupTask?.cancel()
             ingestionTask?.cancel()
         }
+        if let terminalTask { return terminalTask }
         let terminal = Task {
             await setupTask?.value
             if stoppingInput { ingestionTask?.cancel() }
             await ingestionTask?.value
             // Keep results alive while finalization publishes its last chunks.
             do {
-                try await finalize()
+                try await finalize(inputFinalizationStarted)
             } catch {
-                if terminalError == nil { terminalError = error }
+                record(error, ownerCancelled: false)
                 resultTask?.cancel()
             }
             await resultTask?.value
