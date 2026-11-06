@@ -96,7 +96,7 @@ public final class SpeechSession {
     var continuation: TranscriptionContinuation?
     var recognizerTask: Task<Void, Never>?
     var pipelineTask: Task<Void, Never>?
-    var fileIngestionTask: Task<Void, Never>?
+    var fileTranscription: FileTranscriptionRun?
     var streamingMode: StreamingMode = .inactive
     /// Incremented for every accepted start so stale termination handlers can be ignored.
     var sessionGeneration: Int = 0
@@ -347,7 +347,13 @@ public final class SpeechSession {
     ///
     /// Safe to call even if `startTranscribing()` has not been invoked or the stream has already
     /// completed; the method simply waits for cleanup and returns.
+    /// For file transcription, return also joins setup, ingestion and result reading.
     public func stopTranscribing() async {
+        if let fileTranscription {
+            prepareForStop()
+            await fileTranscription.requestRetirement().value
+            return
+        }
         let generation = sessionGeneration
         prepareForStop()
         await cleanup(cancelRecognizer: true, generation: generation)
