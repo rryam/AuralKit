@@ -13,7 +13,7 @@ extension SpeechSession {
     /// - Throws: A `SpeechSessionError` when the session is active, the descriptor locale mismatches, or
     ///   compilation fails.
     public func configureCustomVocabulary(_ vocabulary: CustomVocabulary?) async throws {
-        if streamingMode != .inactive {
+        if streamingMode != .inactive || continuation != nil || pipelineTask != nil || recognizerTask != nil {
             throw SpeechSessionError.customVocabularyRequiresIdleSession
         }
 
@@ -35,6 +35,10 @@ extension SpeechSession {
             throw SpeechSessionError.customVocabularyCompilationFailed(error)
         }
 
+        let requestID = UUID()
+        customVocabularyRequestID = requestID
+        try Task.checkCancellation()
+
         if cacheKey == customVocabularyCacheKey,
            customVocabularyConfiguration != nil {
             customVocabularyDescriptor = vocabulary
@@ -44,27 +48,26 @@ extension SpeechSession {
         // Offload compilation to background task to avoid blocking main actor UI
         // Capture compiler before detached task to avoid cross-actor access
         let compiler = customVocabularyCompiler
-        let compilation = try await Task.detached(priority: .userInitiated) {
+        let task = Task.detached(priority: .userInitiated) {
             try await compiler.compile(descriptor: vocabulary)
-        }.value
-
-        if let previousDirectory = customVocabularyOutputDirectory,
-           previousDirectory != compilation.outputDirectory {
-            do {
-                try FileManager.default.removeItem(at: previousDirectory)
-            } catch {
-                logCustomVocabularyError(
-                    "Failed to delete previous vocabulary directory.",
-                    path: previousDirectory.path,
-                    error: error
-                )
-            }
+        }
+        let compilation = try await withTaskCancellationHandler {
+            try await task.value
+        } onCancel: {
+            task.cancel()
+        }
+        // Rejected results release their private artifacts after the compiler has joined.
+        try Task.checkCancellation()
+        guard customVocabularyRequestID == requestID else { throw CancellationError() }
+        guard streamingMode == .inactive, continuation == nil, pipelineTask == nil, recognizerTask == nil else {
+            throw SpeechSessionError.customVocabularyRequiresIdleSession
         }
 
         customVocabularyDescriptor = vocabulary
         customVocabularyConfiguration = compilation.configuration
         customVocabularyCacheKey = compilation.cacheKey
         customVocabularyOutputDirectory = compilation.outputDirectory
+        customVocabularyArtifacts = compilation.artifacts
     }
 
     /// Start a dictation-backed transcription stream that leverages the currently configured custom vocabulary.
@@ -120,18 +123,9 @@ extension SpeechSession {
     }
 
     func clearCustomVocabularyArtifacts(removeDescriptor: Bool) {
-        if let directory = customVocabularyOutputDirectory {
-            // Best-effort cleanup of vocabulary directory
-            do {
-                try FileManager.default.removeItem(at: directory)
-            } catch {
-                logCustomVocabularyError(
-                    "Failed to delete vocabulary directory during cleanup.",
-                    path: directory.path,
-                    error: error
-                )
-            }
-        }
+        customVocabularyRequestID = nil
+        // Dropping the session's owner cannot delete files retained by native consumers.
+        customVocabularyArtifacts = nil
 
         customVocabularyConfiguration = nil
         customVocabularyCacheKey = nil

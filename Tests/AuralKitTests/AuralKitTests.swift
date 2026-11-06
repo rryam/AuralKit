@@ -342,7 +342,8 @@ actor MockCustomVocabularyCompiler: CustomVocabularyCompiling {
         return CustomVocabularyCompilation(
             configuration: configuration,
             cacheKey: cacheKey,
-            outputDirectory: outputDirectory
+            outputDirectory: outputDirectory,
+            artifacts: CustomVocabularyArtifacts(directory: outputDirectory)
         )
     }
 

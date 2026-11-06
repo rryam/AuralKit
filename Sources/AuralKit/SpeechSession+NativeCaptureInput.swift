@@ -61,6 +61,8 @@ extension SpeechSession {
         guard let modules = activeModules, let analyzer else {
             throw SpeechSessionError.recognitionStreamSetupFailed
         }
+        let vocabularyArtifacts = activeCustomVocabularyArtifacts
+        defer { withExtendedLifetime(vocabularyArtifacts) {} }
         guard let captureDevice = AVCaptureDevice.default(for: .audio) else {
             throw SpeechSessionError.recognitionStreamSetupFailed
         }
@@ -77,7 +79,8 @@ extension SpeechSession {
         try Task.checkCancellation()
 
         let analyzerInputs = provider.analyzerInputs
-        nativeCaptureAnalysisTask = Task<Void, Never> { [weak self, analyzer, analyzerInputs] in
+        nativeCaptureAnalysisTask = Task<Void, Never> { [weak self, analyzer, analyzerInputs, vocabularyArtifacts] in
+            defer { withExtendedLifetime(vocabularyArtifacts) {} }
             do {
                 let lastAudioTime = try await analyzer.analyzeSequence(analyzerInputs)
                 if let lastAudioTime {

@@ -38,6 +38,8 @@ extension SpeechSession {
         contextualStrings: [AnalysisContext.ContextualStringsTag: [String]]? = nil,
         startAnalyzerImmediately: Bool = true
     ) async throws -> DictationTranscriber {
+        let artifacts = customVocabularyArtifacts
+        defer { withExtendedLifetime(artifacts) {} }
         if Self.shouldLog(.notice) {
             Self.logger.notice("Setting up dictation transcriber")
         }
@@ -74,7 +76,7 @@ extension SpeechSession {
         return transcriber
     }
 
-    private func createDictationTranscriber() throws -> DictationTranscriber {
+    func createDictationTranscriber() throws -> DictationTranscriber {
         let basePreset = DictationTranscriber.Preset.progressiveShortDictation
         var contentHints = basePreset.contentHints
         var reportingOptions = basePreset.reportingOptions
@@ -85,6 +87,7 @@ extension SpeechSession {
             reportingOptions.insert(.frequentFinalization)
         }
 
+        activeCustomVocabularyArtifacts = customVocabularyArtifacts
         dictationTranscriber = DictationTranscriber(
             locale: locale,
             contentHints: contentHints,
@@ -243,6 +246,7 @@ extension SpeechSession {
     struct DetachedTranscriberState {
         let inputBuilder: AsyncStream<AnalyzerInput>.Continuation?
         let analyzer: SpeechAnalyzer?
+        let vocabularyArtifacts: CustomVocabularyArtifacts?
     }
 
     /// Synchronously clear all transcriber-related session state and return the pieces that
@@ -254,7 +258,11 @@ extension SpeechSession {
         if Self.shouldLog(.debug) {
             Self.logger.debug("Stopping transcriber and cleaning up")
         }
-        let detached = DetachedTranscriberState(inputBuilder: inputBuilder, analyzer: analyzer)
+        let detached = DetachedTranscriberState(
+            inputBuilder: inputBuilder, analyzer: analyzer,
+            vocabularyArtifacts: activeCustomVocabularyArtifacts
+        )
+        activeCustomVocabularyArtifacts = nil
 
         tearDownSpeechDetectorStream()
         speechDetector = nil
@@ -275,6 +283,7 @@ extension SpeechSession {
     /// Operates only on the captured references, never on live session state, so it is safe to
     /// run even after a newer session has started.
     func finalizeDetachedTranscriberState(_ detached: DetachedTranscriberState) async {
+        defer { withExtendedLifetime(detached.vocabularyArtifacts) {} }
         detached.inputBuilder?.finish()
         do {
             try await detached.analyzer?.finalizeAndFinishThroughEndOfInput()
