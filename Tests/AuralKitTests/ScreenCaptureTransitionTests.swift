@@ -3,23 +3,81 @@ import Speech
 import Testing
 @testable import AuralKit
 
-/// Cancellation-independent latches: a cancelled operation still owns its OS call
-/// until the fixture explicitly releases it. No readiness depends on scheduling delays.
+private enum CaptureFixtureError: Error { case deadline, startFailed }
+
+/// Each waiter owns its deadline and can be removed by cancellation. No timeout
+/// task group can be stranded joining a checked continuation that ignores cancel.
 @MainActor
 private final class CaptureGate {
     private var opened = false
-    private var waiters: [CheckedContinuation<Void, Never>] = []
+    private var waiters: [UUID: CheckedContinuation<Void, Error>] = [:]
+    var waiterCount: Int { waiters.count }
 
-    func wait() async {
+    func wait(timeoutNanoseconds: UInt64 = 3_000_000_000) async throws {
+        try Task.checkCancellation()
         if opened { return }
-        await withCheckedContinuation { waiters.append($0) }
+        let id = UUID()
+        let deadline = Task { @MainActor in
+            do { try await Task.sleep(nanoseconds: timeoutNanoseconds) } catch { return }
+            self.remove(id, error: CaptureFixtureError.deadline)
+        }
+        defer { deadline.cancel() }
+        try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                if Task.isCancelled { continuation.resume(throwing: CancellationError()) }
+                else { waiters[id] = continuation }
+            }
+        } onCancel: {
+            Task { @MainActor in self.remove(id, error: CancellationError()) }
+        }
+    }
+
+    private func remove(_ id: UUID, error: Error) {
+        waiters.removeValue(forKey: id)?.resume(throwing: error)
     }
 
     func open() {
         opened = true
-        let pending = waiters
+        let pending = waiters.values
         waiters.removeAll()
         for waiter in pending { waiter.resume() }
+    }
+}
+
+/// Async cleanup opens all gates before joining every task admitted by the test,
+/// including on a failed readiness wait. Errors remain visible to the test body.
+@MainActor
+private final class CaptureFixture {
+    private var gates: [CaptureGate] = []
+    private var joins: [Task<Void, Never>] = []
+    private var cancellations: [() -> Void] = []
+    func gate() -> CaptureGate {
+        let gate = CaptureGate()
+        gates.append(gate)
+        return gate
+    }
+    func track<Value: Sendable, Failure: Error>(_ task: Task<Value, Failure>) -> Task<Value, Failure> {
+        cancellations.append { task.cancel() }
+        joins.append(Task { _ = await task.result })
+        return task
+    }
+    func releaseAll() { gates.forEach { $0.open() } }
+    func cleanUp() async {
+        releaseAll()
+        cancellations.forEach { $0() }
+        for join in joins { await join.value }
+    }
+}
+
+@MainActor
+private func withCaptureFixture(_ body: (CaptureFixture) async throws -> Void) async throws {
+    let fixture = CaptureFixture()
+    do {
+        try await body(fixture)
+        await fixture.cleanUp()
+    } catch {
+        await fixture.cleanUp()
+        throw error
     }
 }
 
@@ -33,188 +91,320 @@ private final class ControlledCaptureStream: ScreenCaptureStream {
     var startRelease: CaptureGate?
     var stopEntered: CaptureGate?
     var stopRelease: CaptureGate?
+    var startError: Error?
 
     func startCapture() async throws {
         starts += 1
         startEntered?.open()
-        await startRelease?.wait()
+        try await startRelease?.wait()
+        if let startError { throw startError }
         capturing = true
     }
-
     func stopCapture() async throws {
         stops += 1
         stopEntered?.open()
-        await stopRelease?.wait()
+        try await stopRelease?.wait()
         capturing = false
     }
 }
 
 @Suite("Screen capture transitions")
 struct ScreenCaptureTransitionTests {
-    @Test("A picker replacement stopped across pause never starts the new stream")
+    @Test("Cancellation removes a readiness waiter")
     @MainActor
-    func replacementHonorsAdmittedPause() async {
-        guard #available(iOS 26.0, macOS 26.0, *) else { return }
-        let owner = ScreenCaptureTransitions()
-        let old = ControlledCaptureStream()
-        let replacement = ControlledCaptureStream()
-        let entered = CaptureGate()
-        let release = CaptureGate()
-        defer { release.open(); entered.open() }
-        _ = try? await owner.replace { old }.value
-        old.stopEntered = entered
-        old.stopRelease = release
-        let update = owner.replace { replacement }
-        await entered.wait()
-        let pause = owner.pause()
-        #expect(owner.desiredState == .paused)
-        release.open()
-        _ = try? await update.value
-        _ = try? await pause.value
-        #expect(owner.stream === replacement)
-        #expect(!owner.isRunning)
-        #expect(!old.capturing)
-        #expect(replacement.starts == 0)
-        // A later explicit resume starts the selected stream, not the old one.
-        _ = try? await owner.resume().value
-        #expect(replacement.starts == 1)
-        #expect(old.starts == 1)
-        _ = try? await owner.stop().value
+    func readinessCancellation() async throws {
+        try await withCaptureFixture { fixture in
+            let gate = fixture.gate()
+            let entered = fixture.gate()
+            let wait = fixture.track(Task { @MainActor in
+                entered.open()
+                try await gate.wait()
+            })
+            try await entered.wait()
+            wait.cancel()
+            do { try await wait.value; Issue.record("Cancelled wait returned successfully") }
+            catch is CancellationError {} // Expected, including cancellation before registration.
+            #expect(gate.waiterCount == 0)
+        }
     }
 
-    @Test("Overlapping picker replacements cannot install an obsolete stream after stop")
+    @Test("A missing readiness signal expires and removes its waiter")
     @MainActor
-    func replacementIdentityAcrossStop() async {
+    func readinessDeadline() async throws {
+        try await withCaptureFixture { fixture in
+            let gate = fixture.gate()
+            do {
+                try await gate.wait(timeoutNanoseconds: 1_000_000)
+                Issue.record("Unopened gate returned successfully")
+            } catch CaptureFixtureError.deadline {}
+            #expect(gate.waiterCount == 0)
+        }
+    }
+
+    @Test("A picker replacement stopped across pause never starts the new stream")
+    @MainActor
+    func replacementHonorsAdmittedPause() async throws {
         guard #available(iOS 26.0, macOS 26.0, *) else { return }
-        let owner = ScreenCaptureTransitions()
-        let old = ControlledCaptureStream()
-        let obsolete = ControlledCaptureStream()
-        let current = ControlledCaptureStream()
-        let entered = CaptureGate()
-        let release = CaptureGate()
-        defer { release.open(); entered.open() }
-        _ = try? await owner.replace { old }.value
-        old.stopEntered = entered
-        old.stopRelease = release
-        var obsoleteCreated = false
-        let first = owner.replace { obsoleteCreated = true; return obsolete }
-        await entered.wait()
-        let second = owner.replace { current }
-        release.open()
-        _ = try? await first.value
-        _ = try? await second.value
-        #expect(!obsoleteCreated)
-        #expect(obsolete.starts == 0)
-        #expect(owner.stream === current)
-        #expect(current.capturing)
-        #expect(old.stops == 1)
-        _ = try? await owner.stop().value
+        try await withCaptureFixture { fixture in
+            let owner = ScreenCaptureTransitions()
+            let old = ControlledCaptureStream()
+            let replacement = ControlledCaptureStream()
+            let entered = fixture.gate(), release = fixture.gate()
+            try await fixture.track(owner.replace { old }).value
+            old.stopEntered = entered; old.stopRelease = release
+            let update = fixture.track(owner.replace { replacement })
+            try await entered.wait()
+            let pause = fixture.track(owner.pause())
+            #expect(owner.desiredState == .paused)
+            release.open()
+            try await update.value
+            try await pause.value
+            #expect(owner.stream === replacement)
+            #expect(!owner.isRunning)
+            #expect(!old.capturing)
+            #expect(replacement.starts == 0)
+            let resumed = await fixture.track(owner.resume()).value
+            #expect(resumed.isCurrent())
+            #expect(resumed.error == nil)
+            #expect(replacement.starts == 1)
+            #expect(old.starts == 1)
+            try await fixture.track(owner.stop()).value
+        }
+    }
+
+    @Test("Stop admitted during old shutdown prevents either replacement from starting")
+    @MainActor
+    func replacementIdentityAcrossStop() async throws {
+        guard #available(iOS 26.0, macOS 26.0, *) else { return }
+        try await withCaptureFixture { fixture in
+            let owner = ScreenCaptureTransitions()
+            let old = ControlledCaptureStream(), obsolete = ControlledCaptureStream(), current = ControlledCaptureStream()
+            let entered = fixture.gate(), release = fixture.gate()
+            try await fixture.track(owner.replace { old }).value
+            old.stopEntered = entered; old.stopRelease = release
+            let first = fixture.track(owner.replace { obsolete })
+            try await entered.wait()
+            let second = fixture.track(owner.replace { current })
+            let stop = fixture.track(owner.stop())
+            #expect(obsolete.starts == 0 && current.starts == 0)
+            release.open()
+            try await first.value
+            try await second.value
+            try await stop.value
+            #expect(owner.stream == nil)
+            #expect(!old.capturing)
+            #expect(obsolete.starts == 0 && current.starts == 0)
+        }
     }
 
     @Test("A superseded start compensates before its successor can start")
     @MainActor
-    func replacementIdentityAcrossStart() async {
+    func replacementIdentityAcrossStart() async throws {
         guard #available(iOS 26.0, macOS 26.0, *) else { return }
-        let owner = ScreenCaptureTransitions()
-        let obsolete = ControlledCaptureStream()
-        let current = ControlledCaptureStream()
-        let startEntered = CaptureGate()
-        let startRelease = CaptureGate()
-        let stopEntered = CaptureGate()
-        let stopRelease = CaptureGate()
-        defer {
-            startRelease.open(); stopRelease.open()
-            startEntered.open(); stopEntered.open()
+        try await withCaptureFixture { fixture in
+            let owner = ScreenCaptureTransitions()
+            let obsolete = ControlledCaptureStream(), current = ControlledCaptureStream()
+            let startEntered = fixture.gate(), startRelease = fixture.gate()
+            let stopEntered = fixture.gate(), stopRelease = fixture.gate()
+            obsolete.startEntered = startEntered; obsolete.startRelease = startRelease
+            obsolete.stopEntered = stopEntered; obsolete.stopRelease = stopRelease
+            let first = fixture.track(owner.replace { obsolete })
+            try await startEntered.wait()
+            let second = fixture.track(owner.replace { current })
+            startRelease.open()
+            try await stopEntered.wait()
+            #expect(current.starts == 0)
+            #expect(owner.stream === obsolete)
+            stopRelease.open()
+            try await first.value
+            try await second.value
+            #expect(!obsolete.capturing)
+            #expect(obsolete.stops == 1)
+            #expect(owner.stream === current)
+            #expect(current.starts == 1)
+            try await fixture.track(owner.stop()).value
         }
-        obsolete.startEntered = startEntered
-        obsolete.startRelease = startRelease
-        obsolete.stopEntered = stopEntered
-        obsolete.stopRelease = stopRelease
-        let first = owner.replace { obsolete }
-        await startEntered.wait()
-        let second = owner.replace { current }
-        startRelease.open()
-        await stopEntered.wait()
-        #expect(current.starts == 0)
-        #expect(owner.stream === obsolete)
-        stopRelease.open()
-        _ = try? await first.value
-        _ = try? await second.value
-        #expect(!obsolete.capturing)
-        #expect(obsolete.stops == 1)
-        #expect(owner.stream === current)
-        #expect(current.starts == 1)
-        #expect(owner.isRunning)
-        _ = try? await owner.stop().value
     }
 }
 
 #if canImport(ScreenCaptureKit)
 import ScreenCaptureKit
 
-extension ScreenCaptureTransitionTests {
-    @Test("Detached provider shutdown joins late resume and compensating stop")
-    @MainActor
-    func shutdownJoinsLateProviderResume() async {
-        guard #available(iOS 27.0, macOS 26.0, *) else { return }
-        let owner = ScreenCaptureTransitions()
-        let stream = ControlledCaptureStream()
-        _ = try? await owner.replace { stream }.value
-        _ = try? await owner.pause().value
-        let startEntered = CaptureGate()
-        let startRelease = CaptureGate()
-        let stopEntered = CaptureGate()
-        let stopRelease = CaptureGate()
-        let dismissed = CaptureGate()
-        defer {
-            startRelease.open(); stopRelease.open()
-            startEntered.open(); stopEntered.open(); dismissed.open()
-        }
-        stream.startEntered = startEntered
-        stream.startRelease = startRelease
-        stream.stopEntered = stopEntered
-        stream.stopRelease = stopRelease
-        let (_, continuation) = AsyncStream<AnalyzerInput>.makeStream()
-        defer { continuation.finish() }
-        // Actual provider and actual detached cleanup interface. Only OS capture calls
-        // and picker dismissal vary; no analyzer setup or public session state setters.
-        let provider = ScreenCaptureAudioInputProvider(
-            options: .init(),
-            targetFormat: AVAudioFormat(standardFormatWithSampleRate: 16_000, channels: 1)!,
-            inputContinuation: continuation,
-            onFailure: { _ in Issue.record("Unexpected provider failure") },
-            transitions: owner,
-            dismissPicker: { _ in dismissed.open() }
+/// Replaces only authorization, native analyzer preparation/finalization and picker
+/// presentation. Public setup, provider, picker admission, transitions and stop are real.
+@available(iOS 27.0, macOS 26.0, *)
+@MainActor
+private final class PublicCaptureFixture {
+    let session = SpeechSession()
+    let owner = ScreenCaptureTransitions()
+    let stream = ControlledCaptureStream()
+    var provider: ScreenCaptureAudioInputProvider?
+    let presented: CaptureGate
+    let dismissed: CaptureGate
+    let finalized: CaptureGate
+    let finalizeRelease: CaptureGate
+    let terminal: CaptureGate
+    var consumerFinished = false
+    var consumerError: Error?
+
+    init(_ fixture: CaptureFixture) {
+        presented = fixture.gate(); dismissed = fixture.gate()
+        finalized = fixture.gate(); finalizeRelease = fixture.gate(); terminal = fixture.gate()
+        session.screenCapturePipelineHooks = ScreenCapturePipelineHooks(
+            authorize: {},
+            prepareAnalysis: { [self] in
+                let (_, inputs) = AsyncStream<AnalyzerInput>.makeStream()
+                return ScreenCapturePreparedAnalysis(
+                    format: AVAudioFormat(standardFormatWithSampleRate: 16_000, channels: 1)!,
+                    inputs: inputs,
+                    finalize: { [self] in
+                        finalized.open()
+                        // A native call may ignore the cancelling caller until explicitly released.
+                        let join = fixture.track(Task { @MainActor in try await finalizeRelease.wait() })
+                        do { try await join.value } catch { Issue.record("Finalization gate failed: \(error)") }
+                    }
+                )
+            },
+            makeProvider: { [self] format, inputs, failure in
+                let provider = ScreenCaptureAudioInputProvider(
+                    options: .init(), targetFormat: format, inputContinuation: inputs,
+                    onFailure: failure, transitions: owner,
+                    presentPicker: { [self] _ in presented.open() },
+                    dismissPicker: { [self] _ in dismissed.open() }
+                )
+                self.provider = provider
+                return provider
+            }
         )
-        let session = SpeechSession()
-        session.screenCaptureInputProvider = provider
-        let resume = Task { @MainActor in try? await provider.resume() }
-        await startEntered.wait()
-        var terminalReturned = false
-        let stop = Task { @MainActor in
-            await session.stopScreenCaptureStreamingIfNeeded()
-            terminalReturned = true
+    }
+
+    func start(_ fixture: CaptureFixture, select: Bool = true) async throws {
+        let results = session.startTranscribingScreenCapture()
+        fixture.track(Task { @MainActor in
+            do { for try await _ in results {} } catch { consumerError = error }
+            consumerFinished = true
+            terminal.open()
+        })
+        try await presented.wait()
+        if select {
+            provider?.selectStream { [self] in stream }
+            // Public pause waits until setup has published transcribing. Readiness is
+            // observed from the existing status stream, never a state setter or a delay.
+            let ready = fixture.gate()
+            let statuses = session.statusStream
+            fixture.track(Task { @MainActor in
+                for await status in statuses {
+                    if status == .transcribing { ready.open(); return }
+                }
+            })
+            try await ready.wait()
         }
-        await dismissed.wait()
-        #expect(owner.desiredState == .stopped)
-        #expect(session.screenCaptureInputProvider == nil)
-        #expect(!terminalReturned)
-        startRelease.open()
-        await stopEntered.wait()
-        #expect(!terminalReturned)
-        #expect(stream.capturing)
-        stopRelease.open()
-        await stop.value
-        _ = await resume.value
-        #expect(terminalReturned)
-        #expect(!stream.capturing)
-        #expect(stream.starts == 2)
-        #expect(stream.stops == 2)
-        #expect(owner.stream == nil)
-        // Public stopTranscribing -> cleanup -> stopScreenCaptureStreamingIfNeeded
-        // awaits this boundary before finalizeDetachedTranscriberState/releaseLocales.
-        // Public resumeTranscribing is deliberately outside the joined operation chain:
-        // its error path can await cleanup itself. Full public setup needs native analysis.
+    }
+
+    func close(_ fixture: CaptureFixture) async {
+        fixture.releaseAll()
+        await fixture.track(Task { await session.stopTranscribing() }).value
+        session.screenCapturePipelineHooks = nil
+    }
+}
+
+extension ScreenCaptureTransitionTests {
+    @Test("Public stop joins pending setup or resume and concurrent stop through finalization", arguments: [false, true])
+    @MainActor
+    func publicStopJoinsSetupUnwindAndConcurrentStop(afterPause: Bool) async throws {
+        guard #available(iOS 27.0, macOS 26.0, *) else { return }
+        try await withCaptureFixture { fixture in
+            let runtime = PublicCaptureFixture(fixture)
+            do {
+                // Pending initial selection wakes the real setup catch on stop. The
+                // second case enters public resume after a real public start and pause.
+                try await runtime.start(fixture, select: afterPause)
+                if afterPause { await runtime.session.pauseTranscribing() }
+                let entered = fixture.gate(), release = fixture.gate()
+                runtime.stream.startEntered = entered; runtime.stream.startRelease = release
+                var resume: Task<Void, Error>?
+                if afterPause {
+                    resume = fixture.track(Task { try await runtime.session.resumeTranscribing() })
+                } else {
+                    runtime.provider?.selectStream { runtime.stream }
+                }
+                try await entered.wait()
+                var firstReturned = false, secondReturned = false
+                let first = fixture.track(Task { @MainActor in
+                    await runtime.session.stopTranscribing(); firstReturned = true
+                })
+                try await runtime.dismissed.wait()
+                let secondEntered = fixture.gate()
+                let second = fixture.track(Task { @MainActor in
+                    secondEntered.open()
+                    await runtime.session.stopTranscribing(); secondReturned = true
+                })
+                try await secondEntered.wait()
+                #expect(!firstReturned && !secondReturned)
+                #expect(!runtime.consumerFinished)
+                #expect(runtime.session.status != .idle)
+                release.open()
+                try await runtime.finalized.wait()
+                #expect(!runtime.stream.capturing)
+                #expect(!firstReturned && !secondReturned)
+                #expect(!runtime.consumerFinished)
+                runtime.finalizeRelease.open()
+                await first.value; await second.value
+                try await resume?.value
+                try await runtime.terminal.wait()
+                #expect(firstReturned && secondReturned)
+                #expect(runtime.session.status == .idle)
+                #expect(runtime.consumerError == nil)
+            } catch {
+                await runtime.close(fixture)
+                throw error
+            }
+            await runtime.close(fixture)
+        }
+    }
+
+    @Test("Late failing public resume cannot retire a newer picker admission")
+    @MainActor
+    func supersededPublicResumeFailure() async throws {
+        guard #available(iOS 27.0, macOS 26.0, *) else { return }
+        try await withCaptureFixture { fixture in
+            let runtime = PublicCaptureFixture(fixture)
+            do {
+                try await runtime.start(fixture)
+                await runtime.session.pauseTranscribing()
+                #expect(runtime.session.status == .paused)
+                let entered = fixture.gate(), release = fixture.gate()
+                runtime.stream.startEntered = entered; runtime.stream.startRelease = release
+                runtime.stream.startError = CaptureFixtureError.startFailed
+                let resume = fixture.track(Task { try await runtime.session.resumeTranscribing() })
+                try await entered.wait()
+                let successor = ControlledCaptureStream()
+                let successorStarted = fixture.gate()
+                successor.startEntered = successorStarted
+                runtime.provider?.selectStream { successor }
+                release.open()
+                try await resume.value
+                try await successorStarted.wait()
+                #expect(!runtime.consumerFinished)
+                #expect(runtime.session.status == .paused)
+                #expect(runtime.owner.stream === successor)
+                // Explicitly resume the current selection, then fail that current start.
+                try await runtime.session.resumeTranscribing()
+                await runtime.session.pauseTranscribing()
+                successor.startError = CaptureFixtureError.startFailed
+                runtime.finalizeRelease.open()
+                do {
+                    try await runtime.session.resumeTranscribing()
+                    Issue.record("Current resume failure was lost")
+                } catch CaptureFixtureError.startFailed {} // Original error must propagate.
+                try await runtime.terminal.wait()
+                #expect(runtime.consumerError is CaptureFixtureError)
+            } catch {
+                await runtime.close(fixture)
+                throw error
+            }
+            await runtime.close(fixture)
+        }
     }
 }
 #endif

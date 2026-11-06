@@ -8,6 +8,15 @@ protocol ScreenCaptureStream: AnyObject {
     func stopCapture() async throws
 }
 
+/// Carries admission through async returns. The public caller checks ownership at
+/// the instant it publishes status or propagates a failure into session teardown.
+@available(iOS 26.0, macOS 14.0, *)
+@MainActor
+struct ScreenCaptureResumeOutcome {
+    let isCurrent: @MainActor () -> Bool
+    let error: Error?
+}
+
 /// Serializes capture side effects across suspension. Admission changes intent immediately;
 /// only internal operations are joined, never a public caller that may await session cleanup.
 @available(iOS 26.0, macOS 14.0, *)
@@ -46,11 +55,26 @@ final class ScreenCaptureTransitions {
         return enqueue { try await self.stopCurrent() }
     }
 
-    func resume() -> Task<Void, Error> {
-        guard desiredState != .stopped else { return enqueue { throw CancellationError() } }
-        desiredState = .running
+    func resume() -> Task<ScreenCaptureResumeOutcome, Never> {
+        desiredState = desiredState == .stopped ? .stopped : .running
         let admitted = revision
-        return enqueue { try await self.startCurrent(revision: admitted) }
+        let previous = tail
+        let operation = Task { @MainActor in
+            _ = try? await previous?.value
+            let error: Error?
+            do {
+                try await self.startCurrent(revision: admitted)
+                error = nil
+            } catch let failure {
+                error = failure
+            }
+            return ScreenCaptureResumeOutcome(
+                isCurrent: { self.desiredState == .running && self.revision == admitted },
+                error: error
+            )
+        }
+        tail = Task { _ = await operation.value }
+        return operation
     }
 
     func stop() -> Task<Void, Error> {

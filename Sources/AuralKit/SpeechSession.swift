@@ -73,7 +73,9 @@ public final class SpeechSession {
     var analyzerFormat: AVAudioFormat?
     var nativeCaptureSession: AVCaptureSession?
     var nativeCaptureAnalysisTask: Task<Void, Never>?
-    var screenCaptureInputProvider: AnyObject?
+    var screenCapturePipelineHooks: ScreenCapturePipelineHooks?
+    var screenCaptureAnalysisFinalizer: (@MainActor () async -> Void)?
+    var screenCaptureInputProvider: (any ScreenCaptureInput)?
     var voiceActivationConfiguration: VoiceActivationConfiguration?
     var customVocabularyDescriptor: CustomVocabulary?
     var customVocabularyConfiguration: SFSpeechLanguageModel.Configuration?
@@ -95,6 +97,7 @@ public final class SpeechSession {
     // Stream state management
     var continuation: TranscriptionContinuation?
     var recognizerTask: Task<Void, Never>?
+    var cleanupTask: (generation: Int, task: Task<Void, Never>)?
     var pipelineTask: Task<Void, Never>?
     var fileIngestionTask: Task<Void, Never>?
     var streamingMode: StreamingMode = .inactive
@@ -380,7 +383,9 @@ public final class SpeechSession {
         let generation = sessionGeneration
         do {
             if streamingMode == .screenCapture {
-                try await resumeScreenCaptureStreamingIfNeeded()
+                let outcome = try await resumeScreenCaptureStreamingIfNeeded()
+                guard outcome.isCurrent() else { return }
+                if let error = outcome.error { throw error }
             } else {
                 try startAudioStreaming()
             }
