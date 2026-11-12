@@ -288,11 +288,11 @@ extension ScreenCaptureTransitionTests {
                 try await resume.value
                 try await successorStarted.wait()
                 #expect(!runtime.consumerFinished)
-                #expect(runtime.session.status == .paused)
+                #expect(runtime.session.status == .transcribing)
                 #expect(runtime.owner.stream === successor)
-                // Explicitly resume the current selection, then fail that current start.
-                try await runtime.session.resumeTranscribing()
+                #expect(successor.capturing)
                 await runtime.session.pauseTranscribing()
+                #expect(!successor.capturing)
                 successor.startError = CaptureFixtureError.startFailed
                 runtime.finalizeRelease.open()
                 do {
