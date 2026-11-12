@@ -30,6 +30,7 @@ struct CustomVocabularyOwnershipTests {
         try await second!.configureCustomVocabulary(descriptor())
         let firstDirectory = try #require(first?.customVocabularyOutputDirectory)
         let secondDirectory = try #require(second?.customVocabularyOutputDirectory)
+        #expect(firstDirectory.path.hasPrefix(FileManager.default.temporaryDirectory.path))
         #expect(firstDirectory != secondDirectory)
         #expect(first?.customVocabularyCacheKey == second?.customVocabularyCacheKey)
         #expect(second?.customVocabularyConfiguration?.weight?.doubleValue == 0.4)
@@ -187,6 +188,7 @@ private actor VocabularyPreparation {
             ready.continuation.yield(directory)
             var iterator = release.stream.makeAsyncIterator()
             _ = await iterator.next()
+            try Task.checkCancellation()
         }
     }
 }
