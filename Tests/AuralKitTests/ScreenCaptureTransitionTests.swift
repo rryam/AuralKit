@@ -136,10 +136,18 @@ struct ScreenCaptureTransitionTests {
             let entered = fixture.gate(), release = fixture.gate()
             old.startEntered = entered; old.startRelease = release
             old.startError = fails ? CaptureFixtureError.startFailed : nil
-            let resume = fixture.track(Task { try await runtime.session.resumeTranscribing() })
+            var resumeReturned = false
+            let resume = fixture.track(Task {
+                try await runtime.session.resumeTranscribing(); resumeReturned = true
+            })
             try await entered.wait()
+            let successorEntered = fixture.gate(), successorRelease = fixture.gate()
+            successor.startEntered = successorEntered; successor.startRelease = successorRelease
             let replacement = fixture.track(runtime.provider.selectStream { successor })
             release.open()
+            try await successorEntered.wait()
+            #expect(!resumeReturned && runtime.session.status == .paused)
+            successorRelease.open()
             try await resume.value
             await replacement.value
             #expect(runtime.session.status == .transcribing && successor.capturing)
@@ -168,9 +176,9 @@ struct ScreenCaptureTransitionTests {
         }
     }
 
-    @Test("A failed native pause keeps the public status transcribing")
+    @Test("A failed native pause keeps the public status transcribing", arguments: [false, true])
     @MainActor
-    func failedPause() async throws {
+    func failedPause(replaceAfterFailure: Bool) async throws {
         guard #available(iOS 27.0, macOS 26.0, *) else { return }
         try await withCaptureFixture { fixture in
             let runtime = try CaptureSessionFixture(fixture)
@@ -180,8 +188,13 @@ struct ScreenCaptureTransitionTests {
             await runtime.session.pauseTranscribing()
             #expect(runtime.session.status == .transcribing && stream.capturing)
             stream.stopError = nil
+            let active = replaceAfterFailure ? ControlledCaptureStream() : stream
+            if replaceAfterFailure {
+                await fixture.track(runtime.provider.selectStream { active }).value
+                #expect(active.capturing && runtime.session.status == .transcribing)
+            }
             await runtime.session.pauseTranscribing()
-            #expect(runtime.session.status == .paused && !stream.capturing)
+            #expect(runtime.session.status == .paused && !active.capturing && !stream.capturing)
             await runtime.close(fixture)
         }
     }
