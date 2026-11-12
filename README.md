@@ -54,6 +54,8 @@ AuralKit is a simple, lightweight Swift wrapper for speech-to-text transcription
 
 This project would not have been possible without Apple's excellent sample code. The implementation is heavily inspired by [Bringing advanced speech-to-text capabilities to your app](https://developer.apple.com/documentation/Speech/bringing-advanced-speech-to-text-capabilities-to-your-app), which shows how to add live speech-to-text transcription with `SpeechAnalyzer`.
 
+`BufferConverter` adapts the sample's `Helpers/BufferConversion.swift`. Apple's original notice is retained in [LICENSE-Apple-SpeechExample.txt](LICENSE-Apple-SpeechExample.txt), from the [published sample download](https://docs-assets.developer.apple.com/published/e40c20fc5641/BringingAdvancedSpeechToTextCapabilitiesToYourApp.zip). AuralKit adds concurrency annotations, package-specific errors and input-format invalidation; the converter is not an unchanged copy.
+
 ## Quick Start
 
 ```swift
