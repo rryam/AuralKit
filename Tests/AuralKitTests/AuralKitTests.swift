@@ -85,20 +85,11 @@ struct SpeechSessionStateTests {
         #expect(firstA == .some(.idle))
         #expect(firstB == .some(.idle))
 
-        let nextA = Task {
-            await probeA.next()
-        }
-        let nextB = Task {
-            await probeB.next()
-        }
-        try await withOwnedTasks([nextA, nextB]) {
-            session.setStatus(.preparing)
-
-            let valueA = try await awaitResult(task: nextA)
-            let valueB = try await awaitResult(task: nextB)
-            #expect(valueA == .some(.preparing))
-            #expect(valueB == .some(.preparing))
-        }
+        session.setStatus(.preparing)
+        let valueA = try await awaitResult { await probeA.next() }
+        let valueB = try await awaitResult { await probeB.next() }
+        #expect(valueA == .some(.preparing))
+        #expect(valueB == .some(.preparing))
     }
 }
 
@@ -149,23 +140,21 @@ struct SpeechSessionAudioInputStreamTests {
         let probeA = AsyncStreamProbe(session.audioInputConfigurationStream)
         let probeB = AsyncStreamProbe(session.audioInputConfigurationStream)
 
-        let valueA = Task {
-            await probeA.next()
+        try await awaitResult {
+            while session.audioInputContinuations.count < 2 {
+                try Task.checkCancellation()
+                await Task.yield()
+            }
         }
-        let valueB = Task {
-            await probeB.next()
-        }
-        try await withOwnedTasks([valueA, valueB]) {
-            await Task.yield()
-            session.broadcastAudioInputInfo(nil)
-
-            let firstA = try await awaitResult(task: valueA)
-            let firstB = try await awaitResult(task: valueB)
-            let flattenedA = firstA?.flatMap { $0 }
-            let flattenedB = firstB?.flatMap { $0 }
-            #expect(flattenedA == nil)
-            #expect(flattenedB == nil)
-        }
+        session.broadcastAudioInputInfo(nil)
+        let firstA = try await awaitResult { await probeA.next() }
+        let firstB = try await awaitResult { await probeB.next() }
+        #expect(firstA != nil)
+        #expect(firstB != nil)
+        let flattenedA = firstA?.flatMap { $0 }
+        let flattenedB = firstB?.flatMap { $0 }
+        #expect(flattenedA == nil)
+        #expect(flattenedB == nil)
     }
 }
 

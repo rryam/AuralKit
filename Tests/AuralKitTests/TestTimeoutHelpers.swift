@@ -40,46 +40,11 @@ func awaitResult<T: Sendable>(
             throw TestTimeoutError.timedOut(seconds: seconds)
         }
 
-        defer { group.cancelAll() }
         guard let value = try await group.next() else {
             fatalError("Timeout helper started without any tasks")
         }
 
+        group.cancelAll()
         return value
-    }
-}
-
-// Cancellation must reach the actual task, not just the child awaiting its value.
-// The task must cooperate with cancellation; this helper still joins its completion.
-@MainActor
-func awaitResult<T: Sendable>(
-    timeout seconds: TimeInterval = 1.0,
-    task: Task<T, Never>
-) async throws -> T {
-    try await awaitResult(timeout: seconds) {
-        try await withTaskCancellationHandler {
-            let value = await task.value
-            try Task.checkCancellation()
-            return value
-        } onCancel: {
-            task.cancel()
-        }
-    }
-}
-
-@MainActor
-func withOwnedTasks<T: Sendable, Result>(
-    _ tasks: [Task<T, Never>],
-    operation: @MainActor () async throws -> Result
-) async rethrows -> Result {
-    do {
-        let result = try await operation()
-        for task in tasks { task.cancel() }
-        for task in tasks { _ = await task.value }
-        return result
-    } catch {
-        for task in tasks { task.cancel() }
-        for task in tasks { _ = await task.value }
-        throw error
     }
 }
