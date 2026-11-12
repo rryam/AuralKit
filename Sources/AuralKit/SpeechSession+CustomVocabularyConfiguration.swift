@@ -8,7 +8,7 @@ extension SpeechSession {
 
     /// Configure the session's custom vocabulary, compiling assets as needed.
     ///
-    /// Compiled files are temporary and remain available while the session or a native consumer uses them.
+    /// Compiled files are temporary and are rebuilt before reuse if the system purges them.
     /// Cancelling compilation waits for preparation to finish, then throws `CancellationError`
     /// without replacing the current configuration. Superseded compilation results are discarded.
     ///
@@ -17,6 +17,7 @@ extension SpeechSession {
     /// - Throws: A `SpeechSessionError` when the session is active, the descriptor locale mismatches, or
     ///   compilation fails.
     public func configureCustomVocabulary(_ vocabulary: CustomVocabulary?) async throws {
+        try Task.checkCancellation()
         if streamingMode != .inactive || continuation != nil || pipelineTask != nil || recognizerTask != nil {
             throw SpeechSessionError.customVocabularyRequiresIdleSession
         }
@@ -39,35 +40,50 @@ extension SpeechSession {
             throw SpeechSessionError.customVocabularyCompilationFailed(error)
         }
 
+        try Task.checkCancellation()
         let requestID = UUID()
         customVocabularyRequestID = requestID
-        try Task.checkCancellation()
 
         if cacheKey == customVocabularyCacheKey,
-           customVocabularyConfiguration != nil {
+           customVocabularyFilesExist {
             customVocabularyDescriptor = vocabulary
             return
         }
 
+        let compilation = try await compileCustomVocabulary(vocabulary)
+        try Task.checkCancellation()
+        guard customVocabularyRequestID == requestID else { throw CancellationError() }
+        guard streamingMode == .inactive, continuation == nil, pipelineTask == nil, recognizerTask == nil else {
+            throw SpeechSessionError.customVocabularyRequiresIdleSession
+        }
+        applyCustomVocabularyCompilation(compilation, descriptor: vocabulary)
+    }
+
+    var customVocabularyFilesExist: Bool {
+        guard let configuration = customVocabularyConfiguration else { return false }
+        let paths = [configuration.languageModel, configuration.vocabulary].compactMap { $0 }
+        return paths.allSatisfy { FileManager.default.isReadableFile(atPath: $0.path) }
+    }
+
+    func compileCustomVocabulary(_ vocabulary: CustomVocabulary) async throws -> CustomVocabularyCompilation {
         // Offload compilation to background task to avoid blocking main actor UI
         // Capture compiler before detached task to avoid cross-actor access
         let compiler = customVocabularyCompiler
         let task = Task.detached(priority: .userInitiated) {
             try await compiler.compile(descriptor: vocabulary)
         }
-        let compilation = try await withTaskCancellationHandler {
-            try await task.value
+        let result = await withTaskCancellationHandler {
+            await task.result
         } onCancel: {
             task.cancel()
         }
         // Rejected results release their private artifacts after the compiler has joined.
         try Task.checkCancellation()
-        guard customVocabularyRequestID == requestID else { throw CancellationError() }
-        guard streamingMode == .inactive, continuation == nil, pipelineTask == nil, recognizerTask == nil else {
-            throw SpeechSessionError.customVocabularyRequiresIdleSession
-        }
+        return try result.get()
+    }
 
-        customVocabularyDescriptor = vocabulary
+    func applyCustomVocabularyCompilation(_ compilation: CustomVocabularyCompilation, descriptor: CustomVocabulary) {
+        customVocabularyDescriptor = descriptor
         customVocabularyConfiguration = compilation.configuration
         customVocabularyCacheKey = compilation.cacheKey
         customVocabularyOutputDirectory = compilation.outputDirectory

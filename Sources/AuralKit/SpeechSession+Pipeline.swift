@@ -156,8 +156,6 @@ extension SpeechSession {
         contextualStrings: [AnalysisContext.ContextualStringsTag: [String]]? = nil,
         generation: Int
     ) async {
-        let vocabularyArtifacts = customVocabularyArtifacts
-        defer { withExtendedLifetime(vocabularyArtifacts) {} }
         do {
             if Self.shouldLog(.notice) {
                 Self.logger.notice("Starting dictation pipeline setup")
@@ -169,18 +167,19 @@ extension SpeechSession {
             try Task.checkCancellation()
 
             let shouldUseNativeCapture = shouldUseNativeCaptureInputProvider
-            let transcriber = try await setUpDictationTranscriber(
+            let prepared = try await setUpDictationTranscriber(
                 contextualStrings: contextualStrings,
                 startAnalyzerImmediately: !shouldUseNativeCapture
             )
+            defer { withExtendedLifetime(prepared.artifacts) {} }
             try Task.checkCancellation()
             if Self.shouldLog(.info) {
                 Self.logger.info("Dictation transcriber prepared with modules")
             }
 
             recognizerTask = createDictationRecognizerTask(
-                transcriber: transcriber,
-                vocabularyArtifacts: vocabularyArtifacts,
+                transcriber: prepared.transcriber,
+                vocabularyArtifacts: prepared.artifacts,
                 streamContinuation: streamContinuation,
                 generation: generation
             )

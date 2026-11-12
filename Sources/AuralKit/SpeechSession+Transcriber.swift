@@ -13,6 +13,8 @@ extension SpeechSession {
 
     // MARK: - Transcriber Setup and Cleanup
 
+    typealias PreparedDictation = (transcriber: DictationTranscriber, artifacts: CustomVocabularyArtifacts?)
+
     func setUpSpeechTranscriber(
         contextualStrings: [AnalysisContext.ContextualStringsTag: [String]]? = nil,
         startAnalyzerImmediately: Bool = true
@@ -37,15 +39,17 @@ extension SpeechSession {
     func setUpDictationTranscriber(
         contextualStrings: [AnalysisContext.ContextualStringsTag: [String]]? = nil,
         startAnalyzerImmediately: Bool = true
-    ) async throws -> DictationTranscriber {
-        let artifacts = customVocabularyArtifacts
-        defer { withExtendedLifetime(artifacts) {} }
+    ) async throws -> PreparedDictation {
         if Self.shouldLog(.notice) {
             Self.logger.notice("Setting up dictation transcriber")
         }
 
-        let transcriber = try createDictationTranscriber()
-        let modules = configureModules(transcriber: transcriber)
+        let generation = sessionGeneration
+        let prepared = try await createDictationTranscriber()
+        defer { withExtendedLifetime(prepared.artifacts) {} }
+        try Task.checkCancellation()
+        guard generation == sessionGeneration else { throw CancellationError() }
+        let modules = configureModules(transcriber: prepared.transcriber)
         try await ensureModels(modules: modules)
         try Task.checkCancellation()
         try await configureAnalyzerContext(contextualStrings: contextualStrings)
@@ -54,7 +58,7 @@ extension SpeechSession {
             try await startAnalyzer(modules: modules)
         }
 
-        return transcriber
+        return prepared
     }
 
     private func createSpeechTranscriber() throws -> SpeechTranscriber {
@@ -76,7 +80,18 @@ extension SpeechSession {
         return transcriber
     }
 
-    func createDictationTranscriber() throws -> DictationTranscriber {
+    func createDictationTranscriber() async throws -> PreparedDictation {
+        if let descriptor = customVocabularyDescriptor, !customVocabularyFilesExist {
+            let generation = sessionGeneration
+            let requestID = customVocabularyRequestID
+            let compilation = try await compileCustomVocabulary(descriptor)
+            try Task.checkCancellation()
+            guard generation == sessionGeneration, requestID == customVocabularyRequestID else {
+                throw CancellationError()
+            }
+            applyCustomVocabularyCompilation(compilation, descriptor: descriptor)
+        }
+        try Task.checkCancellation()
         let basePreset = DictationTranscriber.Preset.progressiveShortDictation
         var contentHints = basePreset.contentHints
         var reportingOptions = basePreset.reportingOptions
@@ -100,7 +115,7 @@ extension SpeechSession {
             throw SpeechSessionError.recognitionStreamSetupFailed
         }
 
-        return dictationTranscriber
+        return (dictationTranscriber, activeCustomVocabularyArtifacts)
     }
 
     @discardableResult
