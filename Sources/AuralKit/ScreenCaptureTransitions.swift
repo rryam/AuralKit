@@ -48,9 +48,17 @@ final class ScreenCaptureTransitions {
 
     func pause() -> Task<Void, Error> {
         guard desiredState != .stopped else { return enqueue {} }
-        controlRevision = UUID()
+        let control = UUID()
+        controlRevision = control
         desiredState = .paused
-        return enqueue { try await self.stopCurrent() }
+        return enqueue {
+            do {
+                try await self.stopCurrent()
+            } catch {
+                if self.controlRevision == control { self.desiredState = .running }
+                throw error
+            }
+        }
     }
 
     func resume() -> Task<ScreenCaptureResumeOutcome, Never> {
@@ -58,25 +66,29 @@ final class ScreenCaptureTransitions {
         controlRevision = control
         desiredState = desiredState == .stopped ? .stopped : .running
         let admitted = revision
-        let previous = tail
-        let operation = Task { @MainActor in
-            _ = try? await previous?.value
-            let error: Error?
-            do {
-                try await self.startCurrent(revision: admitted)
-                error = nil
-            } catch let failure {
-                error = failure
-            }
-            return ScreenCaptureResumeOutcome {
-                guard self.desiredState == .running, self.controlRevision == control else { return false }
-                // A new selection inherits run intent, but not the old selection's failure.
-                if self.revision == admitted, let error { throw error }
-                return true
+        let operation = enqueue { try await self.startCurrent(revision: admitted) }
+        // This observer is never the operation tail: following a replacement cannot join itself.
+        return Task { @MainActor in
+            var selection = admitted
+            var pending = operation
+            while true {
+                let result = await pending.result
+                guard self.desiredState == .running, self.controlRevision == control else {
+                    return ScreenCaptureResumeOutcome { false }
+                }
+                if self.revision != selection, let successor = self.tail {
+                    selection = self.revision
+                    pending = successor
+                    continue
+                }
+                let settled = selection
+                return ScreenCaptureResumeOutcome {
+                    guard self.desiredState == .running, self.controlRevision == control else { return false }
+                    if self.revision == settled { try result.get() }
+                    return true
+                }
             }
         }
-        tail = Task { _ = await operation.value }
-        return operation
     }
 
     func stop() -> Task<Void, Error> {
