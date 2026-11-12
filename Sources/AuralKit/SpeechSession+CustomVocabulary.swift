@@ -215,24 +215,15 @@ final class CustomVocabularyCompiler: CustomVocabularyCompiling, @unchecked Send
     }
 
     private func preparePaths(for cacheKey: String) throws -> CompilationPaths {
-        let baseDirectories = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask)
-        guard let baseDirectory = baseDirectories.first else {
-            throw SpeechSessionError.customVocabularyPreparationFailed
-        }
-
-        let outputDirectory = baseDirectory
+        let outputDirectory = fileManager.temporaryDirectory
             .appendingPathComponent("com.auralkit.vocabulary", isDirectory: true)
             .appendingPathComponent("\(cacheKey)-\(UUID().uuidString)", isDirectory: true)
 
-        if !fileManager.fileExists(atPath: outputDirectory.path) {
-            try fileManager.createDirectory(at: outputDirectory, withIntermediateDirectories: true)
-        }
+        try fileManager.createDirectory(at: outputDirectory, withIntermediateDirectories: true)
 
         let languageModelURL = outputDirectory.appendingPathComponent("languageModel.bin")
         let vocabularyURL = outputDirectory.appendingPathComponent("vocabulary.bin")
-        // Use UUID to ensure unique temp file per compilation invocation, preventing races
-        let uniqueID = UUID().uuidString
-        let assetURL = outputDirectory.appendingPathComponent("source-\(uniqueID).bin")
+        let assetURL = outputDirectory.appendingPathComponent("source.bin")
 
         return CompilationPaths(
             outputDirectory: outputDirectory,
@@ -284,7 +275,10 @@ final class CustomVocabularyCompiler: CustomVocabularyCompiling, @unchecked Send
         do {
             // The session already runs the compiler in a detached task and joins it.
             try await prepareModel(descriptor, paths.assetURL, configuration)
+        } catch is CancellationError {
+            throw CancellationError()
         } catch {
+            try Task.checkCancellation()
             throw SpeechSessionError.customVocabularyCompilationFailed(error)
         }
     }

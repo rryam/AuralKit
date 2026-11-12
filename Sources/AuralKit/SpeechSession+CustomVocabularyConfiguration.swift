@@ -8,6 +8,10 @@ extension SpeechSession {
 
     /// Configure the session's custom vocabulary, compiling assets as needed.
     ///
+    /// Compiled files are temporary and remain available while the session or a native consumer uses them.
+    /// Cancelling compilation waits for preparation to finish, then throws `CancellationError`
+    /// without replacing the current configuration. Superseded compilation results are discarded.
+    ///
     /// - Parameter vocabulary: The vocabulary descriptor to activate, or `nil` to clear the current
     ///   configuration.
     /// - Throws: A `SpeechSessionError` when the session is active, the descriptor locale mismatches, or
