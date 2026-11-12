@@ -5,6 +5,45 @@ import Speech
 
 // swiftlint:disable file_length
 
+@MainActor
+extension SpeechSession {
+    func resumeScreenCaptureStreamingIfNeeded(generation: Int) async throws {
+        guard generation == sessionGeneration, status == .paused, streamingMode == .screenCapture else { return }
+        var captureFailure: Error?
+        do {
+#if canImport(ScreenCaptureKit)
+            guard #available(iOS 27.0, macOS 14.0, *) else {
+                throw SpeechSessionError.screenCaptureUnavailable
+            }
+            guard let provider = screenCaptureInputProvider as? ScreenCaptureAudioInputProvider else {
+                throw SpeechSessionError.recognitionStreamSetupFailed
+            }
+            await provider.resume { result in
+                guard generation == self.sessionGeneration,
+                      self.status == .paused, self.streamingMode == .screenCapture else { return }
+                switch result {
+                case .success:
+                    self.setStatus(.transcribing)
+                case .failure(let error):
+                    captureFailure = error
+                    self.prepareForStop()
+                }
+            }
+            if let captureFailure { throw captureFailure }
+#else
+            throw SpeechSessionError.screenCaptureUnavailable
+#endif
+        } catch {
+            let canFinish = status == .paused || (captureFailure != nil && status == .stopping)
+            guard generation == sessionGeneration, canFinish, streamingMode == .screenCapture else { throw error }
+            prepareForStop()
+            await cleanup(cancelRecognizer: true, generation: generation)
+            await finishStream(error: error, generation: generation)
+            throw error
+        }
+    }
+}
+
 #if canImport(ScreenCaptureKit)
 @preconcurrency import ScreenCaptureKit
 
@@ -152,32 +191,13 @@ extension SpeechSession {
 
 @MainActor
 extension SpeechSession {
-    func pauseScreenCaptureStreamingIfNeeded() async -> Bool {
-        guard #available(iOS 27.0, macOS 14.0, *) else { return false }
-        guard let provider = screenCaptureInputProvider as? ScreenCaptureAudioInputProvider else { return false }
-        return await provider.pause()
-    }
-
-    func resumeScreenCaptureStreamingIfNeeded(generation: Int) async throws -> Error? {
-        guard #available(iOS 27.0, macOS 14.0, *) else {
-            throw SpeechSessionError.screenCaptureUnavailable
-        }
-        guard let provider = screenCaptureInputProvider as? ScreenCaptureAudioInputProvider else {
-            throw SpeechSessionError.recognitionStreamSetupFailed
-        }
-        var failure: Error?
-        await provider.resume { result in
-            guard generation == self.sessionGeneration,
-                  self.status == .paused, self.streamingMode == .screenCapture else { return }
-            switch result {
-            case .success:
-                self.setStatus(.transcribing)
-            case .failure(let error):
-                failure = error
-                self.prepareForStop()
-            }
-        }
-        return failure
+    func pauseScreenCaptureStreamingIfNeeded(generation: Int) async {
+        guard generation == sessionGeneration else { return }
+        guard #available(iOS 27.0, macOS 14.0, *) else { return }
+        guard let provider = screenCaptureInputProvider as? ScreenCaptureAudioInputProvider else { return }
+        guard await provider.pause(), generation == sessionGeneration,
+              status == .transcribing, streamingMode == .screenCapture else { return }
+        setStatus(.paused)
     }
 
     func stopScreenCaptureStreamingIfNeeded() async {
@@ -461,11 +481,7 @@ public extension SpeechSession {
 
 @MainActor
 extension SpeechSession {
-    func pauseScreenCaptureStreamingIfNeeded() async -> Bool { false }
-
-    func resumeScreenCaptureStreamingIfNeeded(generation: Int) async throws -> Error? {
-        throw SpeechSessionError.screenCaptureUnavailable
-    }
+    func pauseScreenCaptureStreamingIfNeeded(generation: Int) async {}
 
     func stopScreenCaptureStreamingIfNeeded() async {
         screenCaptureInputProvider = nil

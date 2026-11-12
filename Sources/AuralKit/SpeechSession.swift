@@ -361,13 +361,10 @@ public final class SpeechSession {
     /// screen capture). Calls during file transcription or in any other state are ignored.
     public func pauseTranscribing() async {
         guard status == .transcribing, isPausableStreamingMode else { return }
-        let generation = sessionGeneration
         if streamingMode == .screenCapture {
-            guard await pauseScreenCaptureStreamingIfNeeded() else { return }
-        } else {
-            stopAudioStreaming()
+            return await pauseScreenCaptureStreamingIfNeeded(generation: sessionGeneration)
         }
-        guard generation == sessionGeneration, status == .transcribing, isPausableStreamingMode else { return }
+        stopAudioStreaming()
         setStatus(.paused)
     }
 
@@ -377,19 +374,13 @@ public final class SpeechSession {
     public func resumeTranscribing() async throws {
         guard status == .paused, isPausableStreamingMode else { return }
         let generation = sessionGeneration
-        var captureFailure: Error?
+        if streamingMode == .screenCapture {
+            return try await resumeScreenCaptureStreamingIfNeeded(generation: generation)
+        }
         do {
-            if streamingMode == .screenCapture {
-                captureFailure = try await resumeScreenCaptureStreamingIfNeeded(generation: generation)
-                if let captureFailure { throw captureFailure }
-                return
-            }
             try startAudioStreaming()
-            guard generation == sessionGeneration, status == .paused, isPausableStreamingMode else { return }
             setStatus(.transcribing)
         } catch {
-            let canFinish = status == .paused || (captureFailure != nil && status == .stopping)
-            guard generation == sessionGeneration, canFinish, isPausableStreamingMode else { throw error }
             prepareForStop()
             await cleanup(cancelRecognizer: true, generation: generation)
             await finishStream(error: error, generation: generation)
