@@ -43,35 +43,18 @@ extension SpeechSession {
     func startSpeechDetectorMonitoring() {
         guard let detector = speechDetector else { return }
 
-        monitorSpeechDetectorResults(
-            detector.results,
-            speechDetected: { $0.speechDetected },
-            onResult: { [weak self] result in
-                self?.handleSpeechDetectorResult(result)
-            }
-        )
-    }
-
-    /// Native detector results and controlled sequences share the same owning reader.
-    /// Cancellation alone does not revoke a suspended reader's callback authority.
-    func monitorSpeechDetectorResults<Sequence: AsyncSequence>(
-        _ results: Sequence,
-        speechDetected: @escaping @Sendable (Sequence.Element) -> Bool,
-        onResult: @escaping @MainActor @Sendable (Sequence.Element) -> Void
-    ) where Sequence: Sendable, Sequence.Element: Sendable {
-        speechDetectorResultsTask?.cancel()
         let monitorID = UUID()
         speechDetectorMonitorID = monitorID
+        speechDetectorResultsTask?.cancel()
         if Self.shouldLog(.debug) {
             Self.logger.debug("Starting speech detector monitoring")
         }
         speechDetectorResultsTask = Task<Void, Never> { @MainActor [weak self] in
             guard let self else { return }
             do {
-                for try await result in results {
+                for try await result in detector.results {
                     guard self.speechDetectorMonitorID == monitorID else { return }
-                    self.isSpeechDetected = speechDetected(result)
-                    onResult(result)
+                    self.handleSpeechDetectorResult(result)
                 }
             } catch {
                 let finalError = (error as? CancellationError) != nil ? nil : error
@@ -92,6 +75,7 @@ extension SpeechSession {
     }
 
     func handleSpeechDetectorResult(_ result: SpeechDetector.Result) {
+        isSpeechDetected = result.speechDetected
         speechDetectorResultsContinuation?.yield(result)
         if Self.shouldLog(.debug) {
             Self.logger.debug(
