@@ -158,14 +158,26 @@ extension SpeechSession {
         return await provider.pause()
     }
 
-    func resumeScreenCaptureStreamingIfNeeded() async throws -> ScreenCaptureResumeOutcome {
+    func resumeScreenCaptureStreamingIfNeeded(generation: Int) async throws -> Error? {
         guard #available(iOS 27.0, macOS 14.0, *) else {
             throw SpeechSessionError.screenCaptureUnavailable
         }
         guard let provider = screenCaptureInputProvider as? ScreenCaptureAudioInputProvider else {
             throw SpeechSessionError.recognitionStreamSetupFailed
         }
-        return await provider.resume()
+        var failure: Error?
+        await provider.resume { result in
+            guard generation == self.sessionGeneration,
+                  self.status == .paused, self.streamingMode == .screenCapture else { return }
+            switch result {
+            case .success:
+                self.setStatus(.transcribing)
+            case .failure(let error):
+                failure = error
+                self.prepareForStop()
+            }
+        }
+        return failure
     }
 
     func stopScreenCaptureStreamingIfNeeded() async {
@@ -273,8 +285,8 @@ final class ScreenCaptureAudioInputProvider: NSObject, SCStreamOutput, SCStreamD
     }
 
     @MainActor
-    func resume() async -> ScreenCaptureResumeOutcome {
-        await transitions.resume().value
+    func resume(onCompletion: @escaping @MainActor (Result<Void, Error>) -> Void) async {
+        await transitions.resume(onCompletion: onCompletion).value
     }
 
     @MainActor
@@ -451,7 +463,7 @@ public extension SpeechSession {
 extension SpeechSession {
     func pauseScreenCaptureStreamingIfNeeded() async -> Bool { false }
 
-    func resumeScreenCaptureStreamingIfNeeded() async throws -> ScreenCaptureResumeOutcome {
+    func resumeScreenCaptureStreamingIfNeeded(generation: Int) async throws -> Error? {
         throw SpeechSessionError.screenCaptureUnavailable
     }
 

@@ -377,17 +377,19 @@ public final class SpeechSession {
     public func resumeTranscribing() async throws {
         guard status == .paused, isPausableStreamingMode else { return }
         let generation = sessionGeneration
+        var captureFailure: Error?
         do {
             if streamingMode == .screenCapture {
-                let outcome = try await resumeScreenCaptureStreamingIfNeeded()
-                guard try outcome.resolve() else { return }
-            } else {
-                try startAudioStreaming()
+                captureFailure = try await resumeScreenCaptureStreamingIfNeeded(generation: generation)
+                if let captureFailure { throw captureFailure }
+                return
             }
+            try startAudioStreaming()
             guard generation == sessionGeneration, status == .paused, isPausableStreamingMode else { return }
             setStatus(.transcribing)
         } catch {
-            guard generation == sessionGeneration, status == .paused, isPausableStreamingMode else { throw error }
+            let canFinish = status == .paused || (captureFailure != nil && status == .stopping)
+            guard generation == sessionGeneration, canFinish, isPausableStreamingMode else { throw error }
             prepareForStop()
             await cleanup(cancelRecognizer: true, generation: generation)
             await finishStream(error: error, generation: generation)

@@ -7,12 +7,6 @@ protocol ScreenCaptureStream: AnyObject {
     func stopCapture() async throws
 }
 
-@available(iOS 26.0, macOS 14.0, *)
-@MainActor
-struct ScreenCaptureResumeOutcome {
-    let resolve: @MainActor () throws -> Bool
-}
-
 /// Serializes capture side effects across suspension. Admission changes intent immediately;
 /// only internal operations are joined, never a public caller that may await session cleanup.
 @available(iOS 26.0, macOS 14.0, *)
@@ -61,7 +55,9 @@ final class ScreenCaptureTransitions {
         }
     }
 
-    func resume() -> Task<ScreenCaptureResumeOutcome, Never> {
+    func resume(
+        onCompletion: @escaping @MainActor (Result<Void, Error>) -> Void
+    ) -> Task<Void, Never> {
         let control = UUID()
         controlRevision = control
         desiredState = desiredState == .stopped ? .stopped : .running
@@ -73,20 +69,14 @@ final class ScreenCaptureTransitions {
             var pending = operation
             while true {
                 let result = await pending.result
-                guard self.desiredState == .running, self.controlRevision == control else {
-                    return ScreenCaptureResumeOutcome { false }
-                }
+                guard self.desiredState == .running, self.controlRevision == control else { return }
                 if self.revision != selection, let successor = self.tail {
                     selection = self.revision
                     pending = successor
                     continue
                 }
-                let settled = selection
-                return ScreenCaptureResumeOutcome {
-                    guard self.desiredState == .running, self.controlRevision == control else { return false }
-                    if self.revision == settled { try result.get() }
-                    return true
-                }
+                onCompletion(result)
+                return
             }
         }
     }
