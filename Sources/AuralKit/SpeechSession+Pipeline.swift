@@ -258,27 +258,12 @@ extension SpeechSession {
 
     /// Tear down the active pipeline.
     ///
-    /// One internal terminal task owns detachment, capture shutdown, analyzer
-    /// finalization and locale release. Concurrent callers join that same task even
-    /// after the provider and analyzer have been detached. Generation checks keep
-    /// an obsolete terminal task from touching a successor's shared state.
+    /// All session state is detached synchronously up front so that concurrent teardowns (or a
+    /// new session starting once the stream finishes) never observe partially-cleared state; the
+    /// slow finalization steps then operate on the detached references. Steps that touch shared
+    /// state after a suspension re-check `generation` so a stale teardown cannot damage a newer
+    /// session.
     func cleanup(cancelRecognizer: Bool, generation: Int) async {
-        guard generation == sessionGeneration else { return }
-        if let terminal = cleanupTask, terminal.generation == generation {
-            await terminal.task.value
-            return
-        }
-        // Own only internal teardown. Neither a public caller nor setup producer is
-        // joined here: either may be suspended awaiting this very terminal task.
-        let terminal = Task { @MainActor in
-            await self.performCleanup(cancelRecognizer: cancelRecognizer, generation: generation)
-            if self.cleanupTask?.generation == generation { self.cleanupTask = nil }
-        }
-        cleanupTask = (generation, terminal)
-        await terminal.value
-    }
-
-    private func performCleanup(cancelRecognizer: Bool, generation: Int) async {
         guard generation == sessionGeneration else { return }
         if Self.shouldLog(.debug) {
             Self.logger.debug("Cleanup started (cancelRecognizer: \(cancelRecognizer, privacy: .public))")
@@ -311,12 +296,9 @@ extension SpeechSession {
 #if os(iOS)
         shouldResumeAfterInterruption = false
 #endif
-        let analysisFinalizer = screenCaptureAnalysisFinalizer
-        screenCaptureAnalysisFinalizer = nil
         let detached = detachTranscriberState()
         await stopScreenCaptureStreamingIfNeeded()
         await finalizeDetachedTranscriberState(detached)
-        await analysisFinalizer?()
 
         guard generation == sessionGeneration else { return }
         await modelManager.releaseLocales()

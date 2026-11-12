@@ -1,6 +1,5 @@
 import Foundation
 
-/// The narrow boundary around actual capture calls, shared by SCStream and controlled fixtures.
 @available(iOS 26.0, macOS 14.0, *)
 @MainActor
 protocol ScreenCaptureStream: AnyObject {
@@ -8,13 +7,10 @@ protocol ScreenCaptureStream: AnyObject {
     func stopCapture() async throws
 }
 
-/// Carries admission through async returns. The public caller checks ownership at
-/// the instant it publishes status or propagates a failure into session teardown.
 @available(iOS 26.0, macOS 14.0, *)
 @MainActor
 struct ScreenCaptureResumeOutcome {
-    let isCurrent: @MainActor () -> Bool
-    let error: Error?
+    let resolve: @MainActor () throws -> Bool
 }
 
 /// Serializes capture side effects across suspension. Admission changes intent immediately;
@@ -27,6 +23,7 @@ final class ScreenCaptureTransitions {
     private(set) var stream: (any ScreenCaptureStream)?
     private(set) var isRunning = false
     private var revision = UUID()
+    private var controlRevision = UUID()
     private var tail: Task<Void, Error>?
 
     // Synchronous admission returns the owned handle before any capture call can suspend.
@@ -51,11 +48,14 @@ final class ScreenCaptureTransitions {
 
     func pause() -> Task<Void, Error> {
         guard desiredState != .stopped else { return enqueue {} }
+        controlRevision = UUID()
         desiredState = .paused
         return enqueue { try await self.stopCurrent() }
     }
 
     func resume() -> Task<ScreenCaptureResumeOutcome, Never> {
+        let control = UUID()
+        controlRevision = control
         desiredState = desiredState == .stopped ? .stopped : .running
         let admitted = revision
         let previous = tail
@@ -68,20 +68,23 @@ final class ScreenCaptureTransitions {
             } catch let failure {
                 error = failure
             }
-            return ScreenCaptureResumeOutcome(
-                isCurrent: { self.desiredState == .running && self.revision == admitted },
-                error: error
-            )
+            return ScreenCaptureResumeOutcome {
+                guard self.desiredState == .running, self.controlRevision == control else { return false }
+                // A new selection inherits run intent, but not the old selection's failure.
+                if self.revision == admitted, let error { throw error }
+                return true
+            }
         }
         tail = Task { _ = await operation.value }
         return operation
     }
 
     func stop() -> Task<Void, Error> {
+        controlRevision = UUID()
         desiredState = .stopped
         return enqueue {
+            defer { self.stream = nil }
             try await self.stopCurrent()
-            self.stream = nil
         }
     }
 

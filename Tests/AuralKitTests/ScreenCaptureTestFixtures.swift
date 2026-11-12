@@ -3,50 +3,24 @@ import Foundation
 
 enum CaptureFixtureError: Error { case deadline, startFailed }
 
-/// Each waiter owns its deadline and can be removed by cancellation. No timeout
-/// task group can be stranded joining a checked continuation that ignores cancel.
 @MainActor
 final class CaptureGate {
-    private var opened = false
-    private var waiters: [UUID: CheckedContinuation<Void, Error>] = [:]
-    var waiterCount: Int { waiters.count }
+    private let stream: AsyncStream<Void>
+    private let continuation: AsyncStream<Void>.Continuation
 
-    func wait(timeoutNanoseconds: UInt64 = 3_000_000_000) async throws {
-        try Task.checkCancellation()
-        if opened { return }
-        let id = UUID()
-        let deadline = Task { @MainActor in
-            do { try await Task.sleep(nanoseconds: timeoutNanoseconds) } catch { return }
-            self.remove(id, error: CaptureFixtureError.deadline)
-        }
-        defer { deadline.cancel() }
-        try await withTaskCancellationHandler { () async throws -> Void in
-            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-                if Task.isCancelled {
-                    continuation.resume(throwing: CancellationError())
-                } else {
-                    waiters[id] = continuation
-                }
-            }
-        } onCancel: {
-            Task { @MainActor in self.remove(id, error: CancellationError()) }
+    init() { (stream, continuation) = AsyncStream.makeStream() }
+
+    func wait() async throws {
+        try await awaitResult(timeout: 3) {
+            for await _ in self.stream {}
+            try Task.checkCancellation()
         }
     }
 
-    private func remove(_ id: UUID, error: Error) {
-        waiters.removeValue(forKey: id)?.resume(throwing: error)
-    }
-
-    func open() {
-        opened = true
-        let pending = waiters.values
-        waiters.removeAll()
-        for waiter in pending { waiter.resume() }
-    }
+    func open() { continuation.finish() }
 }
 
-/// Async cleanup opens all gates before joining every task admitted by the test,
-/// including on a failed readiness wait. Errors remain visible to the test body.
+// Release suspended capture calls before joining tasks, including when an assertion fails.
 @MainActor
 final class CaptureFixture {
     private var gates: [CaptureGate] = []
@@ -94,6 +68,7 @@ final class ControlledCaptureStream: ScreenCaptureStream {
     var stopEntered: CaptureGate?
     var stopRelease: CaptureGate?
     var startError: Error?
+    var stopError: Error?
 
     func startCapture() async throws {
         starts += 1
@@ -106,6 +81,17 @@ final class ControlledCaptureStream: ScreenCaptureStream {
         stops += 1
         stopEntered?.open()
         try await stopRelease?.wait()
+        if let stopError { throw stopError }
         capturing = false
+    }
+}
+
+@MainActor
+func waitForCaptureState(_ predicate: () -> Bool) async throws {
+    let deadline = ContinuousClock.now.advanced(by: .seconds(3))
+    while !predicate() {
+        guard ContinuousClock.now < deadline else { throw CaptureFixtureError.deadline }
+        try Task.checkCancellation()
+        await Task.yield()
     }
 }

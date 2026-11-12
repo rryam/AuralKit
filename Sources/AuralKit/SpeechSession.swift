@@ -73,9 +73,8 @@ public final class SpeechSession {
     var analyzerFormat: AVAudioFormat?
     var nativeCaptureSession: AVCaptureSession?
     var nativeCaptureAnalysisTask: Task<Void, Never>?
-    var screenCapturePipelineHooks: ScreenCapturePipelineHooks?
-    var screenCaptureAnalysisFinalizer: (@MainActor () async -> Void)?
-    var screenCaptureInputProvider: (any ScreenCaptureInput)?
+    var screenCaptureInputProvider: AnyObject?
+    var screenCaptureStopTask: (generation: Int, task: Task<Void, Never>)?
     var voiceActivationConfiguration: VoiceActivationConfiguration?
     var customVocabularyDescriptor: CustomVocabulary?
     var customVocabularyConfiguration: SFSpeechLanguageModel.Configuration?
@@ -97,7 +96,6 @@ public final class SpeechSession {
     // Stream state management
     var continuation: TranscriptionContinuation?
     var recognizerTask: Task<Void, Never>?
-    var cleanupTask: (generation: Int, task: Task<Void, Never>)?
     var pipelineTask: Task<Void, Never>?
     var fileIngestionTask: Task<Void, Never>?
     var streamingMode: StreamingMode = .inactive
@@ -355,6 +353,46 @@ public final class SpeechSession {
         prepareForStop()
         await cleanup(cancelRecognizer: true, generation: generation)
         await finishStream(error: nil, generation: generation)
+    }
+
+    /// Pause capture without tearing down the analyzer pipeline.
+    ///
+    /// Safe to call only when the session is actively transcribing live audio (microphone or
+    /// screen capture). Calls during file transcription or in any other state are ignored.
+    public func pauseTranscribing() async {
+        guard status == .transcribing, isPausableStreamingMode else { return }
+        let generation = sessionGeneration
+        if streamingMode == .screenCapture {
+            guard await pauseScreenCaptureStreamingIfNeeded() else { return }
+        } else {
+            stopAudioStreaming()
+        }
+        guard generation == sessionGeneration, status == .transcribing, isPausableStreamingMode else { return }
+        setStatus(.paused)
+    }
+
+    /// Resume a paused capture session.
+    ///
+    /// - Throws: `SpeechSessionError` if audio streaming cannot restart.
+    public func resumeTranscribing() async throws {
+        guard status == .paused, isPausableStreamingMode else { return }
+        let generation = sessionGeneration
+        do {
+            if streamingMode == .screenCapture {
+                let outcome = try await resumeScreenCaptureStreamingIfNeeded()
+                guard try outcome.resolve() else { return }
+            } else {
+                try startAudioStreaming()
+            }
+            guard generation == sessionGeneration, status == .paused, isPausableStreamingMode else { return }
+            setStatus(.transcribing)
+        } catch {
+            guard generation == sessionGeneration, status == .paused, isPausableStreamingMode else { throw error }
+            prepareForStop()
+            await cleanup(cancelRecognizer: true, generation: generation)
+            await finishStream(error: error, generation: generation)
+            throw error
+        }
     }
 
 }
