@@ -99,18 +99,18 @@ extension SpeechSession {
                 Self.logger.notice("Starting screen capture pipeline setup")
             }
 
-            try checkSetupAdmission(generation: generation)
+            try Task.checkCancellation()
             try await ensureSpeechRecognitionAuthorization(context: "for screen capture transcription")
-            try checkSetupAdmission(generation: generation)
+            try Task.checkCancellation()
             let transcriber = try await setUpSpeechTranscriber(contextualStrings: contextualStrings)
-            try checkSetupAdmission(generation: generation)
+            try Task.checkCancellation()
             recognizerTask = createSpeechRecognizerTask(
                 transcriber: transcriber,
                 streamContinuation: streamContinuation,
                 generation: generation
             )
             try await setUpScreenCaptureStreaming(options: options, generation: generation)
-            try checkSetupAdmission(generation: generation)
+            try Task.checkCancellation()
 
             streamingMode = .screenCapture
             setStatus(.transcribing)

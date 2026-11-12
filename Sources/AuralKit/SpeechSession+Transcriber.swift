@@ -21,15 +21,14 @@ extension SpeechSession {
             Self.logger.notice("Setting up transcriber")
         }
 
-        let generation = sessionGeneration
         let transcriber = try createSpeechTranscriber()
         let modules = configureModules(transcriber: transcriber)
         try await ensureModels(modules: modules)
-        try checkSetupAdmission(generation: generation)
+        try Task.checkCancellation()
         try await configureAnalyzerContext(contextualStrings: contextualStrings)
-        try checkSetupAdmission(generation: generation)
+        try Task.checkCancellation()
         if startAnalyzerImmediately {
-            try await startAnalyzer(modules: modules, generation: generation)
+            try await startAnalyzer(modules: modules)
         }
 
         return transcriber
@@ -43,15 +42,14 @@ extension SpeechSession {
             Self.logger.notice("Setting up dictation transcriber")
         }
 
-        let generation = sessionGeneration
         let transcriber = try createDictationTranscriber()
         let modules = configureModules(transcriber: transcriber)
         try await ensureModels(modules: modules)
-        try checkSetupAdmission(generation: generation)
+        try Task.checkCancellation()
         try await configureAnalyzerContext(contextualStrings: contextualStrings)
-        try checkSetupAdmission(generation: generation)
+        try Task.checkCancellation()
         if startAnalyzerImmediately {
-            try await startAnalyzer(modules: modules, generation: generation)
+            try await startAnalyzer(modules: modules)
         }
 
         return transcriber
@@ -192,21 +190,8 @@ extension SpeechSession {
         }
     }
 
-    /// The optional collaborator replaces only native format selection; admission and all
-    /// session writes remain here, including when selection ignores task cancellation.
-    func startAnalyzer(
-        modules: [any SpeechModule],
-        generation: Int,
-        selectFormat: (@MainActor ([any SpeechModule]) async -> AVAudioFormat?)? = nil
-    ) async throws {
-        let selectedFormat: AVAudioFormat?
-        if let selectFormat {
-            selectedFormat = await selectFormat(modules)
-        } else {
-            selectedFormat = await SpeechAnalyzer.bestAvailableAudioFormat(compatibleWith: modules)
-        }
-        try checkSetupAdmission(generation: generation)
-        guard let format = selectedFormat else {
+    private func startAnalyzer(modules: [any SpeechModule]) async throws {
+        guard let format = await SpeechAnalyzer.bestAvailableAudioFormat(compatibleWith: modules) else {
             throw SpeechSessionError.invalidAudioDataType
         }
         analyzerFormat = format
@@ -228,10 +213,8 @@ extension SpeechSession {
         }
 
         try await prepareAnalyzerForStartIfNeeded(in: format)
-        try checkSetupAdmission(generation: generation)
 
         try await analyzer.start(inputSequence: inputSequence)
-        try checkSetupAdmission(generation: generation)
         if Self.shouldLog(.info) {
             Self.logger.info("Analyzer started")
         }

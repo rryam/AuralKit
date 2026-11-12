@@ -122,6 +122,26 @@ struct SpeechSessionLifecycleTests {
         #expect(session.continuation == nil)
     }
 
+    @Test("Stale setup failures preserve the successor setup task")
+    @MainActor
+    func staleSetupFailurePreservesSuccessorTask() async {
+        let session = SpeechSession()
+        let staleGeneration = session.beginStreamGeneration()
+        _ = session.beginStreamGeneration()
+        let successor = Task<Void, Never> {}
+        session.pipelineTask = successor
+
+        await session.finishFailedPipelineSetup(CancellationError(), generation: staleGeneration)
+        #expect(session.pipelineTask == successor)
+        await session.finishFailedPipelineSetup(
+            SpeechSessionError.invalidAudioDataType, generation: staleGeneration
+        )
+        #expect(session.pipelineTask == successor)
+
+        await session.stopTranscribing()
+        await successor.value
+    }
+
     /// Pausing is only meaningful for live capture; during file transcription it must be
     /// refused (previously, resuming a "paused" file session started the microphone).
     @Test("Pause is refused during file transcription")

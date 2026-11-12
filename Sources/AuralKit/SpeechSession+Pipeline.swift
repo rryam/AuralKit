@@ -105,18 +105,18 @@ extension SpeechSession {
             if Self.shouldLog(.notice) {
                 Self.logger.notice("Starting pipeline setup")
             }
-            try checkSetupAdmission(generation: generation)
+            try Task.checkCancellation()
             try await ensurePermissions()
-            try checkSetupAdmission(generation: generation)
+            try Task.checkCancellation()
             try await setupAudioSession()
-            try checkSetupAdmission(generation: generation)
+            try Task.checkCancellation()
 
             let shouldUseNativeCapture = shouldUseNativeCaptureInputProvider
             let transcriber = try await setUpSpeechTranscriber(
                 contextualStrings: contextualStrings,
                 startAnalyzerImmediately: !shouldUseNativeCapture
             )
-            try checkSetupAdmission(generation: generation)
+            try Task.checkCancellation()
             if Self.shouldLog(.info) {
                 Self.logger.info("Transcriber prepared with modules")
             }
@@ -128,10 +128,10 @@ extension SpeechSession {
             )
 
             if !(try await setUpNativeCaptureStreamingIfAvailable(generation: generation)) {
-                try checkSetupAdmission(generation: generation)
+                try Task.checkCancellation()
                 try startAudioStreaming()
             }
-            try checkSetupAdmission(generation: generation)
+            try Task.checkCancellation()
 
             streamingMode = .liveMicrophone
             setStatus(.transcribing)
@@ -158,18 +158,18 @@ extension SpeechSession {
             if Self.shouldLog(.notice) {
                 Self.logger.notice("Starting dictation pipeline setup")
             }
-            try checkSetupAdmission(generation: generation)
+            try Task.checkCancellation()
             try await ensurePermissions()
-            try checkSetupAdmission(generation: generation)
+            try Task.checkCancellation()
             try await setupAudioSession()
-            try checkSetupAdmission(generation: generation)
+            try Task.checkCancellation()
 
             let shouldUseNativeCapture = shouldUseNativeCaptureInputProvider
             let transcriber = try await setUpDictationTranscriber(
                 contextualStrings: contextualStrings,
                 startAnalyzerImmediately: !shouldUseNativeCapture
             )
-            try checkSetupAdmission(generation: generation)
+            try Task.checkCancellation()
             if Self.shouldLog(.info) {
                 Self.logger.info("Dictation transcriber prepared with modules")
             }
@@ -181,10 +181,10 @@ extension SpeechSession {
             )
 
             if !(try await setUpNativeCaptureStreamingIfAvailable(generation: generation)) {
-                try checkSetupAdmission(generation: generation)
+                try Task.checkCancellation()
                 try startAudioStreaming()
             }
-            try checkSetupAdmission(generation: generation)
+            try Task.checkCancellation()
 
             streamingMode = .liveMicrophone
             setStatus(.transcribing)
@@ -202,13 +202,6 @@ extension SpeechSession {
         }
     }
 
-    /// A nonthrowing native await may return after stop or replacement.
-    func checkSetupAdmission(generation: Int) throws {
-        try Task.checkCancellation()
-        guard generation == sessionGeneration else { throw CancellationError() }
-    }
-
-    /// Check ownership before dropping the setup handle, not only inside terminal cleanup.
     func finishFailedPipelineSetup(_ error: Error, generation: Int) async {
         guard generation == sessionGeneration else { return }
         pipelineTask = nil
