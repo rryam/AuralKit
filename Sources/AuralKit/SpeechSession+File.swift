@@ -300,10 +300,7 @@ private extension SpeechSession {
         while processedFrames < totalFrames {
             if Task.isCancelled { break }
 
-            let framesToRead = AudioFileReadSize.next(
-                remaining: totalFrames - processedFrames,
-                capacity: buffer.frameCapacity
-            )
+            let framesToRead = AVAudioFrameCount(min(Int64(frameCapacity), totalFrames - processedFrames))
 
             buffer.frameLength = framesToRead
 
