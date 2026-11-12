@@ -29,15 +29,10 @@ extension SpeechSession {
         }
 
         let lastAudioTime = try await analyzer.analyzeSequence(from: file)
-        guard let run = await fileTranscription else {
-            throw SpeechSessionError.recognitionStreamSetupFailed
-        }
-        try await run.finishInput {
-            if let lastAudioTime {
-                try await analyzer.finalizeAndFinish(through: lastAudioTime)
-            } else {
-                try await analyzer.finalizeAndFinishThroughEndOfInput()
-            }
+        if let lastAudioTime {
+            try await analyzer.finalizeAndFinish(through: lastAudioTime)
+        } else {
+            try await analyzer.finalizeAndFinishThroughEndOfInput()
         }
 
         return !Task.isCancelled

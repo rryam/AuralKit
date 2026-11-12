@@ -87,11 +87,6 @@ extension SpeechSession {
     /// (from streams that were already replaced or finished) are ignored.
     func handleStreamTermination(generation: Int) async {
         guard generation == sessionGeneration else { return }
-        if let fileTranscription {
-            prepareForStop()
-            await fileTranscription.requestRetirement().value
-            return
-        }
         prepareForStop()
         await cleanup(cancelRecognizer: true, generation: generation)
         await finishStream(error: nil, generation: generation)
@@ -281,6 +276,10 @@ extension SpeechSession {
 
         let task = recognizerTask
         recognizerTask = nil
+
+        let ingestionTask = fileIngestionTask
+        fileIngestionTask = nil
+        ingestionTask?.cancel()
 
         if cancelRecognizer {
             if Self.shouldLog(.debug) {
