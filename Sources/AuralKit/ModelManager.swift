@@ -12,15 +12,20 @@ actor ModelManager {
 
     private let reservations: SpeechAssetReservations
     private let assetDownloader: (@Sendable ([any SpeechModule]) async throws -> Void)?
+    private let installationRequest: @Sendable ([any SpeechModule]) async throws -> AssetInstallationRequest?
     private var leases: Set<SpeechAssetReservations.Lease> = []
     private var generation = 0
 
     init(
         reservations: SpeechAssetReservations = .shared,
-        assetDownloader: (@Sendable ([any SpeechModule]) async throws -> Void)? = nil
+        assetDownloader: (@Sendable ([any SpeechModule]) async throws -> Void)? = nil,
+        installationRequest: @escaping @Sendable ([any SpeechModule]) async throws -> AssetInstallationRequest? = {
+            try await AssetInventory.assetInstallationRequest(supporting: $0)
+        }
     ) {
         self.reservations = reservations
         self.assetDownloader = assetDownloader
+        self.installationRequest = installationRequest
     }
 
     /// Ensure the speech model for the given locale is available
@@ -94,7 +99,7 @@ actor ModelManager {
             return
         }
         let request = try await reservations.withInventoryAccess {
-            try await AssetInventory.assetInstallationRequest(supporting: modules)
+            try await self.requestInstallation(for: modules, generation: generation)
         }
         if let downloader = request {
             try requireCurrent(generation)
@@ -123,6 +128,13 @@ actor ModelManager {
             currentDownloadProgress = nil
             logger.debug("No asset download required for modules")
         }
+    }
+
+    private func requestInstallation(
+        for modules: [any SpeechModule], generation: Int
+    ) async throws -> AssetInstallationRequest? {
+        try requireCurrent(generation)
+        return try await installationRequest(modules)
     }
 
     /// Retire pending preparation without waiting for a native download to finish.

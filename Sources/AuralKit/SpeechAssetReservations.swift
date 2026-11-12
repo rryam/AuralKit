@@ -34,7 +34,7 @@ actor SpeechAssetReservations {
     private var reservations: [String: Locale] = [:]
     private var leases: Set<Lease> = []
     private var tail: Task<Void, Never>?
-    private var queuedOperations = 0
+    private(set) var queuedOperations = 0
 
     init(inventory: Inventory = .live) {
         self.inventory = inventory
@@ -63,7 +63,16 @@ actor SpeechAssetReservations {
     func withInventoryAccess<Value: Sendable>(
         _ operation: @escaping @Sendable () async throws -> Value
     ) async throws -> Value {
-        try await enqueue(operation).value
+        try Task.checkCancellation()
+        let task = enqueue {
+            try Task.checkCancellation()
+            return try await operation()
+        }
+        return try await withTaskCancellationHandler {
+            try await task.value
+        } onCancel: {
+            task.cancel()
+        }
     }
 
     private func enqueue<Value: Sendable>(

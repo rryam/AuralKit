@@ -102,6 +102,39 @@ struct SpeechAssetReservationTests {
         #expect(await inventory.snapshot.locales.isEmpty)
     }
 
+    @Test("canceled or retired installation work cannot reserve a locale", arguments: [true, false])
+    func canceledQueuedInstallation(cancel: Bool) async throws {
+        let inventory = AssetInventoryProbe()
+        let native = inventory.client
+        let reservations = SpeechAssetReservations(inventory: native)
+        let blockerGate = AssetGate()
+        let blocker = Task {
+            try await reservations.withInventoryAccess { await blockerGate.wait() }
+        }
+        await blockerGate.waitForEntry()
+        let manager = ModelManager(reservations: reservations, installationRequest: { _ in
+            _ = try await native.reserve(Locale(identifier: "en-US"))
+            return nil
+        })
+        let module = ReservationModule(locales: [Locale(identifier: "en-US")])
+        let preparation = Task { try await manager.ensureAssets(for: [module]) }
+        let deadline = ContinuousClock.now + .seconds(1)
+        while await reservations.queuedOperations < 2, ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(1))
+        }
+        #expect(await reservations.queuedOperations == 2)
+        if cancel { preparation.cancel() } else { await manager.releaseLocales() }
+        await blockerGate.open()
+        try await blocker.value
+        if case .success = await preparation.result { Issue.record("Retired preparation succeeded") }
+        await manager.releaseLocales()
+        #expect(await inventory.snapshot.locales.isEmpty)
+        let successor = ModelManager(reservations: reservations, assetDownloader: { _ in })
+        try await successor.ensureAssets(for: [module])
+        await successor.releaseLocales()
+        #expect(await inventory.snapshot.locales.isEmpty)
+    }
+
     @Test("implicit installation reservations cannot invalidate an explicit acquisition")
     func concurrentInstallationRequest() async throws {
         let inventory = AssetInventoryProbe()
