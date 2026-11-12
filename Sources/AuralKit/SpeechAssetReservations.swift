@@ -19,34 +19,20 @@ actor SpeechAssetReservations {
     }
 
     struct Lease: Hashable, Sendable {
-        fileprivate let id: UUID
+        fileprivate let id = UUID()
+        fileprivate let alias: String
+        fileprivate let protectedKeys: Set<String>
     }
 
     enum ReservationError: Error {
         case ambiguousInventoryChange
     }
 
-    private struct Reservation {
-        let locale: Locale
-        var holders: Set<UUID> = []
-    }
-
-    private struct Alias {
-        let protectedKeys: Set<String>
-        var holders: Set<UUID> = []
-    }
-
-    private struct Holding {
-        let alias: String
-        let protectedKeys: Set<String>
-    }
-
     static let shared = SpeechAssetReservations()
 
     private let inventory: Inventory
-    private var reservations: [String: Reservation] = [:]
-    private var aliases: [String: Alias] = [:]
-    private var holdings: [UUID: Holding] = [:]
+    private var reservations: [String: Locale] = [:]
+    private var leases: Set<Lease> = []
     private var tail: Task<Void, Never>?
     private var queuedOperations = 0
 
@@ -56,17 +42,7 @@ actor SpeechAssetReservations {
 
     func acquire(_ locale: Locale) async throws -> Lease {
         try Task.checkCancellation()
-        let previous = tail
-        queuedOperations += 1
-        let operation = Task {
-            await previous?.value
-            return try await self.acquireSerially(locale)
-        }
-        tail = Task {
-            _ = await operation.result
-            self.operationFinished()
-        }
-        let lease = try await operation.value
+        let lease = try await enqueue { try await self.acquireSerially(locale) }.value
         do {
             try Task.checkCancellation()
             return lease
@@ -79,17 +55,31 @@ actor SpeechAssetReservations {
     }
 
     func release(_ lease: Lease) async {
+        _ = await enqueue { await self.releaseSerially(lease) }.result
+    }
+
+    /// Installation requests also reserve locales; their creation shares this queue.
+    /// The subsequent download must run outside it.
+    func withInventoryAccess<Value: Sendable>(
+        _ operation: @escaping @Sendable () async throws -> Value
+    ) async throws -> Value {
+        try await enqueue(operation).value
+    }
+
+    private func enqueue<Value: Sendable>(
+        _ operation: @escaping @Sendable () async throws -> Value
+    ) -> Task<Value, Error> {
         let previous = tail
         queuedOperations += 1
-        let operation = Task {
+        let task = Task {
             await previous?.value
-            await self.releaseSerially(lease)
+            return try await operation()
         }
         tail = Task {
-            await operation.value
+            _ = await task.result
             self.operationFinished()
         }
-        await operation.value
+        return task
     }
 
     private func operationFinished() {
@@ -102,7 +92,7 @@ actor SpeechAssetReservations {
 
     private func acquireSerially(_ locale: Locale) async throws -> Lease {
         let alias = Self.key(locale)
-        if let known = aliases[alias] {
+        if let known = leases.first(where: { $0.alias == alias }) {
             return admit(alias: alias, protecting: known.protectedKeys)
         }
         if reservations[alias] != nil {
@@ -126,7 +116,7 @@ actor SpeechAssetReservations {
                 throw ReservationError.ambiguousInventoryChange
             }
             if reservations[key] == nil {
-                reservations[key] = Reservation(locale: actual)
+                reservations[key] = actual
             }
             protectedKeys = [key]
         } else if after[alias] != nil {
@@ -144,30 +134,16 @@ actor SpeechAssetReservations {
     }
 
     private func admit(alias: String, protecting keys: Set<String>) -> Lease {
-        let lease = Lease(id: UUID())
-        var entry = aliases[alias] ?? Alias(protectedKeys: keys)
-        entry.holders.insert(lease.id)
-        aliases[alias] = entry
-        holdings[lease.id] = Holding(alias: alias, protectedKeys: keys)
-        for key in keys {
-            reservations[key]?.holders.insert(lease.id)
-        }
+        let lease = Lease(alias: alias, protectedKeys: keys)
+        leases.insert(lease)
         return lease
     }
 
     private func releaseSerially(_ lease: Lease) async {
-        guard let holding = holdings.removeValue(forKey: lease.id) else { return }
-        aliases[holding.alias]?.holders.remove(lease.id)
-        if aliases[holding.alias]?.holders.isEmpty == true {
-            aliases.removeValue(forKey: holding.alias)
-        }
-        for key in holding.protectedKeys {
-            reservations[key]?.holders.remove(lease.id)
-        }
-        for key in holding.protectedKeys {
-            guard let reservation = reservations[key], reservation.holders.isEmpty else { continue }
-            reservations.removeValue(forKey: key)
-            _ = await inventory.release(reservation.locale)
+        guard leases.remove(lease) != nil else { return }
+        for key in lease.protectedKeys where !leases.contains(where: { $0.protectedKeys.contains(key) }) {
+            guard let locale = reservations.removeValue(forKey: key) else { continue }
+            _ = await inventory.release(locale)
         }
     }
 

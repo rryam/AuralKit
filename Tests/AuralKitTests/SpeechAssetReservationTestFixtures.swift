@@ -1,4 +1,6 @@
 import Foundation
+import AVFoundation
+import Speech
 @testable import AuralKit
 
 actor AssetGate {
@@ -16,10 +18,17 @@ actor AssetGate {
         await withCheckedContinuation { waiters.append($0) }
     }
 
+    func waitOnce() async {
+        guard !entered else { return }
+        await wait()
+    }
+
     func waitForEntry() async {
         guard !entered else { return }
         await withCheckedContinuation { arrivals.append($0) }
     }
+
+    var hasOpened: Bool { isOpen }
 
     func open() {
         isOpen = true
@@ -42,7 +51,6 @@ actor AssetInventoryProbe {
     private var releaseCalls: [String] = []
     private var reserveGate: AssetGate?
     private var releaseGate: AssetGate?
-    private var extraLocales: [Locale] = []
 
     init(initial: [Locale] = [], variants: [String: Locale] = [:]) {
         stored = Dictionary(initial.map { ($0.identifier(.bcp47), $0) },
@@ -62,7 +70,6 @@ actor AssetInventoryProbe {
 
     func holdReserve(at gate: AssetGate) { reserveGate = gate }
     func holdRelease(at gate: AssetGate) { releaseGate = gate }
-    func addDuringNextReserve(_ locales: [Locale]) { extraLocales = locales }
     private func locales() -> [Locale] { Array(stored.values) }
 
     private func reserve(_ locale: Locale) async -> Bool {
@@ -73,8 +80,6 @@ actor AssetInventoryProbe {
         let key = actual.identifier(.bcp47)
         guard stored[key] == nil else { return false }
         stored[key] = actual
-        for extra in extraLocales { stored[extra.identifier(.bcp47)] = extra }
-        extraLocales.removeAll()
         return true
     }
 
@@ -83,5 +88,22 @@ actor AssetInventoryProbe {
         releaseCalls.append(key)
         await releaseGate?.wait()
         return stored.removeValue(forKey: key) != nil
+    }
+}
+
+final class ReservationModule: LocaleDependentSpeechModule {
+    struct Result: SpeechModuleResult, Sendable {
+        let range = CMTimeRange.zero
+        let resultsFinalizationTime = CMTime.zero
+    }
+
+    let selectedLocales: [Locale]
+    init(locales: [Locale]) { selectedLocales = locales }
+
+    static var supportedLocales: [Locale] { get async { [] } }
+    static func supportedLocale(equivalentTo locale: Locale) async -> Locale? { nil }
+    var availableCompatibleAudioFormats: [AVAudioFormat] { get async { [] } }
+    var results: AsyncThrowingStream<Result, Error> {
+        AsyncThrowingStream { $0.finish() }
     }
 }
