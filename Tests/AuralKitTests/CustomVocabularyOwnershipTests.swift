@@ -6,11 +6,11 @@ import Testing
 @Suite("Custom vocabulary artifact ownership")
 @MainActor
 struct CustomVocabularyOwnershipTests {
-    private func descriptor(_ version: String = "1") -> SpeechSession.CustomVocabulary {
+    func descriptor(_ version: String = "1") -> SpeechSession.CustomVocabulary {
         .init(locale: Locale(identifier: "en_US"), identifier: "ownership-test", version: version, weight: 0.4)
     }
 
-    private func session(_ preparation: VocabularyPreparation) -> SpeechSession {
+    func session(_ preparation: VocabularyPreparation) -> SpeechSession {
         let session = SpeechSession(locale: Locale(identifier: "en_US"))
         session.customVocabularyCompiler = CustomVocabularyCompiler { descriptor, asset, configuration in
             try await preparation.prepare(descriptor, asset: asset, configuration: configuration)
@@ -63,6 +63,7 @@ struct CustomVocabularyOwnershipTests {
         let preparation = VocabularyPreparation()
         let session = session(preparation)
         let request = Task { @MainActor in
+            defer { preparation.ready.continuation.finish() }
             try await session.configureCustomVocabulary(descriptor("blocked"))
         }
         do {
@@ -120,7 +121,7 @@ struct CustomVocabularyOwnershipTests {
         try await owner!.configureCustomVocabulary(descriptor())
         let directory = try #require(owner?.customVocabularyOutputDirectory)
         // Constructs the real customized module; no asset install or analyzer start.
-        _ = try owner!.createDictationTranscriber()
+        _ = try await owner!.createDictationTranscriber()
         var detached: SpeechSession.DetachedTranscriberState? = owner!.detachTranscriberState()
         try await owner!.configureCustomVocabulary(nil)
         owner = nil
@@ -159,14 +160,14 @@ struct CustomVocabularyOwnershipTests {
         #expect(!FileManager.default.fileExists(atPath: directory.path))
     }
 
-    private func assertFiles(in directory: URL) throws {
+    func assertFiles(in directory: URL) throws {
         #expect(try Data(contentsOf: directory.appendingPathComponent("languageModel.bin")) == Data("model".utf8))
         #expect(try Data(contentsOf: directory.appendingPathComponent("vocabulary.bin")) == Data("vocabulary".utf8))
     }
 }
 
 /// Substitutes only Apple export/preparation, keeping production allocation and configuration.
-private actor VocabularyPreparation {
+actor VocabularyPreparation {
     enum Failure: Error { case expected }
     nonisolated let ready = AsyncStream<URL>.makeStream()
     nonisolated let release = AsyncStream<Void>.makeStream()
