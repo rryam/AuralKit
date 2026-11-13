@@ -1,5 +1,6 @@
 import Testing
 import AVFoundation
+import Speech
 @testable import AuralKit
 
 @Suite("File transcription")
@@ -31,6 +32,24 @@ struct FileTranscriptionTests {
     }
 
 #if swift(>=6.4)
+    @Test("Stopping a file analyzer before it receives input closes the session")
+    @MainActor
+    func stopBeforeAnalyzerInputClosesSession() async throws {
+        let session = SpeechSession()
+        let (results, continuation) = AsyncThrowingStream<SpeechTranscriber.Result, Error>.makeStream()
+        session.analyzer = SpeechAnalyzer(modules: [])
+        session.continuation = .speech(continuation)
+        session.streamingMode = .filePlayback
+        session.setStatus(.preparing)
+
+        try await awaitResult(timeout: 3) { await session.stopTranscribing() }
+
+        var iterator = results.makeAsyncIterator()
+        let nextResult = try await iterator.next()
+        #expect(nextResult == nil)
+        #expect(session.status == .idle)
+    }
+
     @available(iOS 27.0, macOS 27.0, *)
     @Test("Media transcription rejects an unknown audio track without falling back")
     @MainActor

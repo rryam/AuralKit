@@ -306,7 +306,7 @@ extension SpeechSession {
 #endif
         let detached = detachTranscriberState()
         await stopScreenCaptureStreamingIfNeeded()
-        await finalizeDetachedTranscriberState(detached)
+        await finalizeDetachedTranscriberState(detached, cancelAnalysis: cancelRecognizer)
 
         guard generation == sessionGeneration else { return }
         await modelManager.releaseLocales()
