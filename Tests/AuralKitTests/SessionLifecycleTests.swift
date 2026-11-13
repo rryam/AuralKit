@@ -188,6 +188,30 @@ struct SpeechSessionLifecycleTests {
         #expect(session.recognizerTask == nil)
     }
 
+    @Test("Input analysis failure closes results before Finish is called")
+    @MainActor
+    func inputAnalysisFailureClosesResults() async throws {
+        let session = SpeechSession()
+        let (results, resultBuilder) = AsyncThrowingStream<SpeechTranscriber.Result, Error>.makeStream()
+        session.continuation = .speech(resultBuilder)
+        session.recognizerTask = Task { try? await Task.sleep(for: .seconds(10)) }
+        session.streamingMode = .liveMicrophone
+        session.setStatus(.transcribing)
+
+        session.startAnalyzingInput(generation: session.sessionGeneration) {
+            throw SpeechSessionError.invalidAudioDataType
+        }
+
+        do {
+            try await awaitResult(timeout: 3) {
+                for try await _ in results { Issue.record("Expected no results") }
+            }
+            Issue.record("Expected input analysis to fail")
+        } catch SpeechSessionError.invalidAudioDataType {}
+        #expect(session.status == .idle)
+        #expect(session.recognizerTask == nil)
+    }
+
     /// Pausing is only meaningful for live capture; during file transcription it must be
     /// refused (previously, resuming a "paused" file session started the microphone).
     @Test("Pause is refused during file transcription")

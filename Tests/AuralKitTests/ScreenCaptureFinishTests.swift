@@ -81,6 +81,46 @@ struct ScreenCaptureFinishTests {
         }
     }
 
+    @Test("A delegate failure during native stop reaches Finish unless Cancel wins", arguments: [false, true])
+    @MainActor
+    func delegateErrorDuringFinish(cancel: Bool) async throws {
+        guard #available(iOS 27.0, macOS 26.0, *) else { return }
+        try await withCaptureFixture { fixture in
+            let runtime = try CaptureSessionFixture(fixture)
+            let source = ControlledCaptureStream()
+            await fixture.track(runtime.provider.selectStream { source }).value
+            let stopEntered = fixture.gate(), stopRelease = fixture.gate()
+            source.stopEntered = stopEntered
+            source.stopRelease = stopRelease
+            source.stopError = CaptureFixtureError.deadline
+            let (results, continuation) = AsyncThrowingStream<SpeechTranscriber.Result, Error>.makeStream()
+            runtime.session.continuation = .speech(continuation)
+            runtime.session.recognizerTask = Task { try? await Task.sleep(for: .seconds(10)) }
+
+            let finish = fixture.track(Task { await runtime.session.finishTranscribing() })
+            try await stopEntered.wait()
+            runtime.provider.streamDidStop(source, error: CaptureFixtureError.startFailed)
+            if cancel {
+                fixture.track(Task { await runtime.session.cancelTranscribing() })
+                try await waitForCaptureState { runtime.session.cancellationRequested }
+            }
+            stopRelease.open()
+            await finish.value
+
+            do {
+                for try await _ in results {}
+                Issue.record("Expected terminal failure")
+            } catch is CancellationError {
+                #expect(cancel)
+            } catch SpeechSessionError.screenCaptureFailed(let underlyingError) {
+                #expect(!cancel)
+                #expect(underlyingError as? CaptureFixtureError == .startFailed)
+            }
+            #expect(source.stops == 1)
+            #expect(runtime.session.status == .idle)
+        }
+    }
+
     @Test("Cancel wins while the successful screen completion still owns cleanup")
     @MainActor
     func cancelDuringTerminalScreenCleanup() async throws {

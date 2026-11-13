@@ -235,7 +235,7 @@ extension SpeechSession {
         try await prepareAnalyzerForStartIfNeeded(in: format)
         try Task.checkCancellation()
 
-        analyzerInputTask = Task<CMTime?, Error> {
+        startAnalyzingInput(generation: sessionGeneration) {
             try await analyzer.analyzeSequence(inputSequence)
         }
         if Self.shouldLog(.info) {
@@ -243,6 +243,22 @@ extension SpeechSession {
         }
 
         startSpeechDetectorMonitoringIfNeeded()
+    }
+
+    func startAnalyzingInput(
+        generation: Int,
+        analyze: @escaping @MainActor () async throws -> CMTime?
+    ) {
+        analyzerInputTask = Task { [weak self] in
+            do {
+                return try await analyze()
+            } catch {
+                if !Task.isCancelled {
+                    await self?.endTranscription(error: error, generation: generation)
+                }
+                throw error
+            }
+        }
     }
 
     func processAudioBuffer(_ buffer: SendablePCMBuffer, generation: Int) async throws {
