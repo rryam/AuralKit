@@ -117,10 +117,7 @@ struct ScreenCaptureTransitionTests {
             let finish = fixture.track(Task { await runtime.session.finishTranscribing() })
             try await stopEntered.wait()
             #expect(runtime.session.status == .stopping)
-            let format = try #require(AVAudioFormat(standardFormatWithSampleRate: 16_000, channels: 1))
-            let pcm = try #require(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 1))
-            pcm.frameLength = 1
-            let input = AnalyzerInput(buffer: pcm)
+            let input = try makeAnalyzerInput()
             if case .terminated = inputBuilder.yield(input) {
                 Issue.record("The input stream closed before the screen source stopped")
             }
@@ -145,6 +142,16 @@ struct ScreenCaptureTransitionTests {
             await finish.value
             #expect(runtime.session.status == .idle)
         }
+    }
+
+    private func makeAnalyzerInput() throws -> AnalyzerInput {
+        let format = try #require(AVAudioFormat(
+            commonFormat: .pcmFormatInt16, sampleRate: 16_000, channels: 1, interleaved: true
+        ))
+        let pcm = try #require(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 160))
+        pcm.frameLength = 160
+        pcm.int16ChannelData?.pointee.initialize(repeating: 0, count: 160)
+        return AnalyzerInput(buffer: pcm)
     }
 
     @Test("Concurrent public stops join a replacement start and its compensating stop")
