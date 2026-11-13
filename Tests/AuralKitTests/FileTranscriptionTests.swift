@@ -30,6 +30,28 @@ struct FileTranscriptionTests {
         }
     }
 
+#if swift(>=6.4)
+    @available(iOS 27.0, macOS 27.0, *)
+    @Test("Media transcription rejects an unknown audio track without falling back")
+    @MainActor
+    func mediaTranscriptionRejectsUnknownTrack() async throws {
+        let url = try createSilenceAudioFile(duration: 2.0)
+        defer { try? FileManager.default.removeItem(at: url) }
+        let asset = AVURLAsset(url: url)
+        let tracks = try await asset.loadTracks(withMediaType: .audio)
+        let track = try #require(tracks.first)
+        let session = SpeechSession()
+
+        let stream = session.streamTranscription(fromMediaFile: url, audioTrackID: track.trackID + 1)
+        do {
+            for try await _ in stream { }
+            Issue.record("Expected the unknown track to be rejected")
+        } catch SpeechSessionError.audioFileUnsupportedFormat(let reason) {
+            #expect(reason.contains("\(track.trackID + 1)"))
+        }
+    }
+#endif
+
     private func createSilenceAudioFile(duration: TimeInterval, sampleRate: Double = 44_100) throws -> URL {
         let tempURL = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString)
