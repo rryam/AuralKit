@@ -441,8 +441,10 @@ extension SpeechSession {
 
             do {
                 for try await result in results {
+                    try Task.checkCancellation()
                     streamContinuation.yield(result)
                 }
+                try Task.checkCancellation()
                 if Self.shouldLog(.notice) {
                     Self.logger.notice("\(label, privacy: .public) completed without error")
                 }
@@ -452,6 +454,7 @@ extension SpeechSession {
                     Self.logger.debug("\(label, privacy: .public) cancelled")
                 }
             } catch {
+                guard !Task.isCancelled else { return }
                 if Self.shouldLog(.error) {
                     Self.logger.error(
                         "\(label, privacy: .public) failed: \(error.localizedDescription, privacy: .public)"

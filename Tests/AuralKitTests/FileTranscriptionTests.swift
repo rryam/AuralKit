@@ -62,6 +62,36 @@ struct FileTranscriptionTests {
         #expect(session.status == .idle)
     }
 
+    @Test("A cancelled recognizer cannot hide a file read error")
+    @MainActor
+    func fileReadErrorSurvivesRecognizerCancellation() async throws {
+        let session = SpeechSession()
+        let output = AsyncThrowingStream<SpeechTranscriber.Result, Error>.makeStream()
+        let results = AsyncStream<SpeechTranscriber.Result>.makeStream()
+        let generation = session.beginStreamGeneration()
+        session.continuation = .speech(output.continuation)
+        session.streamingMode = .filePlayback
+        session.setStatus(.transcribing)
+        let recognizer = session.createRecognizerTask(
+            label: "File recognizer", results: results.stream,
+            streamContinuation: output.continuation, generation: generation
+        )
+        session.recognizerTask = recognizer
+        session.startFileIngestion(generation: generation) { _ in
+            throw SpeechSessionError.audioFileReadFailed(nil)
+        }
+        let ingestion = try #require(session.fileIngestionTask)
+
+        await recognizer.value
+        await ingestion.value
+        var iterator = output.stream.makeAsyncIterator()
+        do {
+            _ = try await iterator.next()
+            Issue.record("Expected the file read error to reach the transcription stream")
+        } catch SpeechSessionError.audioFileReadFailed { }
+        #expect(session.status == .idle)
+    }
+
     @available(iOS 27.0, macOS 27.0, *)
     @Test("Media transcription rejects an unknown audio track without falling back")
     @MainActor
