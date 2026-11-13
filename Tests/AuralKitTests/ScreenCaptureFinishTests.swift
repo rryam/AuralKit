@@ -1,5 +1,6 @@
 #if canImport(ScreenCaptureKit)
 import AVFoundation
+import Foundation
 import Speech
 import Testing
 @testable import AuralKit
@@ -202,6 +203,25 @@ struct ScreenCaptureFinishTests {
     @MainActor
     private func fixtureWaitForPickerError(_ gate: CaptureGate) async {
         await Task { try? await gate.wait() }.value
+    }
+
+    @Test("Native stop sees delegate ingress before its main actor hop", arguments: [false, true])
+    @MainActor
+    func nativeStopSeesDelegateIngress(nativeThrows: Bool) async throws {
+        let active = NSObject(), stale = NSObject()
+        let activeID = ObjectIdentifier(active)
+        let errors = ScreenCaptureStopErrors()
+        errors.start(activeID)
+        errors.record(CaptureFixtureError.deadline, for: ObjectIdentifier(stale))
+        do {
+            try await errors.stop(activeID) {
+                errors.record(CaptureFixtureError.startFailed, for: activeID)
+                if nativeThrows { throw CaptureFixtureError.deadline }
+            }
+            Issue.record("Expected the delegate failure")
+        } catch SpeechSessionError.screenCaptureFailed(let underlyingError) {
+            #expect(underlyingError as? CaptureFixtureError == .startFailed)
+        }
     }
 
     private func makeAnalyzerInput() throws -> AnalyzerInput {

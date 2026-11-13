@@ -3,6 +3,7 @@ import CoreMedia
 import Foundation
 import OSLog
 import Speech
+import Synchronization
 
 // swiftlint:disable file_length
 
@@ -220,20 +221,66 @@ extension SpeechSession {
     }
 }
 
+// ScreenCaptureKit can call its delegate before the asynchronous stop returns while the
+// delegate's main-actor work is still queued. Keep the ingress error until stop observes it.
+final class ScreenCaptureStopErrors: Sendable {
+    private struct State {
+        var streamID: ObjectIdentifier?
+        var error: Error?
+    }
+
+    private let state = Mutex(State())
+
+    func start(_ streamID: ObjectIdentifier) {
+        state.withLock { $0 = State(streamID: streamID) }
+    }
+
+    func record(_ error: Error, for streamID: ObjectIdentifier) {
+        state.withLock {
+            guard $0.streamID == streamID, $0.error == nil else { return }
+            $0.error = error
+        }
+    }
+
+    @MainActor
+    func stop(_ streamID: ObjectIdentifier, nativeStop: () async throws -> Void) async throws {
+        let nativeError: Error?
+        do {
+            try await nativeStop()
+            nativeError = nil
+        } catch {
+            nativeError = error
+        }
+        let delegateError = state.withLock {
+            guard $0.streamID == streamID else { return nil as Error? }
+            let error = $0.error
+            if error != nil || nativeError == nil { $0 = State() }
+            return error
+        }
+        if let delegateError {
+            throw SpeechSessionError.screenCaptureFailed(delegateError)
+        }
+        if let nativeError { throw nativeError }
+    }
+}
+
 @available(iOS 27.0, macOS 14.0, *)
 @MainActor
 private final class NativeScreenCaptureStream: ScreenCaptureStream {
     let stream: SCStream
     private let audio: ScreenCaptureAudioProcessor
+    private let stopErrors: ScreenCaptureStopErrors
 
-    init(stream: SCStream, audio: ScreenCaptureAudioProcessor) {
+    init(stream: SCStream, audio: ScreenCaptureAudioProcessor, stopErrors: ScreenCaptureStopErrors) {
         self.stream = stream
         self.audio = audio
+        self.stopErrors = stopErrors
     }
 
     func startCapture() async throws {
         defer { logCaptureState(after: "startCapture") }
         let id = ObjectIdentifier(stream)
+        stopErrors.start(id)
         audio.start(id)
         do {
             try await stream.startCapture()
@@ -245,8 +292,9 @@ private final class NativeScreenCaptureStream: ScreenCaptureStream {
 
     func stopCapture() async throws {
         defer { logCaptureState(after: "stopCapture") }
-        try await stream.stopCapture()
-        if let error = audio.drain(ObjectIdentifier(stream)) {
+        let id = ObjectIdentifier(stream)
+        try await stopErrors.stop(id) { try await stream.stopCapture() }
+        if let error = audio.drain(id) {
             throw ScreenCaptureDrainFailure(underlyingError: error)
         }
     }
@@ -277,6 +325,7 @@ final class ScreenCaptureAudioInputProvider: NSObject, SCStreamOutput, SCStreamD
     private let targetFormat: AVAudioFormat
     private let onTermination: @Sendable (Error?) -> Task<Void, Never>
     private let audio: ScreenCaptureAudioProcessor
+    private let stopErrors = ScreenCaptureStopErrors()
 
     @MainActor private let transitions: ScreenCaptureTransitions
     @MainActor private var terminalCleanupTask: Task<Void, Never>?
@@ -399,7 +448,7 @@ final class ScreenCaptureAudioInputProvider: NSObject, SCStreamOutput, SCStreamD
                 configuration.height = 2
                 let capture = SCStream(filter: selectedFilter, configuration: configuration, delegate: self)
                 try capture.addStreamOutput(self, type: .audio, sampleHandlerQueue: audio.queue)
-                return NativeScreenCaptureStream(stream: capture, audio: audio)
+                return NativeScreenCaptureStream(stream: capture, audio: audio, stopErrors: stopErrors)
             }
         }
     }
@@ -421,6 +470,9 @@ final class ScreenCaptureAudioInputProvider: NSObject, SCStreamOutput, SCStreamD
     }
 
     func stream(_ stream: SCStream, didStopWithError error: any Error) {
+        if !Self.isUserStop(error) {
+            stopErrors.record(error, for: ObjectIdentifier(stream))
+        }
         Task { @MainActor [weak self] in
             guard let self, let current = self.transitions.stream as? NativeScreenCaptureStream,
                   current.stream === stream else { return }
@@ -493,9 +545,7 @@ final class ScreenCaptureAudioInputProvider: NSObject, SCStreamOutput, SCStreamD
 
     @MainActor
     func streamDidStop(_ stream: any ScreenCaptureStream, error: Error) {
-        let nativeError = error as NSError
-        let userStopped = nativeError.domain == SCStreamError.errorDomain
-            && nativeError.code == SCStreamError.Code.userStopped.rawValue
+        let userStopped = Self.isUserStop(error)
         var failure: Error? = userStopped ? nil : SpeechSessionError.screenCaptureFailed(error)
         if let nativeStream = stream as? NativeScreenCaptureStream {
             let id = ObjectIdentifier(nativeStream.stream)
@@ -509,6 +559,12 @@ final class ScreenCaptureAudioInputProvider: NSObject, SCStreamOutput, SCStreamD
         guard !stopped, isCurrent else { return }
         stopped = true
         terminalCleanupTask = onTermination(failure)
+    }
+
+    private static func isUserStop(_ error: Error) -> Bool {
+        let nativeError = error as NSError
+        return nativeError.domain == SCStreamError.errorDomain
+            && nativeError.code == SCStreamError.Code.userStopped.rawValue
     }
 }
 #else
