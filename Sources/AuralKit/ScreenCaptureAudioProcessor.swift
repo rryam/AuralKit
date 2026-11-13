@@ -92,7 +92,11 @@ private func copyPCMBuffer(_ sample: CMSampleBuffer, format: AVAudioFormat) thro
         throw SpeechSessionError.conversionBufferCreationFailed
     }
     buffer.frameLength = frameCount
-    try sample.copyPCMData(fromRange: 0..<sample.numSamples, into: buffer.mutableAudioBufferList)
+    do {
+        try sample.copyPCMData(fromRange: 0..<sample.numSamples, into: buffer.mutableAudioBufferList)
+    } catch {
+        throw SpeechSessionError.screenCaptureFailed(error)
+    }
     return buffer
 }
 
