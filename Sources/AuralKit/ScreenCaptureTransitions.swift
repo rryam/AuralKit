@@ -12,6 +12,12 @@ protocol ScreenCaptureStream: AnyObject {
 @available(iOS 26.0, macOS 14.0, *)
 @MainActor
 final class ScreenCaptureTransitions {
+    private struct TerminalFailure {
+        let control: UUID
+        let error: Error
+        let operation: Task<Void, Error>?
+    }
+
     enum DesiredState { case running, paused, stopped }
     private(set) var desiredState = DesiredState.running
     private(set) var stream: (any ScreenCaptureStream)?
@@ -21,6 +27,7 @@ final class ScreenCaptureTransitions {
     private var terminatedStream: ObjectIdentifier?
     private var controlRevision = UUID()
     private var tail: Task<Void, Error>?
+    private var terminalFailure: TerminalFailure?
 
     // Synchronous admission returns the owned handle before any capture call can suspend.
     func replace(makeStream: @escaping @MainActor () throws -> any ScreenCaptureStream) -> Task<Void, Error> {
@@ -65,11 +72,12 @@ final class ScreenCaptureTransitions {
         desiredState != .stopped && stream === expectedStream && streamRevision == revision
     }
 
-    func didStop(_ expectedStream: any ScreenCaptureStream) -> Bool {
+    func didStop(_ expectedStream: any ScreenCaptureStream, error: Error?) -> Bool {
         guard stream === expectedStream else { return false }
         terminatedStream = ObjectIdentifier(expectedStream)
         isRunning = false
         guard isCurrent(expectedStream) else { return false }
+        if let error { terminalFailure = TerminalFailure(control: controlRevision, error: error, operation: tail) }
         controlRevision = UUID()
         desiredState = .stopped
         return true
@@ -92,7 +100,7 @@ final class ScreenCaptureTransitions {
 
     func resume(
         onCompletion: @escaping @MainActor (Result<Void, Error>) -> Void
-    ) -> Task<Void, Never> {
+    ) -> Task<Error?, Never> {
         let control = UUID()
         controlRevision = control
         desiredState = desiredState == .stopped ? .stopped : .running
@@ -104,14 +112,18 @@ final class ScreenCaptureTransitions {
             var pending = operation
             while true {
                 let result = await pending.result
-                guard self.desiredState == .running, self.controlRevision == control else { return }
+                if let terminal = self.terminalFailure, terminal.control == control {
+                    _ = await terminal.operation?.result
+                    return terminal.error
+                }
+                guard self.desiredState == .running, self.controlRevision == control else { return nil }
                 if self.revision != selection, let successor = self.tail {
                     selection = self.revision
                     pending = successor
                     continue
                 }
                 onCompletion(result)
-                return
+                return nil
             }
         }
     }

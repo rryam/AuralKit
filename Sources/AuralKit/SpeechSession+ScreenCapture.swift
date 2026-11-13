@@ -10,6 +10,7 @@ extension SpeechSession {
     func resumeScreenCaptureStreamingIfNeeded(generation: Int) async throws {
         guard generation == sessionGeneration, status == .paused, streamingMode == .screenCapture else { return }
         var captureFailure: Error?
+        var terminalFailure: Error?
         do {
 #if canImport(ScreenCaptureKit)
             guard #available(iOS 27.0, macOS 14.0, *) else {
@@ -18,7 +19,7 @@ extension SpeechSession {
             guard let provider = screenCaptureInputProvider as? ScreenCaptureAudioInputProvider else {
                 throw SpeechSessionError.recognitionStreamSetupFailed
             }
-            await provider.resume { result in
+            terminalFailure = await provider.resume { result in
                 guard generation == self.sessionGeneration,
                       self.status == .paused, self.streamingMode == .screenCapture else { return }
                 switch result {
@@ -41,6 +42,7 @@ extension SpeechSession {
             await finishStream(error: error, generation: generation)
             throw error
         }
+        if let terminalFailure { throw terminalFailure }
     }
 }
 
@@ -302,7 +304,7 @@ final class ScreenCaptureAudioInputProvider: NSObject, SCStreamOutput, SCStreamD
     }
 
     @MainActor
-    func resume(onCompletion: @escaping @MainActor (Result<Void, Error>) -> Void) async {
+    func resume(onCompletion: @escaping @MainActor (Result<Void, Error>) -> Void) async -> Error? {
         await transitions.resume(onCompletion: onCompletion).value
     }
 
@@ -475,13 +477,14 @@ final class ScreenCaptureAudioInputProvider: NSObject, SCStreamOutput, SCStreamD
 
     @MainActor
     func streamDidStop(_ stream: any ScreenCaptureStream, error: Error) {
-        let isCurrent = transitions.didStop(stream)
-        guard !stopped, isCurrent else { return }
-        stopped = true
         let nativeError = error as NSError
         let userStopped = nativeError.domain == SCStreamError.errorDomain
             && nativeError.code == SCStreamError.Code.userStopped.rawValue
-        onTermination(userStopped ? nil : SpeechSessionError.screenCaptureFailed(error))
+        let failure: Error? = userStopped ? nil : SpeechSessionError.screenCaptureFailed(error)
+        let isCurrent = transitions.didStop(stream, error: failure)
+        guard !stopped, isCurrent else { return }
+        stopped = true
+        onTermination(failure)
     }
 }
 #else
