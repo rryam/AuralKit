@@ -157,12 +157,12 @@ private extension SpeechSession {
                 guard let self else { return }
 
                 do {
-                    let completed = try await self.feedAudioFile(validation, progressHandler: handler)
+                    let completed = try await self.feedAudioFile(
+                        validation, progressHandler: handler, generation: generation
+                    )
 
                     if completed, let handler {
-                        await MainActor.run {
-                            handler(1.0)
-                        }
+                        self.reportFileProgress(1.0, handler: handler, generation: generation)
                     }
                 } catch is CancellationError {
                     // Swallow cancellation triggered by cleanup.
@@ -275,7 +275,8 @@ private extension SpeechSession {
 
     nonisolated func feedAudioFile(
         _ payload: (file: AVAudioFile, totalFrames: AVAudioFramePosition),
-        progressHandler: (@Sendable (Double) -> Void)?
+        progressHandler: (@Sendable (Double) -> Void)?,
+        generation: Int
     ) async throws -> Bool {
 #if swift(>=6.4)
         if #available(iOS 27.0, macOS 27.0, *),
@@ -324,9 +325,7 @@ private extension SpeechSession {
 
             if let progressHandler, totalFrames > 0 {
                 let progress = min(1.0, max(0.0, Double(processedFrames) / Double(totalFrames)))
-                await MainActor.run {
-                    progressHandler(progress)
-                }
+                await reportFileProgress(progress, handler: progressHandler, generation: generation)
             }
         }
 
@@ -346,4 +345,16 @@ private extension SpeechSession {
         return false
     }
 
+}
+
+extension SpeechSession {
+    func reportFileProgress(
+        _ progress: Double,
+        handler: @Sendable (Double) -> Void,
+        generation: Int
+    ) {
+        guard !Task.isCancelled, generation == sessionGeneration,
+              streamingMode == .filePlayback, status == .transcribing else { return }
+        handler(progress)
+    }
 }
