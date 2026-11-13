@@ -47,10 +47,7 @@ private extension SpeechSession {
                 ))
             }
             let url = try sanitizeAudioFileURL(mediaFile, allowedDirectories: options.allowedDirectories)
-            let asset = AVURLAsset(url: url, options: [
-                AVURLAssetReferenceRestrictionsKey: AVAssetReferenceRestrictions.forbidAll.rawValue,
-                AVURLAssetPreferPreciseDurationAndTimingKey: options.maxDuration != nil
-            ])
+            let asset = Self.makeMediaAsset(url: url, needsPreciseDuration: options.maxDuration != nil)
             let track = try await loadAudioTrack(from: asset, id: audioTrackID, maxDuration: options.maxDuration)
             try Task.checkCancellation()
             try await ensureSpeechRecognitionAuthorization(context: "for media file transcription")
@@ -87,6 +84,16 @@ private extension SpeechSession {
         } catch {
             await finishFailedPipelineSetup(error, generation: generation)
         }
+    }
+
+    static func makeMediaAsset(url: URL, needsPreciseDuration: Bool) -> AVURLAsset {
+        var options: [String: Any] = [
+            AVURLAssetReferenceRestrictionsKey: AVAssetReferenceRestrictions.forbidAll.rawValue
+        ]
+        if needsPreciseDuration {
+            options[AVURLAssetPreferPreciseDurationAndTimingKey] = true
+        }
+        return AVURLAsset(url: url, options: options)
     }
 
     func loadAudioTrack(
