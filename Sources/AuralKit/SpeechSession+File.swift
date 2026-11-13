@@ -219,6 +219,7 @@ extension SpeechSession {
         with streamContinuation: AsyncThrowingStream<SpeechTranscriber.Result, Error>.Continuation,
         contextualStrings: [AnalysisContext.ContextualStringsTag: [String]]?,
         startAnalyzerImmediately: Bool,
+        mode: StreamingMode = .filePlayback,
         generation: Int
     ) async throws {
         if Self.shouldLog(.notice) {
@@ -238,7 +239,7 @@ extension SpeechSession {
             generation: generation
         )
 
-        streamingMode = .filePlayback
+        streamingMode = mode
         setStatus(.transcribing)
         if Self.shouldLog(.info) {
             Self.logger.info("File transcription pipeline active (mode: file playback)")
@@ -324,6 +325,7 @@ extension SpeechSession {
     typealias FileResultContinuation = AsyncThrowingStream<SpeechTranscriber.Result, Error>.Continuation
 
     func startFileTranscription(
+        mode: StreamingMode = .filePlayback,
         _ setup: @escaping @MainActor (SpeechSession, FileResultContinuation, Int) async -> Void
     ) -> AsyncThrowingStream<SpeechTranscriber.Result, Error> {
         let (stream, newContinuation) = AsyncThrowingStream<SpeechTranscriber.Result, Error>.makeStream()
@@ -338,6 +340,7 @@ extension SpeechSession {
                 await self?.handleStreamTermination(generation: generation)
             }
         }
+        if mode == .mediaPlayback { streamingMode = mode }
         setStatus(.preparing)
         continuation = .speech(newContinuation)
         pipelineTask = Task { @MainActor [weak self] in

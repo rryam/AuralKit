@@ -20,7 +20,7 @@ public extension SpeechSession {
         audioTrackID: CMPersistentTrackID? = nil,
         options: FileTranscriptionOptions = .init()
     ) -> AsyncThrowingStream<SpeechTranscriber.Result, Error> {
-        startFileTranscription { session, continuation, generation in
+        startFileTranscription(mode: .mediaPlayback) { session, continuation, generation in
             await session.startMediaFilePipeline(
                 mediaFile, audioTrackID: audioTrackID, options: options,
                 continuation: continuation, generation: generation
@@ -41,10 +41,7 @@ private extension SpeechSession {
         do {
             try Task.checkCancellation()
             guard inputProviderPreference == .automatic else {
-                throw SpeechSessionError.audioFileUnsupportedFormat(NSLocalizedString(
-                    "media transcription requires the automatic input provider",
-                    comment: "Media files cannot use the legacy audio input pipeline"
-                ))
+                throw MediaTranscriptionConfigurationError()
             }
             let url = try sanitizeAudioFileURL(mediaFile, allowedDirectories: options.allowedDirectories)
             let asset = Self.makeMediaAsset(url: url, needsPreciseDuration: options.maxDuration != nil)
@@ -56,6 +53,7 @@ private extension SpeechSession {
                 with: continuation,
                 contextualStrings: options.contextualStrings,
                 startAnalyzerImmediately: false,
+                mode: .mediaPlayback,
                 generation: generation
             )
             try Task.checkCancellation()
@@ -126,6 +124,22 @@ private extension SpeechSession {
             throw SpeechSessionError.audioFileTooLong(maximum: maxDuration, actual: duration)
         }
         return track
+    }
+}
+
+private struct MediaTranscriptionConfigurationError: LocalizedError {
+    var errorDescription: String? {
+        NSLocalizedString(
+            "Media transcription requires the automatic input provider.",
+            comment: "Media files cannot use the legacy audio input pipeline"
+        )
+    }
+
+    var recoverySuggestion: String? {
+        NSLocalizedString(
+            "Create a SpeechSession with inputProviderPreference set to .automatic.",
+            comment: "How to enable media transcription"
+        )
     }
 }
 #endif

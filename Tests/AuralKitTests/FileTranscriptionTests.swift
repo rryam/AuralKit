@@ -32,7 +32,7 @@ struct FileTranscriptionTests {
     }
 
 #if swift(>=6.4)
-    @Test("Stopping a file analyzer before it receives input closes the session")
+    @Test("Stopping a media analyzer before it receives input closes the session")
     @MainActor
     func stopBeforeAnalyzerInputClosesSession() async throws {
         let session = SpeechSession()
@@ -40,7 +40,7 @@ struct FileTranscriptionTests {
         let analyzer = SpeechAnalyzer(modules: [])
         session.analyzer = analyzer
         session.continuation = .speech(continuation)
-        session.streamingMode = .filePlayback
+        session.streamingMode = .mediaPlayback
         session.setStatus(.preparing)
 
         let watchdog = Task {
@@ -71,7 +71,7 @@ struct FileTranscriptionTests {
         session.analyzer = SpeechAnalyzer(modules: [transcriber])
         let generation = session.beginStreamGeneration()
         session.continuation = .speech(output.continuation)
-        session.streamingMode = .filePlayback
+        session.streamingMode = .mediaPlayback
         session.setStatus(.transcribing)
         let recognizer = session.createSpeechRecognizerTask(
             transcriber: transcriber, streamContinuation: output.continuation, generation: generation
