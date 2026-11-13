@@ -364,6 +364,9 @@ final class ScreenCaptureAudioInputProvider: NSObject, SCStreamOutput, SCStreamD
                 try await operation.value
             } catch {
                 audio.discard()
+                if let drainFailure = error as? ScreenCaptureDrainFailure {
+                    throw SpeechSessionError.screenCaptureFailed(drainFailure.underlyingError)
+                }
                 throw error
             }
         }
