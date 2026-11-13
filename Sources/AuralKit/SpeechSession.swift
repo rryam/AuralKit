@@ -110,6 +110,7 @@ public final class SpeechSession {
     // Voice activation state
     var speechDetectorResultsContinuation: AsyncStream<SpeechDetector.Result>.Continuation?
     var speechDetectorResultsTask: Task<Void, Never>?
+    var speechDetectorMonitorID: UUID?
 
     // MARK: - Init
 

@@ -28,6 +28,7 @@ extension SpeechSession {
     }
 
     func tearDownSpeechDetectorStream() {
+        speechDetectorMonitorID = nil
         speechDetectorResultsTask?.cancel()
         speechDetectorResultsTask = nil
         speechDetectorResultsContinuation?.finish()
@@ -42,29 +43,26 @@ extension SpeechSession {
     func startSpeechDetectorMonitoring() {
         guard let detector = speechDetector else { return }
 
+        let monitorID = UUID()
+        speechDetectorMonitorID = monitorID
         speechDetectorResultsTask?.cancel()
         if Self.shouldLog(.debug) {
             Self.logger.debug("Starting speech detector monitoring")
         }
-        speechDetectorResultsTask = Task<Void, Never> { [weak self] in
+        speechDetectorResultsTask = Task<Void, Never> { @MainActor [weak self] in
             guard let self else { return }
             do {
                 for try await result in detector.results {
-                    await MainActor.run {
-                        self.handleSpeechDetectorResult(result)
-                    }
+                    guard self.speechDetectorMonitorID == monitorID else { return }
+                    self.handleSpeechDetectorResult(result)
                 }
             } catch {
                 let finalError = (error as? CancellationError) != nil ? nil : error
-                await MainActor.run {
-                    self.handleSpeechDetectorStreamCompletion(error: finalError)
-                }
+                self.handleSpeechDetectorStreamCompletion(error: finalError, monitorID: monitorID)
                 return
             }
 
-            await MainActor.run {
-                self.handleSpeechDetectorStreamCompletion(error: nil)
-            }
+            self.handleSpeechDetectorStreamCompletion(error: nil, monitorID: monitorID)
             if Self.shouldLog(.notice) {
                 Self.logger.notice("Speech detector monitoring completed")
             }
@@ -86,7 +84,9 @@ extension SpeechSession {
         }
     }
 
-    func handleSpeechDetectorStreamCompletion(error: Error?) {
+    func handleSpeechDetectorStreamCompletion(error: Error?, monitorID: UUID) {
+        guard speechDetectorMonitorID == monitorID else { return }
+        speechDetectorMonitorID = nil
         defer { speechDetectorResultsTask = nil }
 
         if let continuation = speechDetectorResultsContinuation {
