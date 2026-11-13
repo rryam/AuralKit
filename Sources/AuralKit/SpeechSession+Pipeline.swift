@@ -236,14 +236,19 @@ extension SpeechSession {
         }
 
         prepareForStop()
+        let screenStop = beginStoppingScreenCapture()
         let task = Task {
-            await finishLiveTranscription(results: recognizerTask, generation: generation)
+            await finishLiveTranscription(results: recognizerTask, screenStop: screenStop, generation: generation)
         }
         finishTask = task
         await task.value
     }
 
-    private func finishLiveTranscription(results: Task<Void, Never>, generation: Int) async {
+    private func finishLiveTranscription(
+        results: Task<Void, Never>,
+        screenStop: Task<Void, Never>?,
+        generation: Int
+    ) async {
         guard generation == sessionGeneration else { return }
         if let terminationTask {
             await terminationTask.value
@@ -256,7 +261,7 @@ extension SpeechSession {
             nativeCaptureSession = nil
             await nativeCaptureAnalysisTask.value
         } else {
-            await stopScreenCaptureStreamingIfNeeded()
+            await screenStop?.value
             guard generation == sessionGeneration else { return }
             if let terminationTask {
                 await terminationTask.value
@@ -285,8 +290,9 @@ extension SpeechSession {
         }
         prepareForStop()
         pipelineTask?.cancel()
+        let screenStop = beginStoppingScreenCapture()
         let task = Task {
-            await cleanup(cancelRecognizer: cancelRecognizer, generation: generation)
+            await cleanup(cancelRecognizer: cancelRecognizer, screenStop: screenStop, generation: generation)
             guard generation == sessionGeneration else { return }
             finishTask = nil
             terminationTask = nil
@@ -303,7 +309,11 @@ extension SpeechSession {
     /// slow finalization steps then operate on the detached references. Steps that touch shared
     /// state after a suspension re-check `generation` so a stale teardown cannot damage a newer
     /// session.
-    func cleanup(cancelRecognizer: Bool, generation: Int) async {
+    func cleanup(
+        cancelRecognizer: Bool,
+        screenStop: Task<Void, Never>? = nil,
+        generation: Int
+    ) async {
         guard generation == sessionGeneration else { return }
         if Self.shouldLog(.debug) {
             Self.logger.debug("Cleanup started (cancelRecognizer: \(cancelRecognizer, privacy: .public))")
@@ -338,7 +348,8 @@ extension SpeechSession {
 #endif
         let detached = detachTranscriberState()
         await cleanUpDetachedTranscriberState(detached, cancelAnalyzer: cancelRecognizer)
-        await stopScreenCaptureStreamingIfNeeded()
+        await screenStop?.value
+        if screenCaptureStopTask?.generation == generation { screenCaptureStopTask = nil }
 
         guard generation == sessionGeneration else { return }
         await modelManager.releaseLocales()

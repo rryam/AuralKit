@@ -205,20 +205,18 @@ extension SpeechSession {
         setStatus(.paused)
     }
 
-    func stopScreenCaptureStreamingIfNeeded() async {
+    func beginStoppingScreenCapture() -> Task<Void, Never>? {
         let generation = sessionGeneration
         if let pending = screenCaptureStopTask, pending.generation == generation {
-            await pending.task.value
-            return
+            return pending.task
         }
         let detachedProvider = screenCaptureInputProvider
         screenCaptureInputProvider = nil
-        guard #available(iOS 27.0, macOS 14.0, *) else { return }
-        guard let provider = detachedProvider as? ScreenCaptureAudioInputProvider else { return }
+        guard #available(iOS 27.0, macOS 14.0, *) else { return nil }
+        guard let provider = detachedProvider as? ScreenCaptureAudioInputProvider else { return nil }
         let task = provider.stop()
         screenCaptureStopTask = (generation, task)
-        await task.value
-        if screenCaptureStopTask?.generation == generation { screenCaptureStopTask = nil }
+        return task
     }
 }
 
@@ -521,8 +519,9 @@ public extension SpeechSession {
 extension SpeechSession {
     func pauseScreenCaptureStreamingIfNeeded(generation: Int) async {}
 
-    func stopScreenCaptureStreamingIfNeeded() async {
+    func beginStoppingScreenCapture() -> Task<Void, Never>? {
         screenCaptureInputProvider = nil
+        return nil
     }
 }
 #endif
