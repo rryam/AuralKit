@@ -182,6 +182,32 @@ struct ScreenCaptureTransitionTests {
         }
     }
 
+    @Test("A terminal stop receives a drain failure from an in-flight pause")
+    @MainActor
+    func stopReceivesDrainFailureFromPause() async throws {
+        try await withCaptureFixture { fixture in
+            let transitions = ScreenCaptureTransitions()
+            let stream = ControlledCaptureStream()
+            try await transitions.replace { stream }.value
+            let entered = fixture.gate(), release = fixture.gate()
+            stream.stopEntered = entered
+            stream.stopRelease = release
+            stream.onStop = { stream.capturing = false }
+            stream.stopError = ScreenCaptureDrainFailure(underlyingError: CaptureFixtureError.startFailed)
+
+            let pause = fixture.track(transitions.pause())
+            try await entered.wait()
+            let stop = fixture.track(transitions.stop())
+            release.open()
+
+            let pauseError = await pause.result
+            let stopError = await stop.result
+            #expect(throws: ScreenCaptureDrainFailure.self) { try pauseError.get() }
+            #expect(throws: ScreenCaptureDrainFailure.self) { try stopError.get() }
+            #expect(!stream.capturing && stream.stops == 1 && transitions.stream == nil)
+        }
+    }
+
     @Test("A failed native pause keeps the public status transcribing", arguments: [false, true])
     @MainActor
     func failedPause(replaceAfterFailure: Bool) async throws {
