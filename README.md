@@ -6,7 +6,7 @@
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Swift Package Manager](https://img.shields.io/badge/SPM-compatible-brightgreen.svg)](https://swift.org/package-manager)
 [![GitHub release](https://img.shields.io/github/release/rryam/AuralKit.svg)](https://github.com/rryam/AuralKit/releases)
-[![Codemagic build status](https://api.codemagic.io/apps/6858c0b3eab03a007ef8b1f6/auralkit/status_badge.svg)](https://codemagic.io/app/6858c0b3eab03a007ef8b1f6/auralkit/latest_build)
+[![CI](https://github.com/rryam/AuralKit/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/rryam/AuralKit/actions/workflows/ci.yml)
 
 AuralKit is a simple, lightweight Swift wrapper for speech-to-text transcription using iOS 26's `SpeechTranscriber` and `SpeechAnalyzer` APIs while handling microphone capture, buffer conversion, model downloads, and cancellation on your behalf.
 
@@ -53,6 +53,8 @@ AuralKit is a simple, lightweight Swift wrapper for speech-to-text transcription
 ## Acknowledgements
 
 This project would not have been possible without Apple's excellent sample code. The implementation is heavily inspired by [Bringing advanced speech-to-text capabilities to your app](https://developer.apple.com/documentation/Speech/bringing-advanced-speech-to-text-capabilities-to-your-app), which shows how to add live speech-to-text transcription with `SpeechAnalyzer`.
+
+`BufferConverter` adapts the sample's `Helpers/BufferConversion.swift`. Apple's original notice is retained in [LICENSE-Apple-SpeechExample.txt](LICENSE-Apple-SpeechExample.txt), from the [published sample download](https://docs-assets.developer.apple.com/published/e40c20fc5641/BringingAdvancedSpeechToTextCapabilitiesToYourApp.zip). AuralKit adds concurrency annotations, package-specific errors and input-format invalidation; the converter is not an unchanged copy.
 
 ## Quick Start
 
