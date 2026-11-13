@@ -188,13 +188,19 @@ class TranscriptionManager {
     private func finishSession(locale: Locale) {
         let transcript = String(finalizedText.characters)
         if !transcript.isEmpty {
+            let ranges = finalizedText.runs.compactMap(\.audioTimeRange)
+            let timeRange = if let first = ranges.first, let last = ranges.last {
+                "\(formatTime(first.start)) - \(formatTime(last.end))"
+            } else {
+                ""
+            }
             let record = TranscriptionRecord(
                 id: UUID(),
                 text: transcript,
                 locale: locale,
                 timestamp: Date(),
                 alternatives: [],
-                timeRange: currentTimeRange
+                timeRange: timeRange
             )
             transcriptionHistory.insert(record, at: 0)
         }
