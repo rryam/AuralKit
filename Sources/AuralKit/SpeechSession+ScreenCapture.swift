@@ -465,8 +465,10 @@ final class ScreenCaptureAudioInputProvider: NSObject, SCStreamOutput, SCStreamD
                 self.resumeSelection()
             } catch {
                 guard !self.stopped, self.pickerUpdateID == id else { return }
-                if !self.resumeSelection(throwing: error) {
-                    _ = self.onTermination(SpeechSessionError.screenCaptureFailed(error))
+                let drainFailure = error as? ScreenCaptureDrainFailure
+                let selectionError = drainFailure.map { SpeechSessionError.screenCaptureFailed($0.underlyingError) }
+                if !self.resumeSelection(throwing: selectionError ?? error) {
+                    _ = self.onTermination(selectionError ?? SpeechSessionError.screenCaptureFailed(error))
                 }
             }
         }
@@ -494,7 +496,7 @@ final class ScreenCaptureAudioInputProvider: NSObject, SCStreamOutput, SCStreamD
         if let nativeStream = stream as? NativeScreenCaptureStream {
             let id = ObjectIdentifier(nativeStream.stream)
             if userStopped {
-                failure = audio.drain(id)
+                failure = audio.drain(id).map { SpeechSessionError.screenCaptureFailed($0) }
             } else {
                 audio.discard(id)
             }
