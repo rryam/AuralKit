@@ -21,10 +21,12 @@ struct ScreenCaptureUpdateTests {
             try await started.wait()
             if stopFirst {
                 fixture.track(Task { await runtime.session.stopTranscribing() })
-                try await runtime.dismissed.wait()
             }
-            stream.terminated = true
-            runtime.provider.streamDidStop(stream, error: CaptureFixtureError.startFailed)
+            await fixture.track(Task { @MainActor in
+                if stopFirst { #expect(runtime.session.status == .stopping) }
+                stream.terminated = true
+                runtime.provider.streamDidStop(stream, error: CaptureFixtureError.startFailed)
+            }).value
             try await runtime.dismissed.wait()
             release.open()
             try await waitForCaptureState { runtime.session.status == .idle }

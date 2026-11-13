@@ -212,7 +212,7 @@ extension SpeechSession {
         screenCaptureInputProvider = nil
         guard #available(iOS 27.0, macOS 14.0, *) else { return }
         guard let provider = detachedProvider as? ScreenCaptureAudioInputProvider else { return }
-        let task = Task { await provider.stop() }
+        let task = provider.stop()
         screenCaptureStopTask = (generation, task)
         await task.value
         if screenCaptureStopTask?.generation == generation { screenCaptureStopTask = nil }
@@ -309,11 +309,12 @@ final class ScreenCaptureAudioInputProvider: NSObject, SCStreamOutput, SCStreamD
     }
 
     @MainActor
-    func stop() async {
+    func stop() -> Task<Void, Never> {
         stopped = true
+        let operation = transitions.stop()
         dismissPicker(self)
         resumeSelection(throwing: SpeechSessionError.screenCaptureSelectionCancelled)
-        _ = try? await transitions.stop().value
+        return Task { _ = try? await operation.value }
     }
 
     func contentSharingPicker(
