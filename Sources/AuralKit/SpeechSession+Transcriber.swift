@@ -297,9 +297,17 @@ extension SpeechSession {
     ///
     /// Operates only on the captured references, never on live session state, so it is safe to
     /// run even after a newer session has started.
-    func finalizeDetachedTranscriberState(_ detached: DetachedTranscriberState) async {
+    func finalizeDetachedTranscriberState(
+        _ detached: DetachedTranscriberState,
+        cancelAnalysis: Bool = false
+    ) async {
         defer { withExtendedLifetime(detached.vocabularyArtifacts) {} }
         detached.inputBuilder?.finish()
+        if cancelAnalysis {
+            // Finalizing waits for EOF, which may never arrive if setup was cancelled.
+            await detached.analyzer?.cancelAndFinishNow()
+            return
+        }
         do {
             try await detached.analyzer?.finalizeAndFinishThroughEndOfInput()
         } catch {

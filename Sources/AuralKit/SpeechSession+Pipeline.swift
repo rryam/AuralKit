@@ -296,6 +296,7 @@ extension SpeechSession {
             task?.cancel()
         }
 
+        let cancelMediaAnalysis = cancelRecognizer && streamingMode == .mediaPlayback
         streamingMode = .inactive
         activeResultKind = nil
         stopAudioStreaming()
@@ -306,7 +307,7 @@ extension SpeechSession {
 #endif
         let detached = detachTranscriberState()
         await stopScreenCaptureStreamingIfNeeded()
-        await finalizeDetachedTranscriberState(detached)
+        await finalizeDetachedTranscriberState(detached, cancelAnalysis: cancelMediaAnalysis)
 
         guard generation == sessionGeneration else { return }
         await modelManager.releaseLocales()
@@ -443,6 +444,7 @@ extension SpeechSession {
                 for try await result in results {
                     streamContinuation.yield(result)
                 }
+                try Task.checkCancellation()
                 if Self.shouldLog(.notice) {
                     Self.logger.notice("\(label, privacy: .public) completed without error")
                 }
@@ -452,6 +454,7 @@ extension SpeechSession {
                     Self.logger.debug("\(label, privacy: .public) cancelled")
                 }
             } catch {
+                guard !Task.isCancelled else { return }
                 if Self.shouldLog(.error) {
                     Self.logger.error(
                         "\(label, privacy: .public) failed: \(error.localizedDescription, privacy: .public)"

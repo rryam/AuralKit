@@ -66,35 +66,15 @@ public extension SpeechSession {
         options: FileTranscriptionOptions = .init(),
         progressHandler: (@Sendable (Double) -> Void)? = nil
     ) -> AsyncThrowingStream<SpeechTranscriber.Result, Error> {
-        let (stream, newContinuation) = AsyncThrowingStream<SpeechTranscriber.Result, Error>.makeStream()
-
-        guard continuation == nil, recognizerTask == nil, streamingMode == .inactive else {
-            newContinuation.finish(throwing: SpeechSessionError.recognitionStreamSetupFailed)
-            return stream
-        }
-
-        let generation = beginStreamGeneration()
-        newContinuation.onTermination = { [weak self] _ in
-            Task { @MainActor [weak self] in
-                await self?.handleStreamTermination(generation: generation)
-            }
-        }
-
-        setStatus(.preparing)
-        continuation = .speech(newContinuation)
-
-        pipelineTask = Task { @MainActor [weak self] in
-            guard let self else { return }
-            await self.startFilePipeline(
-                with: newContinuation,
+        startFileTranscription { session, continuation, generation in
+            await session.startFilePipeline(
+                with: continuation,
                 audioFileURL: audioFile,
                 options: options,
                 progressHandler: progressHandler,
                 generation: generation
             )
         }
-
-        return stream
     }
 
     /// Convenience wrapper that collects final results from file transcription.
@@ -152,22 +132,12 @@ private extension SpeechSession {
                 generation: generation
             )
             try Task.checkCancellation()
-            let handler = progressHandler
-            fileIngestionTask = Task<Void, Never> { [weak self] in
-                guard let self else { return }
-
-                do {
-                    let completed = try await self.feedAudioFile(
-                        validation, progressHandler: handler, generation: generation
-                    )
-
-                    if completed, let handler {
-                        self.reportFileProgress(1.0, handler: handler, generation: generation)
-                    }
-                } catch is CancellationError {
-                    // Swallow cancellation triggered by cleanup.
-                } catch {
-                    await self.finishWithStartupError(error, generation: generation)
+            startFileIngestion(generation: generation) { session in
+                let completed = try await session.feedAudioFile(
+                    validation, progressHandler: progressHandler, generation: generation
+                )
+                if completed, let progressHandler {
+                    session.reportFileProgress(1.0, handler: progressHandler, generation: generation)
                 }
             }
         } catch is CancellationError {
@@ -213,7 +183,9 @@ private extension SpeechSession {
 
         return (audioFile, totalFrames)
     }
+}
 
+extension SpeechSession {
     func sanitizeAudioFileURL(
         _ url: URL,
         allowedDirectories: [URL]
@@ -247,6 +219,7 @@ private extension SpeechSession {
         with streamContinuation: AsyncThrowingStream<SpeechTranscriber.Result, Error>.Continuation,
         contextualStrings: [AnalysisContext.ContextualStringsTag: [String]]?,
         startAnalyzerImmediately: Bool,
+        mode: StreamingMode = .filePlayback,
         generation: Int
     ) async throws {
         if Self.shouldLog(.notice) {
@@ -266,13 +239,15 @@ private extension SpeechSession {
             generation: generation
         )
 
-        streamingMode = .filePlayback
+        streamingMode = mode
         setStatus(.transcribing)
         if Self.shouldLog(.info) {
             Self.logger.info("File transcription pipeline active (mode: file playback)")
         }
     }
+}
 
+private extension SpeechSession {
     nonisolated func feedAudioFile(
         _ payload: (file: AVAudioFile, totalFrames: AVAudioFramePosition),
         progressHandler: (@Sendable (Double) -> Void)?,
@@ -344,10 +319,53 @@ private extension SpeechSession {
 #endif
         return false
     }
-
 }
 
 extension SpeechSession {
+    typealias FileResultContinuation = AsyncThrowingStream<SpeechTranscriber.Result, Error>.Continuation
+
+    func startFileTranscription(
+        mode: StreamingMode = .filePlayback,
+        _ setup: @escaping @MainActor (SpeechSession, FileResultContinuation, Int) async -> Void
+    ) -> AsyncThrowingStream<SpeechTranscriber.Result, Error> {
+        let (stream, newContinuation) = AsyncThrowingStream<SpeechTranscriber.Result, Error>.makeStream()
+        guard continuation == nil, recognizerTask == nil, streamingMode == .inactive else {
+            newContinuation.finish(throwing: SpeechSessionError.recognitionStreamSetupFailed)
+            return stream
+        }
+
+        let generation = beginStreamGeneration()
+        newContinuation.onTermination = { [weak self] _ in
+            Task { @MainActor [weak self] in
+                await self?.handleStreamTermination(generation: generation)
+            }
+        }
+        if mode == .mediaPlayback { streamingMode = mode }
+        setStatus(.preparing)
+        continuation = .speech(newContinuation)
+        pipelineTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            await setup(self, newContinuation, generation)
+        }
+        return stream
+    }
+
+    func startFileIngestion(
+        generation: Int,
+        _ ingest: @escaping @MainActor (SpeechSession) async throws -> Void
+    ) {
+        fileIngestionTask = Task { [weak self] in
+            guard let self else { return }
+            do {
+                try await ingest(self)
+            } catch is CancellationError {
+                // Cleanup cancelled the ingestion task.
+            } catch {
+                await finishWithStartupError(error, generation: generation)
+            }
+        }
+    }
+
     func reportFileProgress(
         _ progress: Double,
         handler: @Sendable (Double) -> Void,

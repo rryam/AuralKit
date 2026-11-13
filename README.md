@@ -21,6 +21,7 @@ AuralKit is a simple, lightweight Swift wrapper for speech-to-text transcription
 - Async streams for lifecycle status, audio inputs, and transcription results
 - Device capability helper to inspect available transcribers and locales
 - Xcode 27-ready file transcription path that can use Speech's native analyzer file input when built with Swift 6.4+
+- Transcription from a selected audio track in a local movie or other media file on iOS and macOS 27+
 - Xcode 27-ready live capture and analyzer preheating configuration with Xcode 26 fallbacks
 - ScreenCaptureKit-backed transcription for selected content audio on iOS 27+ and macOS 14+
 - SwiftUI-friendly API that mirrors Apple's sample project design
@@ -35,6 +36,7 @@ AuralKit is a simple, lightweight Swift wrapper for speech-to-text transcription
 - [Usage](#usage)
   - [Simple Transcription](#simple-transcription)
   - [Partial Results](#partial-results)
+  - [Media File Audio](#media-file-audio)
   - [Screen Capture Audio](#screen-capture-audio)
 - [Session Observability](#session-observability)
   - [Monitoring Model Downloads](#monitoring-model-downloads)
@@ -275,6 +277,28 @@ struct ContentView: View {
 ```
 
 The `TranscriptionManager` in the demo app adds language selection, history tracking, and export.
+
+### Media File Audio
+
+With Swift 6.4 and iOS or macOS 27+, pass a local media file to `streamTranscription(fromMediaFile:audioTrackID:options:)`. The default is the first audio track. Use `AVURLAsset` to find a particular audio track, then pass its `trackID`.
+
+```swift
+import AVFoundation
+import AuralKit
+
+let asset = AVURLAsset(url: movieURL)
+let tracks = try await asset.loadTracks(withMediaType: .audio)
+
+if let commentary = tracks.dropFirst().first {
+    let session = SpeechSession()
+    let results = session.streamTranscription(fromMediaFile: movieURL, audioTrackID: commentary.trackID)
+    for try await result in results where result.isFinal {
+        print(result.text)
+    }
+}
+```
+
+Use the default `.automatic` input provider. The file must be in an allowed directory and contain its audio. `FileTranscriptionOptions.maxDuration` applies to the selected track’s duration on the media timeline. The app needs `NSSpeechRecognitionUsageDescription` for the Speech permission prompt.
 
 ### Screen Capture Audio
 

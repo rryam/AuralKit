@@ -1,5 +1,6 @@
 import Testing
 import AVFoundation
+import Speech
 @testable import AuralKit
 
 @Suite("File transcription")
@@ -29,6 +30,88 @@ struct FileTranscriptionTests {
             _ = try await session.transcribe(audioFile: tempURL, options: options)
         }
     }
+
+#if swift(>=6.4)
+    @Test("Stopping a media analyzer before it receives input closes the session")
+    @MainActor
+    func stopBeforeAnalyzerInputClosesSession() async throws {
+        let session = SpeechSession()
+        let (results, continuation) = AsyncThrowingStream<SpeechTranscriber.Result, Error>.makeStream()
+        let analyzer = SpeechAnalyzer(modules: [])
+        session.analyzer = analyzer
+        session.continuation = .speech(continuation)
+        session.streamingMode = .mediaPlayback
+        session.setStatus(.preparing)
+
+        let watchdog = Task {
+            do {
+                try await Task.sleep(for: .seconds(3))
+                Issue.record("Stopping an analyzer with no input did not return")
+                await analyzer.cancelAndFinishNow()
+            } catch is CancellationError {
+                // Stop completed before the deadline.
+            }
+        }
+        await session.stopTranscribing()
+        watchdog.cancel()
+        try await watchdog.value
+
+        var iterator = results.makeAsyncIterator()
+        let nextResult = try await iterator.next()
+        #expect(nextResult == nil)
+        #expect(session.status == .idle)
+    }
+
+    @Test("A cancelled recognizer cannot hide a file read error")
+    @MainActor
+    func fileReadErrorSurvivesRecognizerCancellation() async throws {
+        let session = SpeechSession()
+        let output = AsyncThrowingStream<SpeechTranscriber.Result, Error>.makeStream()
+        let transcriber = SpeechTranscriber(locale: Locale(identifier: "en-US"), preset: .transcription)
+        session.analyzer = SpeechAnalyzer(modules: [transcriber])
+        let generation = session.beginStreamGeneration()
+        session.continuation = .speech(output.continuation)
+        session.streamingMode = .mediaPlayback
+        session.setStatus(.transcribing)
+        let recognizer = session.createSpeechRecognizerTask(
+            transcriber: transcriber, streamContinuation: output.continuation, generation: generation
+        )
+        session.recognizerTask = recognizer
+        session.startFileIngestion(generation: generation) { _ in
+            throw SpeechSessionError.audioFileReadFailed(nil)
+        }
+        let ingestion = try #require(session.fileIngestionTask)
+
+        await recognizer.value
+        await ingestion.value
+        var iterator = output.stream.makeAsyncIterator()
+        do {
+            _ = try await iterator.next()
+            Issue.record("Expected the file read error to reach the transcription stream")
+        } catch SpeechSessionError.audioFileReadFailed { }
+        #expect(session.status == .idle)
+    }
+
+    @available(iOS 27.0, macOS 27.0, *)
+    @Test("Media transcription rejects an unknown audio track without falling back")
+    @MainActor
+    func mediaTranscriptionRejectsUnknownTrack() async throws {
+        let url = try createSilenceAudioFile(duration: 2.0)
+        defer { try? FileManager.default.removeItem(at: url) }
+        let asset = AVURLAsset(url: url)
+        let tracks = try await asset.loadTracks(withMediaType: .audio)
+        let track = try #require(tracks.first)
+        let session = SpeechSession()
+
+        let stream = session.streamTranscription(fromMediaFile: url, audioTrackID: track.trackID + 1)
+        do {
+            for try await _ in stream { }
+            Issue.record("Expected the unknown track to be rejected")
+        } catch SpeechSessionError.audioFileUnsupportedFormat(let reason) {
+            #expect(reason.contains("\(track.trackID + 1)"))
+        }
+    }
+#endif
 
     private func createSilenceAudioFile(duration: TimeInterval, sampleRate: Double = 44_100) throws -> URL {
         let tempURL = FileManager.default.temporaryDirectory
