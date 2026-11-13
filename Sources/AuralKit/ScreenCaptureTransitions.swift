@@ -1,0 +1,172 @@
+import Foundation
+
+@available(iOS 26.0, macOS 14.0, *)
+@MainActor
+protocol ScreenCaptureStream: AnyObject {
+    func startCapture() async throws
+    func stopCapture() async throws
+}
+
+/// Serializes capture side effects across suspension. Admission changes intent immediately;
+/// only internal operations are joined, never a public caller that may await session cleanup.
+@available(iOS 26.0, macOS 14.0, *)
+@MainActor
+final class ScreenCaptureTransitions {
+    private struct TerminalFailure {
+        let control: UUID
+        let error: Error
+        let operation: Task<Void, Error>?
+    }
+
+    enum DesiredState { case running, paused, stopped }
+    private(set) var desiredState = DesiredState.running
+    private(set) var stream: (any ScreenCaptureStream)?
+    private(set) var isRunning = false
+    private var revision = UUID()
+    private var streamRevision: UUID?
+    private var terminatedStream: ObjectIdentifier?
+    private var controlRevision = UUID()
+    private var tail: Task<Void, Error>?
+    private var terminalFailure: TerminalFailure?
+
+    // Synchronous admission returns the owned handle before any capture call can suspend.
+    func replace(makeStream: @escaping @MainActor () throws -> any ScreenCaptureStream) -> Task<Void, Error> {
+        guard desiredState != .stopped else { return Task { throw CancellationError() } }
+        let admitted = UUID()
+        revision = admitted
+        return enqueue {
+            do {
+                guard self.desiredState != .stopped, self.revision == admitted else { return }
+                try await self.stopCurrent()
+                guard self.desiredState != .stopped, self.revision == admitted else { return }
+                self.stream = try makeStream()
+                self.streamRevision = admitted
+                self.terminatedStream = nil
+                try await self.startCurrent(revision: admitted)
+            } catch {
+                // A stale picker operation must not report failure against its successor.
+                guard self.desiredState != .stopped, self.revision == admitted else { return }
+                throw error
+            }
+        }
+    }
+
+    func update(
+        _ expectedStream: any ScreenCaptureStream,
+        operation: @escaping @MainActor () async throws -> Void
+    ) -> Task<Void, Error> {
+        let admitted = revision
+        return enqueue {
+            guard self.desiredState != .stopped, self.revision == admitted,
+                  self.stream === expectedStream else { return }
+            do {
+                try await operation()
+            } catch {
+                guard self.desiredState != .stopped, self.revision == admitted else { return }
+                throw error
+            }
+        }
+    }
+
+    func isCurrent(_ expectedStream: any ScreenCaptureStream) -> Bool {
+        desiredState != .stopped && stream === expectedStream && streamRevision == revision
+    }
+
+    func didStop(_ expectedStream: any ScreenCaptureStream, error: Error?) -> Bool {
+        guard stream === expectedStream else { return false }
+        terminatedStream = ObjectIdentifier(expectedStream)
+        isRunning = false
+        guard isCurrent(expectedStream) else { return false }
+        if let error { terminalFailure = TerminalFailure(control: controlRevision, error: error, operation: tail) }
+        controlRevision = UUID()
+        desiredState = .stopped
+        return true
+    }
+
+    func pause() -> Task<Void, Error> {
+        guard desiredState != .stopped else { return enqueue {} }
+        let control = UUID()
+        controlRevision = control
+        desiredState = .paused
+        return enqueue {
+            do {
+                try await self.stopCurrent()
+            } catch {
+                if self.controlRevision == control { self.desiredState = .running }
+                throw error
+            }
+        }
+    }
+
+    func resume(
+        onCompletion: @escaping @MainActor (Result<Void, Error>) -> Void
+    ) -> Task<Error?, Never> {
+        let control = UUID()
+        controlRevision = control
+        desiredState = desiredState == .stopped ? .stopped : .running
+        let admitted = revision
+        let operation = enqueue { try await self.startCurrent(revision: admitted) }
+        // This observer is never the operation tail: following a replacement cannot join itself.
+        return Task { @MainActor in
+            var selection = admitted
+            var pending = operation
+            while true {
+                let result = await pending.result
+                if let terminal = self.terminalFailure, terminal.control == control {
+                    _ = await terminal.operation?.result
+                    return terminal.error
+                }
+                guard self.desiredState == .running, self.controlRevision == control else { return nil }
+                if self.revision != selection, let successor = self.tail {
+                    selection = self.revision
+                    pending = successor
+                    continue
+                }
+                onCompletion(result)
+                return nil
+            }
+        }
+    }
+
+    func stop() -> Task<Void, Error> {
+        controlRevision = UUID()
+        desiredState = .stopped
+        return enqueue {
+            defer { self.stream = nil }
+            try await self.stopCurrent()
+        }
+    }
+
+    private func enqueue(_ body: @escaping @MainActor () async throws -> Void) -> Task<Void, Error> {
+        let previous = tail
+        let operation = Task { @MainActor in
+            // Failure must not bypass the join or prevent a later terminal stop.
+            _ = try? await previous?.value
+            try await body()
+        }
+        tail = operation
+        return operation
+    }
+
+    private func stopCurrent() async throws {
+        guard isRunning, let stream else { return }
+        do {
+            try await stream.stopCapture()
+        } catch {
+            guard terminatedStream == ObjectIdentifier(stream) else { throw error }
+        }
+        isRunning = false
+    }
+
+    private func startCurrent(revision admitted: UUID) async throws {
+        guard desiredState == .running, revision == admitted, !isRunning, let stream else { return }
+        try await stream.startCapture()
+        guard terminatedStream != ObjectIdentifier(stream) else { return }
+        // Nothing else can perform capture calls until this operation exits. Intent can
+        // still change during start; compensate before allowing a queued operation to run.
+        isRunning = true
+        if desiredState != .running || revision != admitted {
+            try await stopCurrent()
+        }
+    }
+}

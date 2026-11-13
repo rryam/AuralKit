@@ -74,6 +74,7 @@ public final class SpeechSession {
     var nativeCaptureSession: AVCaptureSession?
     var nativeCaptureAnalysisTask: Task<Void, Never>?
     var screenCaptureInputProvider: AnyObject?
+    var screenCaptureStopTask: (generation: Int, task: Task<Void, Never>)?
     var voiceActivationConfiguration: VoiceActivationConfiguration?
     var customVocabularyDescriptor: CustomVocabulary?
     var customVocabularyConfiguration: SFSpeechLanguageModel.Configuration?
@@ -365,10 +366,9 @@ public final class SpeechSession {
     public func pauseTranscribing() async {
         guard status == .transcribing, isPausableStreamingMode else { return }
         if streamingMode == .screenCapture {
-            await pauseScreenCaptureStreamingIfNeeded()
-        } else {
-            stopAudioStreaming()
+            return await pauseScreenCaptureStreamingIfNeeded(generation: sessionGeneration)
         }
+        stopAudioStreaming()
         setStatus(.paused)
     }
 
@@ -378,12 +378,11 @@ public final class SpeechSession {
     public func resumeTranscribing() async throws {
         guard status == .paused, isPausableStreamingMode else { return }
         let generation = sessionGeneration
+        if streamingMode == .screenCapture {
+            return try await resumeScreenCaptureStreamingIfNeeded(generation: generation)
+        }
         do {
-            if streamingMode == .screenCapture {
-                try await resumeScreenCaptureStreamingIfNeeded()
-            } else {
-                try startAudioStreaming()
-            }
+            try startAudioStreaming()
             setStatus(.transcribing)
         } catch {
             prepareForStop()
