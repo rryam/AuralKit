@@ -241,12 +241,13 @@ final class ScreenCaptureAudioInputProvider: NSObject, SCStreamOutput, SCStreamD
     private let options: SpeechSession.ScreenCaptureTranscriptionOptions
     private let targetFormat: AVAudioFormat
     private let inputContinuation: AsyncStream<AnalyzerInput>.Continuation
-    private let onTermination: @Sendable (Error?) -> Void
+    private let onTermination: @Sendable (Error?) -> Task<Void, Never>
     private let sampleQueue = DispatchQueue(label: "com.auralkit.screencapture.audio", qos: .userInitiated)
     // Only touched on `sampleQueue`, which serializes access.
     private let bufferConverter = BufferConverter()
 
     @MainActor private let transitions: ScreenCaptureTransitions
+    @MainActor private var terminalCleanupTask: Task<Void, Never>?
     private let dismissPicker: @MainActor (any SCContentSharingPickerObserver) -> Void
     private var selectionContinuation: CheckedContinuation<Void, Error>?
     private var stopped = false
@@ -258,7 +259,7 @@ final class ScreenCaptureAudioInputProvider: NSObject, SCStreamOutput, SCStreamD
         options: SpeechSession.ScreenCaptureTranscriptionOptions,
         targetFormat: AVAudioFormat,
         inputContinuation: AsyncStream<AnalyzerInput>.Continuation,
-        onTermination: @escaping @Sendable (Error?) -> Void,
+        onTermination: @escaping @Sendable (Error?) -> Task<Void, Never>,
         transitions: ScreenCaptureTransitions = ScreenCaptureTransitions(),
         dismissPicker: @escaping @MainActor (any SCContentSharingPickerObserver) -> Void = { observer in
             let picker = SCContentSharingPicker.shared
@@ -305,7 +306,9 @@ final class ScreenCaptureAudioInputProvider: NSObject, SCStreamOutput, SCStreamD
 
     @MainActor
     func resume(onCompletion: @escaping @MainActor (Result<Void, Error>) -> Void) async -> Error? {
-        await transitions.resume(onCompletion: onCompletion).value
+        let failure = await transitions.resume(onCompletion: onCompletion).value
+        if failure != nil { await terminalCleanupTask?.value }
+        return failure
     }
 
     @MainActor
@@ -360,7 +363,7 @@ final class ScreenCaptureAudioInputProvider: NSObject, SCStreamOutput, SCStreamD
             guard let self else { return }
             let wrappedError = SpeechSessionError.screenCaptureFailed(error)
             if !self.resumeSelection(throwing: wrappedError) {
-                self.onTermination(wrappedError)
+                _ = self.onTermination(wrappedError)
             }
         }
     }
@@ -385,14 +388,14 @@ final class ScreenCaptureAudioInputProvider: NSObject, SCStreamOutput, SCStreamD
                 ) else { return }
 
                 guard let bufferCopy = sourceBuffer.copy() as? AVAudioPCMBuffer else {
-                    onTermination(SpeechSessionError.conversionBufferCreationFailed)
+                    _ = onTermination(SpeechSessionError.conversionBufferCreationFailed)
                     return
                 }
 
                 processAudioBuffer(bufferCopy)
             }
         } catch {
-            onTermination(SpeechSessionError.screenCaptureFailed(error))
+            _ = onTermination(SpeechSessionError.screenCaptureFailed(error))
         }
     }
 
@@ -418,7 +421,7 @@ final class ScreenCaptureAudioInputProvider: NSObject, SCStreamOutput, SCStreamD
                 try await update.value
             } catch {
                 guard !self.stopped, self.filterUpdateID == id, self.transitions.isCurrent(stream) else { return }
-                self.onTermination(SpeechSessionError.screenCaptureFailed(error))
+                _ = self.onTermination(SpeechSessionError.screenCaptureFailed(error))
             }
         }
     }
@@ -435,7 +438,7 @@ final class ScreenCaptureAudioInputProvider: NSObject, SCStreamOutput, SCStreamD
             } catch {
                 guard !self.stopped, self.pickerUpdateID == id else { return }
                 if !self.resumeSelection(throwing: error) {
-                    self.onTermination(SpeechSessionError.screenCaptureFailed(error))
+                    _ = self.onTermination(SpeechSessionError.screenCaptureFailed(error))
                 }
             }
         }
@@ -472,7 +475,7 @@ final class ScreenCaptureAudioInputProvider: NSObject, SCStreamOutput, SCStreamD
             let converted = try bufferConverter.convertBuffer(buffer, to: targetFormat)
             inputContinuation.yield(AnalyzerInput(buffer: converted))
         } catch {
-            onTermination(error)
+            _ = onTermination(error)
         }
     }
 
@@ -485,7 +488,7 @@ final class ScreenCaptureAudioInputProvider: NSObject, SCStreamOutput, SCStreamD
         let isCurrent = transitions.didStop(stream, error: failure)
         guard !stopped, isCurrent else { return }
         stopped = true
-        onTermination(failure)
+        terminalCleanupTask = onTermination(failure)
     }
 }
 #else
