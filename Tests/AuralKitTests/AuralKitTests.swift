@@ -85,25 +85,9 @@ struct SpeechSessionStateTests {
         #expect(firstA == .some(.idle))
         #expect(firstB == .some(.idle))
 
-        let nextA = Task {
-            await probeA.next()
-        }
-        let nextB = Task {
-            await probeB.next()
-        }
-        defer {
-            nextA.cancel()
-            nextB.cancel()
-        }
-
         session.setStatus(.preparing)
-
-        let valueA = try await awaitResult {
-            await nextA.value
-        }
-        let valueB = try await awaitResult {
-            await nextB.value
-        }
+        let valueA = try await awaitResult { await probeA.next() }
+        let valueB = try await awaitResult { await probeB.next() }
         #expect(valueA == .some(.preparing))
         #expect(valueB == .some(.preparing))
     }
@@ -156,26 +140,17 @@ struct SpeechSessionAudioInputStreamTests {
         let probeA = AsyncStreamProbe(session.audioInputConfigurationStream)
         let probeB = AsyncStreamProbe(session.audioInputConfigurationStream)
 
-        let valueA = Task {
-            await probeA.next()
+        try await awaitResult {
+            while session.audioInputContinuations.count < 2 {
+                try Task.checkCancellation()
+                await Task.yield()
+            }
         }
-        let valueB = Task {
-            await probeB.next()
-        }
-        defer {
-            valueA.cancel()
-            valueB.cancel()
-        }
-
-        await Task.yield()
         session.broadcastAudioInputInfo(nil)
-
-        let firstA = try await awaitResult {
-            await valueA.value
-        }
-        let firstB = try await awaitResult {
-            await valueB.value
-        }
+        let firstA = try await awaitResult { await probeA.next() }
+        let firstB = try await awaitResult { await probeB.next() }
+        #expect(firstA != nil)
+        #expect(firstB != nil)
         let flattenedA = firstA?.flatMap { $0 }
         let flattenedB = firstB?.flatMap { $0 }
         #expect(flattenedA == nil)
