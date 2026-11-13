@@ -21,8 +21,7 @@ struct ScreenCaptureAudioTests {
         ) {
             Issue.record("Screen audio failed: \($0)")
         }
-        let firstStream = NSObject()
-        let secondStream = NSObject()
+        let firstStream = NSObject(), secondStream = NSObject()
         let first = ObjectIdentifier(firstStream)
         let second = ObjectIdentifier(secondStream)
         let convertible = try makeSample(format: source, frames: 3072, timestamp: 123)
@@ -30,18 +29,22 @@ struct ScreenCaptureAudioTests {
 
         processor.start(first)
         processor.queue.sync { processor.receive(convertible, from: first) }
-        processor.stop(first, drain: drain)
+        if drain {
+            #expect(processor.drain(first) == nil)
+        } else {
+            processor.discard(first)
+        }
         // Restart the same native stream, as when resuming from pause.
         processor.queue.sync { processor.receive(compatible, from: first) }
         processor.start(first)
         processor.queue.sync { processor.receive(compatible, from: first) }
-        processor.stop(first)
+        #expect(processor.drain(first) == nil)
         processor.start(second)
         processor.queue.sync {
             processor.receive(compatible, from: first)
             processor.receive(compatible, from: second)
         }
-        processor.stop(second)
+        #expect(processor.drain(second) == nil)
         processor.queue.sync { processor.receive(compatible, from: second) }
         continuation.finish()
 
@@ -55,11 +58,8 @@ struct ScreenCaptureAudioTests {
         }
         let directDuration = CMTime(value: 160, timescale: 16_000)
         #expect(durations.suffix(2).elementsEqual([directDuration, directDuration]))
-        if drain {
-            #expect(nextTime == CMTime(value: 1344, timescale: 16_000))
-        } else {
-            #expect(nextTime < CMTime(value: 1344, timescale: 16_000))
-        }
+        let drainedEnd = CMTime(value: 1344, timescale: 16_000)
+        #expect(drain ? nextTime == drainedEnd : nextTime < drainedEnd)
         withExtendedLifetime((firstStream, secondStream)) {}
     }
 

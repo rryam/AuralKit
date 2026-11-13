@@ -35,27 +35,24 @@ final class ScreenCaptureAudioProcessor: @unchecked Sendable {
         queue.sync { activeStream = stream }
     }
 
-    func stop(_ stream: ObjectIdentifier, drain: Bool = true) {
+    func drain(_ stream: ObjectIdentifier) -> Error? {
         queue.sync {
-            guard activeStream == stream else { return }
-            endCapture(drain: drain)
+            guard activeStream == stream else { return nil }
+            activeStream = nil
+            do {
+                try yield(conversion.flush())
+                return nil
+            } catch {
+                return error
+            }
         }
     }
 
-    func discard() {
-        queue.sync { endCapture(drain: false) }
-    }
-
-    private func endCapture(drain: Bool) {
-        activeStream = nil
-        guard drain else {
+    func discard(_ stream: ObjectIdentifier? = nil) {
+        queue.sync {
+            guard stream == nil || activeStream == stream else { return }
+            activeStream = nil
             conversion.discard()
-            return
-        }
-        do {
-            try yield(conversion.flush())
-        } catch {
-            onError(error)
         }
     }
 
@@ -70,7 +67,8 @@ final class ScreenCaptureAudioProcessor: @unchecked Sendable {
         do {
             try yield(conversion.convert(sample, format: format))
         } catch {
-            endCapture(drain: false)
+            activeStream = nil
+            conversion.discard()
             onError(error)
         }
     }

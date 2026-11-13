@@ -7,6 +7,11 @@ protocol ScreenCaptureStream: AnyObject {
     func stopCapture() async throws
 }
 
+// A failure after the native stream has already stopped must not leave it marked running.
+struct ScreenCaptureDrainFailure: Error {
+    let underlyingError: Error
+}
+
 /// Serializes capture side effects across suspension. Admission changes intent immediately;
 /// only internal operations are joined, never a public caller that may await session cleanup.
 @available(iOS 26.0, macOS 14.0, *)
@@ -28,6 +33,7 @@ final class ScreenCaptureTransitions {
     private var controlRevision = UUID()
     private var tail: Task<Void, Error>?
     private var terminalFailure: TerminalFailure?
+    private var drainFailure: ScreenCaptureDrainFailure?
 
     // Synchronous admission returns the owned handle before any capture call can suspend.
     func replace(makeStream: @escaping @MainActor () throws -> any ScreenCaptureStream) -> Task<Void, Error> {
@@ -40,6 +46,7 @@ final class ScreenCaptureTransitions {
                 try await self.stopCurrent()
                 guard self.desiredState != .stopped, self.revision == admitted else { return }
                 self.stream = try makeStream()
+                self.drainFailure = nil
                 self.streamRevision = admitted
                 self.terminatedStream = nil
                 try await self.startCurrent(revision: admitted)
@@ -92,7 +99,9 @@ final class ScreenCaptureTransitions {
             do {
                 try await self.stopCurrent()
             } catch {
-                if self.controlRevision == control { self.desiredState = .running }
+                if self.controlRevision == control, !(error is ScreenCaptureDrainFailure) {
+                    self.desiredState = .running
+                }
                 throw error
             }
         }
@@ -134,6 +143,7 @@ final class ScreenCaptureTransitions {
         return enqueue {
             defer { self.stream = nil }
             try await self.stopCurrent()
+            if let drainFailure = self.drainFailure { throw drainFailure }
         }
     }
 
@@ -152,6 +162,10 @@ final class ScreenCaptureTransitions {
         guard isRunning, let stream else { return }
         do {
             try await stream.stopCapture()
+        } catch let error as ScreenCaptureDrainFailure {
+            isRunning = false
+            drainFailure = error
+            throw error
         } catch {
             guard terminatedStream == ObjectIdentifier(stream) else { throw error }
         }
@@ -161,6 +175,7 @@ final class ScreenCaptureTransitions {
     private func startCurrent(revision admitted: UUID) async throws {
         guard desiredState == .running, revision == admitted, !isRunning, let stream else { return }
         try await stream.startCapture()
+        drainFailure = nil
         guard terminatedStream != ObjectIdentifier(stream) else { return }
         // Nothing else can perform capture calls until this operation exits. Intent can
         // still change during start; compensate before allowing a queued operation to run.
