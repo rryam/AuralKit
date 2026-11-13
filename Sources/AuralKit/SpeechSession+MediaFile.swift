@@ -78,7 +78,13 @@ private extension SpeechSession {
                 if let endTime {
                     try await analyzer.finalizeAndFinish(through: endTime)
                 } else {
-                    try await analyzer.finalizeAndFinishThroughEndOfInput()
+                    // With no input samples, Speech may leave the module's results stream open.
+                    await analyzer.cancelAndFinishNow()
+                    try Task.checkCancellation()
+                    guard generation == session.sessionGeneration else { return }
+                    session.prepareForStop()
+                    await session.cleanup(cancelRecognizer: true, generation: generation)
+                    await session.finishStream(error: nil, generation: generation)
                 }
             }
         } catch {
