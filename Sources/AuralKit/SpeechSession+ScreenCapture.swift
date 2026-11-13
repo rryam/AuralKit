@@ -238,7 +238,7 @@ private final class NativeScreenCaptureStream: ScreenCaptureStream {
         do {
             try await stream.startCapture()
         } catch {
-            audio.stop(id, drain: false)
+            audio.discard(id)
             throw error
         }
     }
@@ -246,7 +246,9 @@ private final class NativeScreenCaptureStream: ScreenCaptureStream {
     func stopCapture() async throws {
         defer { logCaptureState(after: "stopCapture") }
         try await stream.stopCapture()
-        audio.stop(ObjectIdentifier(stream))
+        if let error = audio.drain(ObjectIdentifier(stream)) {
+            throw ScreenCaptureDrainFailure(underlyingError: error)
+        }
     }
 
 #if os(macOS) || targetEnvironment(macCatalyst)
@@ -334,6 +336,11 @@ final class ScreenCaptureAudioInputProvider: NSObject, SCStreamOutput, SCStreamD
         do {
             try await transitions.pause().value
             return transitions.desiredState == .paused
+        } catch let error as ScreenCaptureDrainFailure {
+            if !stopped {
+                _ = onTermination(SpeechSessionError.screenCaptureFailed(error.underlyingError))
+            }
+            return false
         } catch {
             return false
         }
@@ -486,9 +493,14 @@ final class ScreenCaptureAudioInputProvider: NSObject, SCStreamOutput, SCStreamD
         let nativeError = error as NSError
         let userStopped = nativeError.domain == SCStreamError.errorDomain
             && nativeError.code == SCStreamError.Code.userStopped.rawValue
-        let failure: Error? = userStopped ? nil : SpeechSessionError.screenCaptureFailed(error)
+        var failure: Error? = userStopped ? nil : SpeechSessionError.screenCaptureFailed(error)
         if let nativeStream = stream as? NativeScreenCaptureStream {
-            audio.stop(ObjectIdentifier(nativeStream.stream), drain: userStopped)
+            let id = ObjectIdentifier(nativeStream.stream)
+            if userStopped {
+                failure = audio.drain(id)
+            } else {
+                audio.discard(id)
+            }
         }
         let isCurrent = transitions.didStop(stream, error: failure)
         guard !stopped, isCurrent else { return }
