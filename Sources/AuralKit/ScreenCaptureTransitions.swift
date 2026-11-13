@@ -61,11 +61,15 @@ final class ScreenCaptureTransitions {
         }
     }
 
+    func isCurrent(_ expectedStream: any ScreenCaptureStream) -> Bool {
+        desiredState != .stopped && stream === expectedStream && streamRevision == revision
+    }
+
     func didStop(_ expectedStream: any ScreenCaptureStream) -> Bool {
         guard stream === expectedStream else { return false }
         terminatedStream = ObjectIdentifier(expectedStream)
         isRunning = false
-        guard desiredState != .stopped, streamRevision == revision else { return false }
+        guard isCurrent(expectedStream) else { return false }
         controlRevision = UUID()
         desiredState = .stopped
         return true

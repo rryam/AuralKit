@@ -249,6 +249,7 @@ final class ScreenCaptureAudioInputProvider: NSObject, SCStreamOutput, SCStreamD
     private var selectionContinuation: CheckedContinuation<Void, Error>?
     private var stopped = false
     private var pickerUpdateID: UUID?
+    private var filterUpdateID: UUID?
 
     @MainActor
     init(
@@ -405,8 +406,18 @@ final class ScreenCaptureAudioInputProvider: NSObject, SCStreamOutput, SCStreamD
         _ stream: any ScreenCaptureStream,
         operation: @escaping @MainActor () async throws -> Void
     ) -> Task<Void, Never> {
-        guard !stopped else { return Task {} }
-        return observeSelection(transitions.update(stream, operation: operation))
+        guard !stopped, transitions.isCurrent(stream) else { return Task {} }
+        let update = transitions.update(stream, operation: operation)
+        let id = UUID()
+        filterUpdateID = id
+        return Task { @MainActor in
+            do {
+                try await update.value
+            } catch {
+                guard !self.stopped, self.filterUpdateID == id, self.transitions.isCurrent(stream) else { return }
+                self.onTermination(SpeechSessionError.screenCaptureFailed(error))
+            }
+        }
     }
 
     @MainActor
