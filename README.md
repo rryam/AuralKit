@@ -298,7 +298,7 @@ if let commentary = tracks.dropFirst().first {
 }
 ```
 
-The file must be in an allowed directory, as with audio file transcription. `FileTranscriptionOptions.maxDuration` applies to the selected audio track. The app needs `NSSpeechRecognitionUsageDescription` for the Speech permission prompt.
+Use the default `.automatic` input provider. The file must be in an allowed directory and contain its audio. `FileTranscriptionOptions.maxDuration` applies to the selected track’s duration on the media timeline. The app needs `NSSpeechRecognitionUsageDescription` for the Speech permission prompt.
 
 ### Screen Capture Audio
 

@@ -13,6 +13,8 @@ public extension SpeechSession {
     ///   - audioTrackID: An ID from the file's audio tracks. Pass `nil` to use its first audio track.
     ///   - options: Contextual strings, allowed directories, and the maximum selected track duration.
     /// - Returns: An async throwing stream of transcription results on the media timeline.
+    ///
+    /// The audio must be stored inside the media file and the session must use `.automatic` input.
     func streamTranscription(
         fromMediaFile mediaFile: URL,
         audioTrackID: CMPersistentTrackID? = nil,
@@ -38,8 +40,17 @@ private extension SpeechSession {
     ) async {
         do {
             try Task.checkCancellation()
+            guard inputProviderPreference == .automatic else {
+                throw SpeechSessionError.audioFileUnsupportedFormat(NSLocalizedString(
+                    "media transcription requires the automatic input provider",
+                    comment: "Media files cannot use the legacy audio input pipeline"
+                ))
+            }
             let url = try sanitizeAudioFileURL(mediaFile, allowedDirectories: options.allowedDirectories)
-            let asset = AVURLAsset(url: url)
+            let asset = AVURLAsset(url: url, options: [
+                AVURLAssetReferenceRestrictionsKey: AVAssetReferenceRestrictions.forbidAll.rawValue,
+                AVURLAssetPreferPreciseDurationAndTimingKey: options.maxDuration != nil
+            ])
             let track = try await loadAudioTrack(from: asset, id: audioTrackID, maxDuration: options.maxDuration)
             try Task.checkCancellation()
             try await ensureSpeechRecognitionAuthorization(context: "for media file transcription")
@@ -85,12 +96,21 @@ private extension SpeechSession {
     ) async throws -> AVAssetTrack {
         let tracks = try await asset.loadTracks(withMediaType: .audio)
         guard let track = tracks.first(where: { id == nil || $0.trackID == id }) else {
-            let reason = id.map { "Audio track ID \($0) was not found" } ?? "the media file has no audio tracks"
+            let reason = if let id {
+                String.localizedStringWithFormat(NSLocalizedString(
+                    "audio track ID %d was not found", comment: "The requested audio track is missing"
+                ), id)
+            } else {
+                NSLocalizedString("the media file has no audio tracks", comment: "The media asset has no audio track")
+            }
             throw SpeechSessionError.audioFileUnsupportedFormat(reason)
         }
         let duration = try await track.load(.timeRange).duration.seconds
         guard duration.isFinite, duration > 0 else {
-            throw SpeechSessionError.audioFileUnsupportedFormat("the audio track has no finite, positive duration")
+            throw SpeechSessionError.audioFileUnsupportedFormat(NSLocalizedString(
+                "the audio track has no finite, positive duration",
+                comment: "The media audio track has no usable duration"
+            ))
         }
         if let maxDuration, duration > maxDuration {
             throw SpeechSessionError.audioFileTooLong(maximum: maxDuration, actual: duration)
