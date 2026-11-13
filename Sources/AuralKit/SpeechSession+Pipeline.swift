@@ -442,7 +442,6 @@ extension SpeechSession {
 
             do {
                 for try await result in results {
-                    try Task.checkCancellation()
                     streamContinuation.yield(result)
                 }
                 try Task.checkCancellation()
