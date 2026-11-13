@@ -8,12 +8,17 @@ extension SpeechSession {
 
     /// Configure the session's custom vocabulary, compiling assets as needed.
     ///
+    /// Compiled files are temporary and are rebuilt before reuse if the system purges them.
+    /// Cancelling compilation waits for preparation to finish, then throws `CancellationError`
+    /// without replacing the current configuration. Superseded compilation results are discarded.
+    ///
     /// - Parameter vocabulary: The vocabulary descriptor to activate, or `nil` to clear the current
     ///   configuration.
     /// - Throws: A `SpeechSessionError` when the session is active, the descriptor locale mismatches, or
     ///   compilation fails.
     public func configureCustomVocabulary(_ vocabulary: CustomVocabulary?) async throws {
-        if streamingMode != .inactive {
+        try Task.checkCancellation()
+        if streamingMode != .inactive || continuation != nil || pipelineTask != nil || recognizerTask != nil {
             throw SpeechSessionError.customVocabularyRequiresIdleSession
         }
 
@@ -35,36 +40,54 @@ extension SpeechSession {
             throw SpeechSessionError.customVocabularyCompilationFailed(error)
         }
 
+        try Task.checkCancellation()
+        let requestID = UUID()
+        customVocabularyRequestID = requestID
+
         if cacheKey == customVocabularyCacheKey,
-           customVocabularyConfiguration != nil {
+           customVocabularyFilesExist {
             customVocabularyDescriptor = vocabulary
             return
         }
 
+        let compilation = try await compileCustomVocabulary(vocabulary)
+        try Task.checkCancellation()
+        guard customVocabularyRequestID == requestID else { throw CancellationError() }
+        guard streamingMode == .inactive, continuation == nil, pipelineTask == nil, recognizerTask == nil else {
+            throw SpeechSessionError.customVocabularyRequiresIdleSession
+        }
+        applyCustomVocabularyCompilation(compilation, descriptor: vocabulary)
+    }
+
+    var customVocabularyFilesExist: Bool {
+        guard let configuration = customVocabularyConfiguration else { return false }
+        let paths = [configuration.languageModel, configuration.vocabulary].compactMap { $0 }
+        return paths.allSatisfy { FileManager.default.isReadableFile(atPath: $0.path) }
+    }
+
+    func compileCustomVocabulary(_ vocabulary: CustomVocabulary) async throws -> CustomVocabularyCompilation {
         // Offload compilation to background task to avoid blocking main actor UI
         // Capture compiler before detached task to avoid cross-actor access
         let compiler = customVocabularyCompiler
-        let compilation = try await Task.detached(priority: .userInitiated) {
+        let task = Task.detached(priority: .userInitiated) {
             try await compiler.compile(descriptor: vocabulary)
-        }.value
-
-        if let previousDirectory = customVocabularyOutputDirectory,
-           previousDirectory != compilation.outputDirectory {
-            do {
-                try FileManager.default.removeItem(at: previousDirectory)
-            } catch {
-                logCustomVocabularyError(
-                    "Failed to delete previous vocabulary directory.",
-                    path: previousDirectory.path,
-                    error: error
-                )
-            }
         }
+        let result = await withTaskCancellationHandler {
+            await task.result
+        } onCancel: {
+            task.cancel()
+        }
+        // Rejected results release their private artifacts after the compiler has joined.
+        try Task.checkCancellation()
+        return try result.get()
+    }
 
-        customVocabularyDescriptor = vocabulary
+    func applyCustomVocabularyCompilation(_ compilation: CustomVocabularyCompilation, descriptor: CustomVocabulary) {
+        customVocabularyDescriptor = descriptor
         customVocabularyConfiguration = compilation.configuration
         customVocabularyCacheKey = compilation.cacheKey
         customVocabularyOutputDirectory = compilation.outputDirectory
+        customVocabularyArtifacts = compilation.artifacts
     }
 
     /// Start a dictation-backed transcription stream that leverages the currently configured custom vocabulary.
@@ -120,18 +143,9 @@ extension SpeechSession {
     }
 
     func clearCustomVocabularyArtifacts(removeDescriptor: Bool) {
-        if let directory = customVocabularyOutputDirectory {
-            // Best-effort cleanup of vocabulary directory
-            do {
-                try FileManager.default.removeItem(at: directory)
-            } catch {
-                logCustomVocabularyError(
-                    "Failed to delete vocabulary directory during cleanup.",
-                    path: directory.path,
-                    error: error
-                )
-            }
-        }
+        customVocabularyRequestID = nil
+        // Dropping the session's owner cannot delete files retained by native consumers.
+        customVocabularyArtifacts = nil
 
         customVocabularyConfiguration = nil
         customVocabularyCacheKey = nil

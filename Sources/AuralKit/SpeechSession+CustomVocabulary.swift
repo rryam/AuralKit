@@ -146,6 +146,22 @@ struct CustomVocabularyCompilation: Sendable {
     let configuration: SFSpeechLanguageModel.Configuration
     let cacheKey: String
     let outputDirectory: URL
+    let artifacts: CustomVocabularyArtifacts
+}
+
+/// Retained by the configuration and every in-flight native consumer.
+final class CustomVocabularyArtifacts: Sendable {
+    let directory: URL
+
+    init(directory: URL) { self.directory = directory }
+
+    deinit {
+        do {
+            try FileManager.default.removeItem(at: directory)
+        } catch {
+            logCustomVocabularyError("Failed to retire vocabulary directory.", path: directory.path, error: error)
+        }
+    }
 }
 
 protocol CustomVocabularyCompiling: Sendable {
@@ -161,48 +177,53 @@ final class CustomVocabularyCompiler: CustomVocabularyCompiling, @unchecked Send
         let assetURL: URL
     }
 
-    private let fileManager: FileManager
+    typealias PrepareModel = @Sendable (
+        SpeechSession.CustomVocabulary, URL, SFSpeechLanguageModel.Configuration
+    ) async throws -> Void
 
-    init(fileManager: FileManager = .default) {
+    private let fileManager: FileManager
+    private let prepareModel: PrepareModel
+
+    init(
+        fileManager: FileManager = .default,
+        prepareModel: @escaping PrepareModel = { descriptor, assetURL, configuration in
+            try await descriptor.makeModelData().export(to: assetURL)
+            try Task.checkCancellation()
+            try await SFSpeechLanguageModel.prepareCustomLanguageModel(for: assetURL, configuration: configuration)
+        }
+    ) {
         self.fileManager = fileManager
+        self.prepareModel = prepareModel
     }
 
     func compile(descriptor: SpeechSession.CustomVocabulary) async throws -> CustomVocabularyCompilation {
+        try Task.checkCancellation()
         let cacheKey = try descriptor.stableCacheKey()
         let paths = try preparePaths(for: cacheKey)
+        let artifacts = CustomVocabularyArtifacts(directory: paths.outputDirectory)
+        defer { withExtendedLifetime(artifacts) {} }
         let configuration = makeConfiguration(for: descriptor, paths: paths)
         try await exportModelData(descriptor, with: paths, configuration: configuration)
+        try Task.checkCancellation()
 
         return CustomVocabularyCompilation(
             configuration: configuration,
             cacheKey: cacheKey,
-            outputDirectory: paths.outputDirectory
+            outputDirectory: paths.outputDirectory,
+            artifacts: artifacts
         )
     }
 
     private func preparePaths(for cacheKey: String) throws -> CompilationPaths {
-        let baseDirectories = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask)
-        guard let baseDirectory = baseDirectories.first else {
-            throw SpeechSessionError.customVocabularyPreparationFailed
-        }
-
-        let outputDirectory = baseDirectory
+        let outputDirectory = fileManager.temporaryDirectory
             .appendingPathComponent("com.auralkit.vocabulary", isDirectory: true)
-            .appendingPathComponent(cacheKey, isDirectory: true)
+            .appendingPathComponent("\(cacheKey)-\(UUID().uuidString)", isDirectory: true)
 
-        if !fileManager.fileExists(atPath: outputDirectory.path) {
-            try fileManager.createDirectory(at: outputDirectory, withIntermediateDirectories: true)
-        }
+        try fileManager.createDirectory(at: outputDirectory, withIntermediateDirectories: true)
 
         let languageModelURL = outputDirectory.appendingPathComponent("languageModel.bin")
         let vocabularyURL = outputDirectory.appendingPathComponent("vocabulary.bin")
-        // Use UUID to ensure unique temp file per compilation invocation, preventing races
-        let uniqueID = UUID().uuidString
-        let assetURL = fileManager.temporaryDirectory
-            .appendingPathComponent("auralkit-custom-vocabulary-\(uniqueID).bin")
-
-        // Clean up any existing temp file before creating new one
-        try? fileManager.removeItem(at: assetURL)
+        let assetURL = outputDirectory.appendingPathComponent("source.bin")
 
         return CompilationPaths(
             outputDirectory: outputDirectory,
@@ -235,8 +256,6 @@ final class CustomVocabularyCompiler: CustomVocabularyCompiling, @unchecked Send
         with paths: CompilationPaths,
         configuration: SFSpeechLanguageModel.Configuration
     ) async throws {
-        let modelData = descriptor.makeModelData()
-
         defer {
             // Best-effort cleanup of temp asset file
             do {
@@ -254,15 +273,12 @@ final class CustomVocabularyCompiler: CustomVocabularyCompiling, @unchecked Send
         }
 
         do {
-            // Offload heavy I/O work to background to avoid blocking main actor
-            try await Task.detached(priority: .userInitiated) {
-                try await modelData.export(to: paths.assetURL)
-                try await SFSpeechLanguageModel.prepareCustomLanguageModel(
-                    for: paths.assetURL,
-                    configuration: configuration
-                )
-            }.value
+            // The session already runs the compiler in a detached task and joins it.
+            try await prepareModel(descriptor, paths.assetURL, configuration)
+        } catch is CancellationError {
+            throw CancellationError()
         } catch {
+            try Task.checkCancellation()
             throw SpeechSessionError.customVocabularyCompilationFailed(error)
         }
     }

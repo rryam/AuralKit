@@ -165,17 +165,19 @@ extension SpeechSession {
             try Task.checkCancellation()
 
             let shouldUseNativeCapture = shouldUseNativeCaptureInputProvider
-            let transcriber = try await setUpDictationTranscriber(
+            let prepared = try await setUpDictationTranscriber(
                 contextualStrings: contextualStrings,
                 startAnalyzerImmediately: !shouldUseNativeCapture
             )
+            defer { withExtendedLifetime(prepared.artifacts) {} }
             try Task.checkCancellation()
             if Self.shouldLog(.info) {
                 Self.logger.info("Dictation transcriber prepared with modules")
             }
 
             recognizerTask = createDictationRecognizerTask(
-                transcriber: transcriber,
+                transcriber: prepared.transcriber,
+                vocabularyArtifacts: prepared.artifacts,
                 streamContinuation: streamContinuation,
                 generation: generation
             )
@@ -412,26 +414,30 @@ extension SpeechSession {
 
     private func createDictationRecognizerTask(
         transcriber: DictationTranscriber,
+        vocabularyArtifacts: CustomVocabularyArtifacts?,
         streamContinuation: AsyncThrowingStream<DictationTranscriber.Result, Error>.Continuation,
         generation: Int
     ) -> Task<Void, Never> {
         createRecognizerTask(
             label: "Dictation recognizer task",
+            vocabularyArtifacts: vocabularyArtifacts,
             results: transcriber.results,
             streamContinuation: streamContinuation,
             generation: generation
         )
     }
 
-    private func createRecognizerTask<Sequence: AsyncSequence>(
+    func createRecognizerTask<Sequence: AsyncSequence>(
         label: String,
+        vocabularyArtifacts: CustomVocabularyArtifacts? = nil,
         results: Sequence,
         streamContinuation: AsyncThrowingStream<Sequence.Element, Error>.Continuation,
         generation: Int
     ) -> Task<Void, Never>
     where Sequence: Sendable, Sequence.Element: Sendable {
-        Task<Void, Never> { [weak self] in
-            guard let self else { return }
+        Task<Void, Never> { [self, vocabularyArtifacts] in
+            // Retain the session before the first turn so EOF can still retire the analyzer.
+            defer { withExtendedLifetime(vocabularyArtifacts) {} }
 
             do {
                 for try await result in results {

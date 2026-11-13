@@ -313,11 +313,14 @@ actor MockCustomVocabularyCompiler: CustomVocabularyCompiling {
             languageModel: outputDirectory.appendingPathComponent("languageModel.bin"),
             vocabulary: outputDirectory.appendingPathComponent("vocabulary.bin")
         )
+        try Data().write(to: configuration.languageModel)
+        try Data().write(to: outputDirectory.appendingPathComponent("vocabulary.bin"))
 
         return CustomVocabularyCompilation(
             configuration: configuration,
             cacheKey: cacheKey,
-            outputDirectory: outputDirectory
+            outputDirectory: outputDirectory,
+            artifacts: CustomVocabularyArtifacts(directory: outputDirectory)
         )
     }
 
