@@ -6,6 +6,37 @@ import Testing
 
 @Suite("Screen capture updates and termination")
 struct ScreenCaptureUpdateTests {
+    @Test("Terminal errors reach a pending resume unless explicit stop won", arguments: [false, true])
+    @MainActor
+    func terminalErrorDuringResume(stopFirst: Bool) async throws {
+        guard #available(iOS 27.0, macOS 26.0, *) else { return }
+        try await withCaptureFixture { fixture in
+            let runtime = try CaptureSessionFixture(fixture)
+            let stream = ControlledCaptureStream()
+            await fixture.track(runtime.provider.selectStream { stream }).value
+            await runtime.session.pauseTranscribing()
+            let started = fixture.gate(), release = fixture.gate()
+            stream.startEntered = started; stream.startRelease = release
+            let resume = fixture.track(Task { try await runtime.session.resumeTranscribing() })
+            try await started.wait()
+            if stopFirst {
+                fixture.track(Task { await runtime.session.stopTranscribing() })
+                try await runtime.dismissed.wait()
+            }
+            stream.terminated = true
+            runtime.provider.streamDidStop(stream, error: CaptureFixtureError.startFailed)
+            try await runtime.dismissed.wait()
+            release.open()
+            try await waitForCaptureState { runtime.session.status == .idle }
+            if stopFirst {
+                try await resume.value
+            } else {
+                await #expect(throws: SpeechSessionError.self) { try await resume.value }
+            }
+            #expect(!runtime.owner.isRunning && stream.stops == 1)
+        }
+    }
+
     @Test("Filter updates cannot hide a pending start failure", arguments: [false, true])
     @MainActor
     func updateDuringFailedStart(staleUpdate: Bool) async throws {
