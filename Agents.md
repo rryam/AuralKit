@@ -145,6 +145,6 @@ Before opening a PR (or completing an automated change):
 - Minimal transcription example lives in `Aural/TranscriptionView.swift`.
 - Advanced transcription UI lives in `Aural/AdvancedTranscriptionView.swift`.
 - Error cases and localized descriptions are centralized in `Sources/AuralKit/SpeechSessionError.swift`.
-- CI uses Codemagic (`codemagic.yaml`); green builds are required before merging.
+- CI uses GitHub Actions (`.github/workflows/ci.yml`). The Build and test job must pass before merging.
 
 Happy transcribing!
