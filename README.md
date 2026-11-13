@@ -58,6 +58,8 @@ This project would not have been possible without Apple's excellent sample code.
 
 ## Quick Start
 
+The examples below use the AuralKit 3.0 API. See the [latest release](https://github.com/rryam/AuralKit/releases/latest) for documentation matching the published package.
+
 ```swift
 import AuralKit
 

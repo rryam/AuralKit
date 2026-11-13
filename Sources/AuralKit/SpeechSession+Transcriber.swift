@@ -1,5 +1,6 @@
 import Foundation
 import AVFoundation
+import CoreMedia
 import Speech
 
 // SpeechDetector gained native SpeechModule and Sendable conformances in Xcode 26.2.
@@ -234,8 +235,9 @@ extension SpeechSession {
         try await prepareAnalyzerForStartIfNeeded(in: format)
         try Task.checkCancellation()
 
-        try await analyzer.start(inputSequence: inputSequence)
-        try Task.checkCancellation()
+        analyzerInputTask = Task<CMTime?, Error> {
+            try await analyzer.analyzeSequence(inputSequence)
+        }
         if Self.shouldLog(.info) {
             Self.logger.info("Analyzer started")
         }
@@ -258,9 +260,13 @@ extension SpeechSession {
         inputBuilder.yield(input)
     }
 
-    func finishAnalyzerInput() async throws {
+    func finishAnalyzerInput() async throws -> Bool {
         inputBuilder?.finish()
-        try await analyzer?.finalizeAndFinishThroughEndOfInput()
+        guard let analyzer, let analyzerInputTask else { return true }
+        guard let endTime = try await analyzerInputTask.value else { return false }
+        try Task.checkCancellation()
+        try await analyzer.finalizeAndFinish(through: endTime)
+        return true
     }
 
     /// State captured by `detachTranscriberState()` for asynchronous cleanup.
@@ -279,6 +285,8 @@ extension SpeechSession {
         if Self.shouldLog(.debug) {
             Self.logger.debug("Stopping transcriber and cleaning up")
         }
+        analyzerInputTask?.cancel()
+        analyzerInputTask = nil
         let detached = DetachedTranscriberState(
             inputBuilder: inputBuilder, analyzer: analyzer,
             vocabularyArtifacts: activeCustomVocabularyArtifacts

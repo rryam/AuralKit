@@ -14,7 +14,7 @@ class TranscriptionManager {
     var selectedPreset: DemoTranscriberPreset = .manual {
         didSet {
             if oldValue != selectedPreset, status != .idle {
-                cancelTranscription()
+                finishTranscription()
             }
         }
     }
@@ -66,7 +66,8 @@ class TranscriptionManager {
         currentTimeRange = ""
         isSpeechDetected = true
 
-        let session = SpeechSession(locale: selectedLocale, preset: selectedPreset.preset)
+        let sessionLocale = selectedLocale
+        let session = SpeechSession(locale: sessionLocale, preset: selectedPreset.preset)
         speechSession = session
         observeStatus(from: session)
         observeAudioInput(from: session)
@@ -77,12 +78,12 @@ class TranscriptionManager {
                 for try await result in session.startTranscribing() {
                     self.handleTranscriptionResult(result)
                 }
-                self.finishSession()
+                self.finishSession(locale: sessionLocale)
             } catch is CancellationError {
                 self.cleanupSession()
             } catch {
                 self.error = error.localizedDescription
-                self.finishSession()
+                self.finishSession(locale: sessionLocale)
             }
         }
     }
@@ -184,13 +185,13 @@ class TranscriptionManager {
         transcriptionHistory.removeAll { $0.id == record.id }
     }
 
-    private func finishSession() {
+    private func finishSession(locale: Locale) {
         let transcript = String(finalizedText.characters)
         if !transcript.isEmpty {
             let record = TranscriptionRecord(
                 id: UUID(),
                 text: transcript,
-                locale: selectedLocale,
+                locale: locale,
                 timestamp: Date(),
                 alternatives: [],
                 timeRange: currentTimeRange

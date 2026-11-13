@@ -216,6 +216,10 @@ extension SpeechSession {
         await endTranscription(error: error, generation: generation, cancelRecognizer: error != nil)
     }
 
+    func finishWithoutInput(generation: Int) async {
+        await endTranscription(error: nil, generation: generation)
+    }
+
     func finishTranscribing(generation: Int, sourceEnded: Bool = false) async {
         guard generation == sessionGeneration else { return }
         if let terminationTask {
@@ -246,7 +250,7 @@ extension SpeechSession {
 
     private func finishLiveTranscription(
         results: Task<Void, Never>,
-        screenStop: Task<Void, Never>?,
+        screenStop: Task<Void, Error>?,
         generation: Int
     ) async {
         guard generation == sessionGeneration else { return }
@@ -261,15 +265,17 @@ extension SpeechSession {
             nativeCaptureSession = nil
             await nativeCaptureAnalysisTask.value
         } else {
-            await screenStop?.value
-            guard generation == sessionGeneration else { return }
-            if let terminationTask {
-                await terminationTask.value
-                return
-            }
-            guard continuation != nil else { return }
             do {
-                try await finishAnalyzerInput()
+                try await screenStop?.value
+                guard generation == sessionGeneration else { return }
+                if let terminationTask {
+                    await terminationTask.value
+                    return
+                }
+                guard continuation != nil else { return }
+                if try await !finishAnalyzerInput() {
+                    await finishWithoutInput(generation: generation)
+                }
             } catch {
                 await endTranscription(error: error, generation: generation)
                 return
@@ -319,7 +325,7 @@ extension SpeechSession {
     /// session.
     func cleanup(
         cancelRecognizer: Bool,
-        screenStop: Task<Void, Never>? = nil,
+        screenStop: Task<Void, Error>? = nil,
         generation: Int
     ) async {
         guard generation == sessionGeneration else { return }
@@ -356,7 +362,7 @@ extension SpeechSession {
 #endif
         let detached = detachTranscriberState()
         await cleanUpDetachedTranscriberState(detached, cancelAnalyzer: cancelRecognizer)
-        await screenStop?.value
+        _ = await screenStop?.result
         if screenCaptureStopTask?.generation == generation { screenCaptureStopTask = nil }
 
         guard generation == sessionGeneration else { return }

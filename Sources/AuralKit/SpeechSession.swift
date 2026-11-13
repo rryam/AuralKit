@@ -1,5 +1,6 @@
 import Foundation
 import AVFoundation
+import CoreMedia
 import Speech
 
 // MARK: - SpeechSession
@@ -66,6 +67,7 @@ public final class SpeechSession {
     var dictationTranscriber: DictationTranscriber?
     var speechDetector: SpeechDetector?
     var analyzer: SpeechAnalyzer?
+    var analyzerInputTask: Task<CMTime?, Error>?
     var activeModules: [any SpeechModule]?
     var inputSequence: AsyncStream<AnalyzerInput>?
     var inputBuilder: AsyncStream<AnalyzerInput>.Continuation?
@@ -73,7 +75,7 @@ public final class SpeechSession {
     var nativeCaptureSession: AVCaptureSession?
     var nativeCaptureAnalysisTask: Task<Void, Never>?
     var screenCaptureInputProvider: AnyObject?
-    var screenCaptureStopTask: (generation: Int, task: Task<Void, Never>)?
+    var screenCaptureStopTask: (generation: Int, task: Task<Void, Error>)?
     var voiceActivationConfiguration: VoiceActivationConfiguration?
     var customVocabularyDescriptor: CustomVocabulary?
     var customVocabularyConfiguration: SFSpeechLanguageModel.Configuration?
@@ -353,16 +355,14 @@ public final class SpeechSession {
 
     /// End live capture and deliver final results for audio already queued for analysis.
     ///
-    /// Keep consuming the result stream until it completes. For an active file transcription, this
-    /// waits for the file to finish naturally. During preparation, it closes the stream without
-    /// starting capture. The result stream reports any finalization error.
+    /// Keep consuming the stream for final results and errors. Finish waits for active file
+    /// transcription to reach EOF and closes a preparing session without starting capture.
     public func finishTranscribing() async {
         await finishTranscribing(generation: sessionGeneration)
     }
 
-    /// Abort the current run without finalizing pending audio.
-    ///
-    /// The result stream ends with `CancellationError`. Results already yielded may still be read.
+    /// Abort without finalizing pending audio. The result stream ends with `CancellationError`.
+    /// Results already yielded may still be read.
     public func cancelTranscribing() async {
         await endTranscription(error: CancellationError(), generation: sessionGeneration, requestedByCaller: true)
     }

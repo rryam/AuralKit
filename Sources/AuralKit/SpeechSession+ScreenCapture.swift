@@ -205,7 +205,7 @@ extension SpeechSession {
         setStatus(.paused)
     }
 
-    func beginStoppingScreenCapture() -> Task<Void, Never>? {
+    func beginStoppingScreenCapture() -> Task<Void, Error>? {
         let generation = sessionGeneration
         if let pending = screenCaptureStopTask, pending.generation == generation {
             return pending.task
@@ -347,7 +347,7 @@ final class ScreenCaptureAudioInputProvider: NSObject, SCStreamOutput, SCStreamD
     }
 
     @MainActor
-    func stop() -> Task<Void, Never> {
+    func stop() -> Task<Void, Error> {
         stopped = true
         let operation = transitions.stop()
         dismissPicker(self)
@@ -357,6 +357,7 @@ final class ScreenCaptureAudioInputProvider: NSObject, SCStreamOutput, SCStreamD
                 try await operation.value
             } catch {
                 audio.discard()
+                throw error
             }
         }
     }
@@ -519,7 +520,7 @@ public extension SpeechSession {
 extension SpeechSession {
     func pauseScreenCaptureStreamingIfNeeded(generation: Int) async {}
 
-    func beginStoppingScreenCapture() -> Task<Void, Never>? {
+    func beginStoppingScreenCapture() -> Task<Void, Error>? {
         screenCaptureInputProvider = nil
         return nil
     }

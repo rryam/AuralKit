@@ -353,7 +353,9 @@ extension SpeechSession {
     func finishFileInput(generation: Int) async throws {
         try Task.checkCancellation()
         guard generation == sessionGeneration else { throw CancellationError() }
-        try await finishAnalyzerInput()
+        if try await !finishAnalyzerInput() {
+            await finishWithoutInput(generation: generation)
+        }
     }
 
     func reportFileProgress(

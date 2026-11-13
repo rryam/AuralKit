@@ -87,7 +87,7 @@ extension SpeechSession {
                 if let lastAudioTime {
                     try await analyzer.finalizeAndFinish(through: lastAudioTime)
                 } else {
-                    await analyzer.cancelAndFinishNow()
+                    await self?.finishWithoutInput(generation: generation)
                 }
             } catch is CancellationError {
                 // Cancellation is expected during explicit cleanup.

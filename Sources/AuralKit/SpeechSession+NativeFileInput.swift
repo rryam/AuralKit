@@ -36,7 +36,7 @@ extension SpeechSession {
         if let lastAudioTime {
             try await analyzer.finalizeAndFinish(through: lastAudioTime)
         } else {
-            await analyzer.cancelAndFinishNow()
+            await finishWithoutInput(generation: generation)
         }
 
         return !Task.isCancelled

@@ -218,7 +218,7 @@ extension SpeechSession {
     }
 
     private func handleInterruptionEnded(options: AVAudioSession.InterruptionOptions) async {
-        guard shouldResumeAfterInterruption else { return }
+        guard shouldResumeAfterInterruption, status == .paused else { return }
         shouldResumeAfterInterruption = false
         let generation = sessionGeneration
 
@@ -230,7 +230,6 @@ extension SpeechSession {
             return
         }
 
-        guard status == .paused else { return }
         do {
             try setupAudioSession()
             try startAudioStreaming()
