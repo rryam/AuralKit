@@ -6,6 +6,32 @@ import Testing
 
 @Suite("Screen capture updates and termination")
 struct ScreenCaptureUpdateTests {
+    @Test("Filter updates cannot hide a pending start failure", arguments: [false, true])
+    @MainActor
+    func updateDuringFailedStart(staleUpdate: Bool) async throws {
+        guard #available(iOS 27.0, macOS 26.0, *) else { return }
+        try await withCaptureFixture { fixture in
+            let runtime = try CaptureSessionFixture(fixture)
+            let old = ControlledCaptureStream(), pending = ControlledCaptureStream()
+            if staleUpdate { await fixture.track(runtime.provider.selectStream { old }).value }
+            let (results, continuation) = AsyncThrowingStream<SpeechTranscriber.Result, Error>.makeStream()
+            runtime.session.continuation = .speech(continuation)
+            let started = fixture.gate(), release = fixture.gate()
+            pending.startEntered = started; pending.startRelease = release
+            pending.startError = CaptureFixtureError.startFailed
+            let selection = fixture.track(runtime.provider.selectStream { pending })
+            try await started.wait()
+            let update = fixture.track(runtime.provider.updateStream(staleUpdate ? old : pending) {})
+            release.open()
+            await selection.value; await update.value
+            await #expect(throws: SpeechSessionError.self) {
+                try await awaitResult(timeout: 1) { for try await _ in results {} }
+            }
+            #expect(runtime.session.status == .idle && !pending.capturing)
+            await runtime.close(fixture)
+        }
+    }
+
     @Test("Repeated filter updates retain the selected stream", arguments: [false, true])
     @MainActor
     func repeatedUpdates(paused: Bool) async throws {
