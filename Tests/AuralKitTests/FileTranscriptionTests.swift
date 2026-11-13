@@ -37,12 +37,24 @@ struct FileTranscriptionTests {
     func stopBeforeAnalyzerInputClosesSession() async throws {
         let session = SpeechSession()
         let (results, continuation) = AsyncThrowingStream<SpeechTranscriber.Result, Error>.makeStream()
-        session.analyzer = SpeechAnalyzer(modules: [])
+        let analyzer = SpeechAnalyzer(modules: [])
+        session.analyzer = analyzer
         session.continuation = .speech(continuation)
         session.streamingMode = .filePlayback
         session.setStatus(.preparing)
 
-        try await awaitResult(timeout: 3) { await session.stopTranscribing() }
+        let watchdog = Task {
+            do {
+                try await Task.sleep(for: .seconds(3))
+                Issue.record("Stopping an analyzer with no input did not return")
+                await analyzer.cancelAndFinishNow()
+            } catch is CancellationError {
+                // Stop completed before the deadline.
+            }
+        }
+        await session.stopTranscribing()
+        watchdog.cancel()
+        try await watchdog.value
 
         var iterator = results.makeAsyncIterator()
         let nextResult = try await iterator.next()
