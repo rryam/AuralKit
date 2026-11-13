@@ -1,0 +1,37 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    name: Build and test
+    runs-on: xcode-27
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Show toolchain
+        run: |
+          xcodebuild -version
+          swift --version
+      - name: Lint Swift
+        run: |
+          brew install swiftlint
+          swiftlint lint --strict
+      - name: Build and test Swift package
+        run: |
+          swift build
+          swift test
+      - name: Build macOS demo
+        run: xcodebuild -project Aural.xcodeproj -scheme Aural -destination 'platform=macOS' CODE_SIGNING_ALLOWED=NO build
+      - name: Build iOS Simulator demo
+        run: xcodebuild -project Aural.xcodeproj -scheme Aural -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build
