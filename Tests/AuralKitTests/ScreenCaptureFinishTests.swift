@@ -154,6 +154,56 @@ struct ScreenCaptureFinishTests {
         }
     }
 
+    @Test("A source ending during picker setup finishes without a selection cancellation error")
+    @MainActor
+    func sourceEndedDuringSetup() async throws {
+        guard #available(iOS 27.0, macOS 26.0, *) else { return }
+        try await withCaptureFixture { fixture in
+            let runtime = try CaptureSessionFixture(fixture)
+            let source = ControlledCaptureStream()
+            await fixture.track(runtime.provider.selectStream { source }).value
+            runtime.session.streamingMode = .inactive
+            runtime.session.setStatus(.preparing)
+            let generation = runtime.session.sessionGeneration
+            let (inputs, inputBuilder) = AsyncStream<AnalyzerInput>.makeStream()
+            runtime.session.inputBuilder = inputBuilder
+            let (results, resultBuilder) = AsyncThrowingStream<SpeechTranscriber.Result, Error>.makeStream()
+            runtime.session.continuation = .speech(resultBuilder)
+            runtime.session.recognizerTask = fixture.track(Task {
+                for await _ in inputs {}
+                await runtime.session.finishFromRecognizerTask(error: nil, generation: generation)
+            })
+
+            let pickerError = fixture.gate(), reported = fixture.gate()
+            runtime.session.pipelineTask = fixture.track(Task {
+                await fixtureWaitForPickerError(pickerError)
+                await runtime.session.finishFailedPipelineSetup(
+                    SpeechSessionError.screenCaptureSelectionCancelled, generation: generation
+                )
+                reported.open()
+            })
+            let stopEntered = fixture.gate(), stopRelease = fixture.gate()
+            source.stopEntered = stopEntered
+            source.stopRelease = stopRelease
+            let finish = fixture.track(Task {
+                await runtime.session.finishTranscribing(generation: generation, sourceEnded: true)
+            })
+            try await stopEntered.wait()
+            pickerError.open()
+            try await reported.wait()
+            stopRelease.open()
+            await finish.value
+
+            var iterator = results.makeAsyncIterator()
+            #expect(try await iterator.next() == nil)
+        }
+    }
+
+    @MainActor
+    private func fixtureWaitForPickerError(_ gate: CaptureGate) async {
+        await Task { try? await gate.wait() }.value
+    }
+
     private func makeAnalyzerInput() throws -> AnalyzerInput {
         let format = try #require(AVAudioFormat(
             commonFormat: .pcmFormatInt16, sampleRate: 16_000, channels: 1, interleaved: true

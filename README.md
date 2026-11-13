@@ -98,11 +98,11 @@ Add AuralKit to your project through Xcode:
 2. Enter: `https://github.com/rryam/AuralKit`
 3. Click Add Package
 
-Or add it to your `Package.swift`:
+Once 3.0 is published, select 3.0.0 in Xcode or add this dependency to your `Package.swift`:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/rryam/AuralKit", from: "2.1.1")
+    .package(url: "https://github.com/rryam/AuralKit", from: "3.0.0")
 ]
 ```
 

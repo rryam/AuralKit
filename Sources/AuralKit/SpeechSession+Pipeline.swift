@@ -204,6 +204,7 @@ extension SpeechSession {
     func finishFailedPipelineSetup(_ error: Error, generation: Int) async {
         guard generation == sessionGeneration, terminationTask == nil else { return }
         pipelineTask = nil
+        guard finishTask == nil || !Task.isCancelled else { return }
         await finishWithStartupError(error, generation: generation)
     }
 
@@ -239,6 +240,10 @@ extension SpeechSession {
             return
         }
 
+        if status == .preparing {
+            // Picker teardown can resume its pending selection with a cancellation error.
+            pipelineTask?.cancel()
+        }
         prepareForStop()
         let screenStop = beginStoppingScreenCapture()
         let task = Task {
