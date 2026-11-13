@@ -68,9 +68,8 @@ public extension SpeechSession {
     /// Start transcribing audio from content selected with ScreenCaptureKit's system picker.
     ///
     /// Screen capture transcription is available on platforms where ScreenCaptureKit can stream
-    /// audio as `CMSampleBuffer` values. AuralKit configures the stream for audio capture, converts
-    /// incoming audio samples into analyzer-compatible `AVAudioPCMBuffer`s, and emits normal
-    /// `SpeechTranscriber.Result` values.
+    /// audio as `CMSampleBuffer` values. AuralKit supplies analyzer-compatible audio to Speech
+    /// and emits normal `SpeechTranscriber.Result` values.
     ///
     /// Apps using this API must include `NSScreenCaptureUsageDescription` in their Info.plist.
     ///
@@ -179,6 +178,7 @@ extension SpeechSession {
             options: options,
             targetFormat: analyzerFormat,
             inputContinuation: inputBuilder,
+            useNativeConversion: inputProviderPreference == .automatic,
             onTermination: { [weak self] error in
                 Task { @MainActor [weak self] in
                     await self?.finishFromRecognizerTask(error: error, generation: generation)
@@ -222,19 +222,31 @@ extension SpeechSession {
 @MainActor
 private final class NativeScreenCaptureStream: ScreenCaptureStream {
     let stream: SCStream
+    private let audio: ScreenCaptureAudioProcessor
 
-    init(stream: SCStream) {
+    init(stream: SCStream, audio: ScreenCaptureAudioProcessor) {
         self.stream = stream
+        self.audio = audio
     }
 
     func startCapture() async throws {
         defer { logCaptureState(after: "startCapture") }
-        try await stream.startCapture()
+        let id = ObjectIdentifier(stream)
+        audio.start(id)
+        do {
+            try await stream.startCapture()
+        } catch {
+            audio.discard(id)
+            throw error
+        }
     }
 
     func stopCapture() async throws {
         defer { logCaptureState(after: "stopCapture") }
         try await stream.stopCapture()
+        if let error = audio.drain(ObjectIdentifier(stream)) {
+            throw ScreenCaptureDrainFailure(underlyingError: error)
+        }
     }
 
 #if os(macOS) || targetEnvironment(macCatalyst)
@@ -261,11 +273,8 @@ final class ScreenCaptureAudioInputProvider: NSObject, SCStreamOutput, SCStreamD
 
     private let options: SpeechSession.ScreenCaptureTranscriptionOptions
     private let targetFormat: AVAudioFormat
-    private let inputContinuation: AsyncStream<AnalyzerInput>.Continuation
     private let onTermination: @Sendable (Error?) -> Task<Void, Never>
-    private let sampleQueue = DispatchQueue(label: "com.auralkit.screencapture.audio", qos: .userInitiated)
-    // Only touched on `sampleQueue`, which serializes access.
-    private let bufferConverter = BufferConverter()
+    private let audio: ScreenCaptureAudioProcessor
 
     @MainActor private let transitions: ScreenCaptureTransitions
     @MainActor private var terminalCleanupTask: Task<Void, Never>?
@@ -280,6 +289,7 @@ final class ScreenCaptureAudioInputProvider: NSObject, SCStreamOutput, SCStreamD
         options: SpeechSession.ScreenCaptureTranscriptionOptions,
         targetFormat: AVAudioFormat,
         inputContinuation: AsyncStream<AnalyzerInput>.Continuation,
+        useNativeConversion: Bool = true,
         onTermination: @escaping @Sendable (Error?) -> Task<Void, Never>,
         transitions: ScreenCaptureTransitions = ScreenCaptureTransitions(),
         dismissPicker: @escaping @MainActor (any SCContentSharingPickerObserver) -> Void = { observer in
@@ -290,8 +300,12 @@ final class ScreenCaptureAudioInputProvider: NSObject, SCStreamOutput, SCStreamD
     ) {
         self.options = options
         self.targetFormat = targetFormat
-        self.inputContinuation = inputContinuation
         self.onTermination = onTermination
+        self.audio = ScreenCaptureAudioProcessor(
+            targetFormat: targetFormat, useNativeConversion: useNativeConversion, input: inputContinuation
+        ) { error in
+            _ = onTermination(error)
+        }
         self.transitions = transitions
         self.dismissPicker = dismissPicker
         super.init()
@@ -320,6 +334,11 @@ final class ScreenCaptureAudioInputProvider: NSObject, SCStreamOutput, SCStreamD
         do {
             try await transitions.pause().value
             return transitions.desiredState == .paused
+        } catch let error as ScreenCaptureDrainFailure {
+            if !stopped {
+                _ = onTermination(SpeechSessionError.screenCaptureFailed(error.underlyingError))
+            }
+            return false
         } catch {
             return false
         }
@@ -338,7 +357,13 @@ final class ScreenCaptureAudioInputProvider: NSObject, SCStreamOutput, SCStreamD
         let operation = transitions.stop()
         dismissPicker(self)
         resumeSelection(throwing: SpeechSessionError.screenCaptureSelectionCancelled)
-        return Task { _ = try? await operation.value }
+        return Task {
+            do {
+                try await operation.value
+            } catch {
+                audio.discard()
+            }
+        }
     }
 
     func contentSharingPicker(
@@ -367,8 +392,8 @@ final class ScreenCaptureAudioInputProvider: NSObject, SCStreamOutput, SCStreamD
                 configuration.width = 2
                 configuration.height = 2
                 let capture = SCStream(filter: selectedFilter, configuration: configuration, delegate: self)
-                try capture.addStreamOutput(self, type: .audio, sampleHandlerQueue: sampleQueue)
-                return NativeScreenCaptureStream(stream: capture)
+                try capture.addStreamOutput(self, type: .audio, sampleHandlerQueue: audio.queue)
+                return NativeScreenCaptureStream(stream: capture, audio: audio)
             }
         }
     }
@@ -398,26 +423,8 @@ final class ScreenCaptureAudioInputProvider: NSObject, SCStreamOutput, SCStreamD
     }
 
     func stream(_ stream: SCStream, didOutputSampleBuffer sampleBuffer: CMSampleBuffer, of type: SCStreamOutputType) {
-        guard type == .audio, sampleBuffer.isValid, sampleBuffer.numSamples > 0 else { return }
-        guard let sourceFormat = makeSourceFormat(from: sampleBuffer) else { return }
-
-        do {
-            try sampleBuffer.withAudioBufferList { audioBufferList, _ in
-                guard let sourceBuffer = AVAudioPCMBuffer(
-                    pcmFormat: sourceFormat,
-                    bufferListNoCopy: audioBufferList.unsafePointer
-                ) else { return }
-
-                guard let bufferCopy = sourceBuffer.copy() as? AVAudioPCMBuffer else {
-                    _ = onTermination(SpeechSessionError.conversionBufferCreationFailed)
-                    return
-                }
-
-                processAudioBuffer(bufferCopy)
-            }
-        } catch {
-            _ = onTermination(SpeechSessionError.screenCaptureFailed(error))
-        }
+        guard type == .audio else { return }
+        audio.receive(sampleBuffer, from: ObjectIdentifier(stream))
     }
 
     @discardableResult
@@ -458,8 +465,10 @@ final class ScreenCaptureAudioInputProvider: NSObject, SCStreamOutput, SCStreamD
                 self.resumeSelection()
             } catch {
                 guard !self.stopped, self.pickerUpdateID == id else { return }
-                if !self.resumeSelection(throwing: error) {
-                    _ = self.onTermination(SpeechSessionError.screenCaptureFailed(error))
+                let drainFailure = error as? ScreenCaptureDrainFailure
+                let selectionError = drainFailure.map { SpeechSessionError.screenCaptureFailed($0.underlyingError) }
+                if !self.resumeSelection(throwing: selectionError ?? error) {
+                    _ = self.onTermination(selectionError ?? SpeechSessionError.screenCaptureFailed(error))
                 }
             }
         }
@@ -478,34 +487,20 @@ final class ScreenCaptureAudioInputProvider: NSObject, SCStreamOutput, SCStreamD
         return true
     }
 
-    private func makeSourceFormat(from sampleBuffer: CMSampleBuffer) -> AVAudioFormat? {
-        guard let formatDescription = sampleBuffer.formatDescription,
-              var sourceDescription = formatDescription.audioStreamBasicDescription else {
-            return nil
-        }
-
-        return AVAudioFormat(streamDescription: &sourceDescription)
-    }
-
-    /// Convert and forward a captured buffer synchronously on `sampleQueue`.
-    ///
-    /// Inline conversion preserves capture order for the analyzer; the caller passes an
-    /// already-copied buffer, so a passthrough conversion is safe to forward directly.
-    private func processAudioBuffer(_ buffer: AVAudioPCMBuffer) {
-        do {
-            let converted = try bufferConverter.convertBuffer(buffer, to: targetFormat)
-            inputContinuation.yield(AnalyzerInput(buffer: converted))
-        } catch {
-            _ = onTermination(error)
-        }
-    }
-
     @MainActor
     func streamDidStop(_ stream: any ScreenCaptureStream, error: Error) {
         let nativeError = error as NSError
         let userStopped = nativeError.domain == SCStreamError.errorDomain
             && nativeError.code == SCStreamError.Code.userStopped.rawValue
-        let failure: Error? = userStopped ? nil : SpeechSessionError.screenCaptureFailed(error)
+        var failure: Error? = userStopped ? nil : SpeechSessionError.screenCaptureFailed(error)
+        if let nativeStream = stream as? NativeScreenCaptureStream {
+            let id = ObjectIdentifier(nativeStream.stream)
+            if userStopped {
+                failure = audio.drain(id).map { SpeechSessionError.screenCaptureFailed($0) }
+            } else {
+                audio.discard(id)
+            }
+        }
         let isCurrent = transitions.didStop(stream, error: failure)
         guard !stopped, isCurrent else { return }
         stopped = true
