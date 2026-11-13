@@ -67,14 +67,14 @@ struct FileTranscriptionTests {
     func fileReadErrorSurvivesRecognizerCancellation() async throws {
         let session = SpeechSession()
         let output = AsyncThrowingStream<SpeechTranscriber.Result, Error>.makeStream()
-        let results = AsyncStream<SpeechTranscriber.Result>.makeStream()
+        let transcriber = SpeechTranscriber(locale: Locale(identifier: "en-US"), preset: .transcription)
+        session.analyzer = SpeechAnalyzer(modules: [transcriber])
         let generation = session.beginStreamGeneration()
         session.continuation = .speech(output.continuation)
         session.streamingMode = .filePlayback
         session.setStatus(.transcribing)
-        let recognizer = session.createRecognizerTask(
-            label: "File recognizer", results: results.stream,
-            streamContinuation: output.continuation, generation: generation
+        let recognizer = session.createSpeechRecognizerTask(
+            transcriber: transcriber, streamContinuation: output.continuation, generation: generation
         )
         session.recognizerTask = recognizer
         session.startFileIngestion(generation: generation) { _ in
