@@ -1,6 +1,7 @@
 import AVFoundation
 import CoreMedia
 import Foundation
+import OSLog
 import Speech
 
 // swiftlint:disable file_length
@@ -226,9 +227,31 @@ private final class NativeScreenCaptureStream: ScreenCaptureStream {
         self.stream = stream
     }
 
-    func startCapture() async throws { try await stream.startCapture() }
+    func startCapture() async throws {
+        defer { logCaptureState(after: "startCapture") }
+        try await stream.startCapture()
+    }
+
     func stopCapture() async throws {
+        defer { logCaptureState(after: "stopCapture") }
         try await stream.stopCapture()
+    }
+
+#if os(macOS) || targetEnvironment(macCatalyst)
+    func updateContentFilter(_ filter: SCContentFilter) async throws {
+        defer { logCaptureState(after: "updateContentFilter") }
+        try await stream.updateContentFilter(filter)
+    }
+#endif
+
+    private func logCaptureState(after operation: String) {
+#if compiler(>=6.4)
+        guard #available(iOS 27.0, macOS 27.0, macCatalyst 27.0, *),
+              SpeechSession.shouldLog(.debug) else { return }
+        SpeechSession.logger.debug(
+            "SCStream.isCapturing after \(operation, privacy: .public): \(self.stream.isCapturing, privacy: .public)"
+        )
+#endif
     }
 }
 
@@ -331,7 +354,7 @@ final class ScreenCaptureAudioInputProvider: NSObject, SCStreamOutput, SCStreamD
                 guard let current = self.transitions.stream as? NativeScreenCaptureStream,
                       current.stream === updatedStream else { return }
 #if os(macOS) || targetEnvironment(macCatalyst)
-                self.updateStream(current) { try await updatedStream.updateContentFilter(selectedFilter) }
+                self.updateStream(current) { try await current.updateContentFilter(selectedFilter) }
                 return
 #endif
             }

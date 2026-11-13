@@ -305,6 +305,8 @@ let stream = session.startTranscribingScreenCapture(
 
 Screen capture transcription still returns normal `SpeechTranscriber.Result` values. AuralKit handles the ScreenCaptureKit stream, converts audio `CMSampleBuffer`s into analyzer-compatible buffers, and feeds the existing SpeechAnalyzer pipeline.
 
+On OS 27 and later, set `SpeechSession.logging = .debug` to see the native stream's `SCStream.isCapturing` state after capture starts, stops, or updates its content filter. The property reports screen capture activity. Audio delivery can be checked independently by looking at transcription results.
+
 ### Error Handling
 
 AuralKit surfaces detailed `SpeechSessionError` values so you can present actionable messaging:
