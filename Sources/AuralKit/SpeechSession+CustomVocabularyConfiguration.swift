@@ -106,7 +106,8 @@ extension SpeechSession {
         }
 
         let generation = beginStreamGeneration()
-        newContinuation.onTermination = { [weak self] _ in
+        newContinuation.onTermination = { [weak self] termination in
+            guard case .cancelled = termination else { return }
             Task { @MainActor [weak self] in
                 await self?.handleStreamTermination(generation: generation)
             }

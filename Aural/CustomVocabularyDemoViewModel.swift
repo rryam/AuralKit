@@ -57,10 +57,9 @@ final class CustomVocabularyDemoViewModel {
     // MARK: - Intent Handlers
 
     func startTranscription() {
-        guard status != .transcribing, status != .preparing else { return }
+        guard status == .idle, transcriptionTask == nil else { return }
 
         resetTranscriptionState()
-        cancelExistingTasks()
 
         transcriptionTask = Task { @MainActor in
             do {
@@ -68,7 +67,8 @@ final class CustomVocabularyDemoViewModel {
                 monitorDownloadProgress()
                 try await processTranscriptionStream(stream)
             } catch is CancellationError {
-                // expected when stopped
+                partialText = ""
+                currentTimeRange = ""
             } catch {
                 errorMessage = error.localizedDescription
                 isCompiling = false
@@ -78,17 +78,15 @@ final class CustomVocabularyDemoViewModel {
         }
     }
 
-    func stopTranscription() {
-        progressTask?.cancel()
-        progressTask = nil
-        resetProgressObservation(clearFraction: true)
-        transcriptionTask?.cancel()
-        transcriptionTask = nil
+    func finishTranscription() {
+        Task { await session.finishTranscribing() }
+    }
 
-        Task { @MainActor in
-            await session.stopTranscribing()
-            partialText = ""
-            currentTimeRange = ""
+    func cancelTranscription() {
+        if session.status == .idle {
+            transcriptionTask?.cancel()
+        } else {
+            Task { await session.cancelTranscribing() }
         }
     }
 
@@ -111,7 +109,7 @@ final class CustomVocabularyDemoViewModel {
     func handleToggleChange(_ isEnabled: Bool) {
         isCustomVocabularyEnabled = isEnabled
         if !isEnabled, status == .transcribing || status == .preparing {
-            stopTranscription()
+            cancelTranscription()
         }
     }
 
@@ -124,7 +122,7 @@ final class CustomVocabularyDemoViewModel {
     }
 
     func teardown() {
-        stopTranscription()
+        cancelTranscription()
         statusTask?.cancel()
         statusTask = nil
     }
@@ -151,10 +149,6 @@ final class CustomVocabularyDemoViewModel {
 
     var isStartDisabled: Bool {
         isCompiling || status == .preparing || status == .transcribing
-    }
-
-    var isStopDisabled: Bool {
-        status == .idle || status == .stopping
     }
 
     // MARK: - Private helpers
@@ -285,11 +279,6 @@ extension CustomVocabularyDemoViewModel {
         currentTimeRange = ""
         cacheKey = nil
         compilationDuration = nil
-    }
-
-    private func cancelExistingTasks() {
-        transcriptionTask?.cancel()
-        progressTask?.cancel()
     }
 
     private func prepareTranscriptionStream() async throws -> AsyncThrowingStream<DictationTranscriber.Result, Error> {

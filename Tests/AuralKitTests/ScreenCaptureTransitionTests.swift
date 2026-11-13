@@ -34,7 +34,7 @@ final class CaptureSessionFixture {
 
     func close(_ fixture: CaptureFixture) async {
         fixture.releaseAll()
-        await session.stopTranscribing()
+        await session.cancelTranscribing()
     }
 }
 
@@ -108,13 +108,13 @@ struct ScreenCaptureTransitionTests {
             try await entered.wait()
             var firstReturned = false, secondReturned = false
             let first = fixture.track(Task {
-                await runtime.session.stopTranscribing(); firstReturned = true
+                await runtime.session.cancelTranscribing(); firstReturned = true
             })
             try await runtime.dismissed.wait()
             let secondEntered = fixture.gate()
             let second = fixture.track(Task {
                 secondEntered.open()
-                await runtime.session.stopTranscribing(); secondReturned = true
+                await runtime.session.cancelTranscribing(); secondReturned = true
             })
             try await secondEntered.wait()
             #expect(!firstReturned && !secondReturned)

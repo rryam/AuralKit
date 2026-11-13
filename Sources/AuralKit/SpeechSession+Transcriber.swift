@@ -1,5 +1,6 @@
 import Foundation
 import AVFoundation
+import CoreMedia
 import Speech
 
 // SpeechDetector gained native SpeechModule and Sendable conformances in Xcode 26.2.
@@ -212,6 +213,7 @@ extension SpeechSession {
         guard let format = await SpeechAnalyzer.bestAvailableAudioFormat(compatibleWith: modules) else {
             throw SpeechSessionError.invalidAudioDataType
         }
+        try Task.checkCancellation()
         analyzerFormat = format
 
         if Self.shouldLog(.debug) {
@@ -231,8 +233,11 @@ extension SpeechSession {
         }
 
         try await prepareAnalyzerForStartIfNeeded(in: format)
+        try Task.checkCancellation()
 
-        try await analyzer.start(inputSequence: inputSequence)
+        startAnalyzingInput(generation: sessionGeneration) {
+            try await analyzer.analyzeSequence(inputSequence)
+        }
         if Self.shouldLog(.info) {
             Self.logger.info("Analyzer started")
         }
@@ -240,7 +245,25 @@ extension SpeechSession {
         startSpeechDetectorMonitoringIfNeeded()
     }
 
-    func processAudioBuffer(_ buffer: SendablePCMBuffer) async throws {
+    func startAnalyzingInput(
+        generation: Int,
+        analyze: @escaping @MainActor () async throws -> CMTime?
+    ) {
+        analyzerInputTask = Task { [weak self] in
+            do {
+                return try await analyze()
+            } catch {
+                if !Task.isCancelled {
+                    await self?.endTranscription(error: error, generation: generation)
+                }
+                throw error
+            }
+        }
+    }
+
+    func processAudioBuffer(_ buffer: SendablePCMBuffer, generation: Int) async throws {
+        try Task.checkCancellation()
+        guard generation == sessionGeneration else { throw CancellationError() }
         guard let inputBuilder, let analyzerFormat else {
             throw SpeechSessionError.invalidAudioDataType
         }
@@ -249,15 +272,20 @@ extension SpeechSession {
             from: buffer,
             analyzerFormat: analyzerFormat
         )
+        try Task.checkCancellation()
         inputBuilder.yield(input)
     }
 
-    func finishAnalyzerInput() async throws {
+    func finishAnalyzerInput() async throws -> Bool {
         inputBuilder?.finish()
-        try await analyzer?.finalizeAndFinishThroughEndOfInput()
+        guard let analyzer, let analyzerInputTask else { return true }
+        guard let endTime = try await analyzerInputTask.value else { return false }
+        try Task.checkCancellation()
+        try await analyzer.finalizeAndFinish(through: endTime)
+        return true
     }
 
-    /// State captured by `detachTranscriberState()` for asynchronous finalization.
+    /// State captured by `detachTranscriberState()` for asynchronous cleanup.
     struct DetachedTranscriberState {
         let inputBuilder: AsyncStream<AnalyzerInput>.Continuation?
         let analyzer: SpeechAnalyzer?
@@ -273,6 +301,8 @@ extension SpeechSession {
         if Self.shouldLog(.debug) {
             Self.logger.debug("Stopping transcriber and cleaning up")
         }
+        analyzerInputTask?.cancel()
+        analyzerInputTask = nil
         let detached = DetachedTranscriberState(
             inputBuilder: inputBuilder, analyzer: analyzer,
             vocabularyArtifacts: activeCustomVocabularyArtifacts
@@ -293,29 +323,9 @@ extension SpeechSession {
         return detached
     }
 
-    /// Finish the detached analyzer input and finalize the detached analyzer.
-    ///
-    /// Operates only on the captured references, never on live session state, so it is safe to
-    /// run even after a newer session has started.
-    func finalizeDetachedTranscriberState(
-        _ detached: DetachedTranscriberState,
-        cancelAnalysis: Bool = false
-    ) async {
+    func cleanUpDetachedTranscriberState(_ detached: DetachedTranscriberState, cancelAnalyzer: Bool) async {
         defer { withExtendedLifetime(detached.vocabularyArtifacts) {} }
         detached.inputBuilder?.finish()
-        if cancelAnalysis {
-            // Finalizing waits for EOF, which may never arrive if setup was cancelled.
-            await detached.analyzer?.cancelAndFinishNow()
-            return
-        }
-        do {
-            try await detached.analyzer?.finalizeAndFinishThroughEndOfInput()
-        } catch {
-            // Finalization failed, but we still need to clean up resources
-            // Log for debugging but don't propagate since stop() is best-effort cleanup
-        }
-        if Self.shouldLog(.debug) {
-            Self.logger.debug("Transcriber cleanup complete")
-        }
+        if cancelAnalyzer { await detached.analyzer?.cancelAndFinishNow() }
     }
 }

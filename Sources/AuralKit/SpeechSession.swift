@@ -1,5 +1,6 @@
 import Foundation
 import AVFoundation
+import CoreMedia
 import Speech
 
 // MARK: - SpeechSession
@@ -28,8 +29,7 @@ import Speech
 /// }
 /// ```
 ///
-/// Call `stopTranscribing()` to end capture and unwind the stream. The same instance may be reused
-/// for subsequent transcription sessions.
+/// Use `finishTranscribing()` to receive final results or `cancelTranscribing()` to abandon the run.
 @MainActor
 public final class SpeechSession {
 
@@ -67,6 +67,7 @@ public final class SpeechSession {
     var dictationTranscriber: DictationTranscriber?
     var speechDetector: SpeechDetector?
     var analyzer: SpeechAnalyzer?
+    var analyzerInputTask: Task<CMTime?, Error>?
     var activeModules: [any SpeechModule]?
     var inputSequence: AsyncStream<AnalyzerInput>?
     var inputBuilder: AsyncStream<AnalyzerInput>.Continuation?
@@ -74,7 +75,7 @@ public final class SpeechSession {
     var nativeCaptureSession: AVCaptureSession?
     var nativeCaptureAnalysisTask: Task<Void, Never>?
     var screenCaptureInputProvider: AnyObject?
-    var screenCaptureStopTask: (generation: Int, task: Task<Void, Never>)?
+    var screenCaptureStopTask: (generation: Int, task: Task<Void, Error>)?
     var voiceActivationConfiguration: VoiceActivationConfiguration?
     var customVocabularyDescriptor: CustomVocabulary?
     var customVocabularyConfiguration: SFSpeechLanguageModel.Configuration?
@@ -100,6 +101,9 @@ public final class SpeechSession {
     var continuation: TranscriptionContinuation?
     var recognizerTask: Task<Void, Never>?
     var pipelineTask: Task<Void, Never>?
+    var finishTask: Task<Void, Never>?
+    var terminationTask: Task<Void, Never>?
+    var cancellationRequested = false
     var fileIngestionTask: Task<Void, Never>?
     var streamingMode: StreamingMode = .inactive
     /// Incremented for every accepted start so stale termination handlers can be ignored.
@@ -267,7 +271,7 @@ public final class SpeechSession {
     ///
     /// The returned `AsyncThrowingStream` yields `SpeechTranscriber.Result` chunks containing both text and
     /// timing metadata (`.audioTimeRange`), as well as whether the result is final or volatile (partial).
-    /// Consume the stream with `for try await` and call `stopTranscribing()` to finish early.
+    /// Consume the stream with `for try await` and call `finishTranscribing()` to finish capture.
     ///
     /// - Parameter contextualStrings: Optional dictionary mapping contextual strings tags
     ///   to arrays of contextual words that help improve transcription accuracy. For example,
@@ -305,7 +309,8 @@ public final class SpeechSession {
         }
 
         let generation = beginStreamGeneration()
-        newContinuation.onTermination = { [weak self] _ in
+        newContinuation.onTermination = { [weak self] termination in
+            guard case .cancelled = termination else { return }
             Task { @MainActor [weak self] in
                 await self?.handleStreamTermination(generation: generation)
             }
@@ -345,18 +350,21 @@ public final class SpeechSession {
     public func startTranscribing(
         contextualStrings: [String]
     ) -> AsyncThrowingStream<SpeechTranscriber.Result, Error> {
-        return startTranscribing(contextualStrings: [.general: contextualStrings])
+        startTranscribing(contextualStrings: [.general: contextualStrings])
     }
 
-    /// Stop capturing audio and finish the current transcription stream.
+    /// End live capture and deliver final results for audio already queued for analysis.
     ///
-    /// Safe to call even if `startTranscribing()` has not been invoked or the stream has already
-    /// completed; the method simply waits for cleanup and returns.
-    public func stopTranscribing() async {
-        let generation = sessionGeneration
-        prepareForStop()
-        await cleanup(cancelRecognizer: true, generation: generation)
-        await finishStream(error: nil, generation: generation)
+    /// Keep consuming the stream for final results and errors. Finish waits for active file
+    /// transcription to reach EOF and closes a preparing session without starting capture.
+    public func finishTranscribing() async {
+        await finishTranscribing(generation: sessionGeneration)
+    }
+
+    /// Abort without finalizing pending audio. The result stream ends with `CancellationError`.
+    /// Results already yielded may still be read.
+    public func cancelTranscribing() async {
+        await endTranscription(error: CancellationError(), generation: sessionGeneration, requestedByCaller: true)
     }
 
     /// Pause capture without tearing down the analyzer pipeline.
@@ -385,11 +393,8 @@ public final class SpeechSession {
             try startAudioStreaming()
             setStatus(.transcribing)
         } catch {
-            prepareForStop()
-            await cleanup(cancelRecognizer: true, generation: generation)
-            await finishStream(error: error, generation: generation)
+            await endTranscription(error: error, generation: generation)
             throw error
         }
     }
-
 }

@@ -30,12 +30,13 @@ struct CustomVocabularyDemoView: View {
                 TranscriptionControlsView(
                     status: viewModel.status,
                     error: viewModel.errorMessage,
-                    showStopButton: showStopButton,
                     buttonColor: buttonColor,
                     buttonIcon: buttonIcon,
                     statusMessage: statusMessage,
                     onPrimaryAction: handlePrimaryAction,
-                    onStopAction: handleStopAction
+                    onFinishAction: { model.finishTranscription() },
+                    onCancelAction: { model.cancelTranscription() },
+                    isPreparing: model.isCompiling
                 )
                 .padding(.horizontal)
             }
@@ -256,15 +257,6 @@ private extension CustomVocabularyDemoView {
         }
     }
 
-    var showStopButton: Bool {
-        switch model.status {
-        case .idle, .stopping:
-            return false
-        case .preparing, .transcribing, .paused:
-            return true
-        }
-    }
-
     var statusMessage: String {
         switch model.status {
         case .idle:
@@ -274,9 +266,9 @@ private extension CustomVocabularyDemoView {
         case .transcribing:
             return "Listening..."
         case .paused:
-            return "Paused — tap to resume or stop"
+            return "Paused"
         case .stopping:
-            return "Stopping..."
+            return "Ending session..."
         }
     }
 
@@ -285,7 +277,7 @@ private extension CustomVocabularyDemoView {
         case .idle:
             model.startTranscription()
         case .preparing:
-            model.stopTranscription()
+            model.cancelTranscription()
         case .transcribing:
             model.pauseTranscription()
         case .paused:
@@ -295,7 +287,4 @@ private extension CustomVocabularyDemoView {
         }
     }
 
-    func handleStopAction() {
-        model.stopTranscription()
-    }
 }

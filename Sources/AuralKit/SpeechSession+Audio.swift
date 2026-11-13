@@ -240,7 +240,7 @@ extension SpeechSession {
     }
 
     private func handleInterruptionEnded(options: AVAudioSession.InterruptionOptions) async {
-        guard shouldResumeAfterInterruption else { return }
+        guard shouldResumeAfterInterruption, status == .paused else { return }
         shouldResumeAfterInterruption = false
         let generation = sessionGeneration
 
@@ -253,10 +253,7 @@ extension SpeechSession {
         }
 
         do {
-            try await setupAudioSession()
-            // The session can be stopped and restarted while the audio session is being
-            // reconfigured; a stale interruption must not resume or tear down the newer stream.
-            guard generation == sessionGeneration else { return }
+            try setupAudioSession()
             try startAudioStreaming()
             setStatus(.transcribing)
             if Self.shouldLog(.notice) {
@@ -277,10 +274,7 @@ extension SpeechSession {
     /// to a session that has already been stopped cannot mark a newer session `.stopping` or
     /// finish its stream.
     private func finishInterruptedSession(error: Error?, generation: Int) async {
-        guard generation == sessionGeneration else { return }
-        prepareForStop()
-        await cleanup(cancelRecognizer: true, generation: generation)
-        await finishStream(error: error, generation: generation)
+        await endTranscription(error: error, generation: generation)
     }
 #elseif os(macOS)
     func handleEngineConfigurationChange() async {

@@ -77,9 +77,7 @@ private extension SpeechSession {
                     try await analyzer.finalizeAndFinish(through: endTime)
                 } else {
                     // With no input samples, Speech may leave the module's results stream open.
-                    session.prepareForStop()
-                    await session.cleanup(cancelRecognizer: true, generation: generation)
-                    await session.finishStream(error: nil, generation: generation)
+                    await session.finishWithoutInput(generation: generation)
                 }
             }
         } catch {

@@ -32,9 +32,9 @@ struct FileTranscriptionTests {
     }
 
 #if swift(>=6.4)
-    @Test("Stopping a media analyzer before it receives input closes the session")
+    @Test("Cancelling a media analyzer before it receives input closes the session")
     @MainActor
-    func stopBeforeAnalyzerInputClosesSession() async throws {
+    func cancelBeforeAnalyzerInputClosesSession() async throws {
         let session = SpeechSession()
         let (results, continuation) = AsyncThrowingStream<SpeechTranscriber.Result, Error>.makeStream()
         let analyzer = SpeechAnalyzer(modules: [])
@@ -46,19 +46,19 @@ struct FileTranscriptionTests {
         let watchdog = Task {
             do {
                 try await Task.sleep(for: .seconds(3))
-                Issue.record("Stopping an analyzer with no input did not return")
+                Issue.record("Cancelling an analyzer with no input did not return")
                 await analyzer.cancelAndFinishNow()
             } catch is CancellationError {
-                // Stop completed before the deadline.
+                // Cancel completed before the deadline.
             }
         }
-        await session.stopTranscribing()
+        await session.cancelTranscribing()
         watchdog.cancel()
         try await watchdog.value
 
-        var iterator = results.makeAsyncIterator()
-        let nextResult = try await iterator.next()
-        #expect(nextResult == nil)
+        await #expect(throws: CancellationError.self) {
+            for try await _ in results {}
+        }
         #expect(session.status == .idle)
     }
 

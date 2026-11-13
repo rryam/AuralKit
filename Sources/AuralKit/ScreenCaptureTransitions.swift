@@ -34,6 +34,8 @@ final class ScreenCaptureTransitions {
     private var tail: Task<Void, Error>?
     private var terminalFailure: TerminalFailure?
     private var drainFailure: ScreenCaptureDrainFailure?
+    private var explicitStopPending = false
+    private var explicitStopFailure: Error?
 
     // Synchronous admission returns the owned handle before any capture call can suspend.
     func replace(makeStream: @escaping @MainActor () throws -> any ScreenCaptureStream) -> Task<Void, Error> {
@@ -83,6 +85,9 @@ final class ScreenCaptureTransitions {
         guard stream === expectedStream else { return false }
         terminatedStream = ObjectIdentifier(expectedStream)
         isRunning = false
+        if explicitStopPending, streamRevision == revision, let error {
+            explicitStopFailure = explicitStopFailure ?? error
+        }
         guard isCurrent(expectedStream) else { return false }
         if let error { terminalFailure = TerminalFailure(control: controlRevision, error: error, operation: tail) }
         controlRevision = UUID()
@@ -140,10 +145,19 @@ final class ScreenCaptureTransitions {
     func stop() -> Task<Void, Error> {
         controlRevision = UUID()
         desiredState = .stopped
+        explicitStopPending = true
         return enqueue {
-            defer { self.stream = nil }
-            try await self.stopCurrent()
-            if let drainFailure = self.drainFailure { throw drainFailure }
+            defer {
+                self.stream = nil
+                self.explicitStopPending = false
+                self.explicitStopFailure = nil
+            }
+            do {
+                try await self.stopCurrent()
+            } catch {
+                throw self.explicitStopFailure ?? error
+            }
+            if let error = self.explicitStopFailure ?? self.drainFailure { throw error }
         }
     }
 

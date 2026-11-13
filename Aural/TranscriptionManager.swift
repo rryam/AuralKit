@@ -14,7 +14,7 @@ class TranscriptionManager {
     var selectedPreset: DemoTranscriberPreset = .manual {
         didSet {
             if oldValue != selectedPreset, status != .idle {
-                stopTranscription()
+                finishTranscription()
             }
         }
     }
@@ -66,7 +66,8 @@ class TranscriptionManager {
         currentTimeRange = ""
         isSpeechDetected = true
 
-        let session = SpeechSession(locale: selectedLocale, preset: selectedPreset.preset)
+        let sessionLocale = selectedLocale
+        let session = SpeechSession(locale: sessionLocale, preset: selectedPreset.preset)
         speechSession = session
         observeStatus(from: session)
         observeAudioInput(from: session)
@@ -77,12 +78,12 @@ class TranscriptionManager {
                 for try await result in session.startTranscribing() {
                     self.handleTranscriptionResult(result)
                 }
-                self.finishSession()
+                self.finishSession(locale: sessionLocale)
             } catch is CancellationError {
                 self.cleanupSession()
             } catch {
                 self.error = error.localizedDescription
-                self.finishSession()
+                self.finishSession(locale: sessionLocale)
             }
         }
     }
@@ -122,12 +123,14 @@ class TranscriptionManager {
         return String(format: "%d:%02d.%02d", minutes, remainingSeconds, milliseconds)
     }
 
-    func stopTranscription() {
-        guard status != .idle, status != .stopping else { return }
-        Task { @MainActor in
-            await self.speechSession?.stopTranscribing()
-        }
-        stopAuxiliaryTasks()
+    func finishTranscription() {
+        guard let speechSession else { return }
+        Task { await speechSession.finishTranscribing() }
+    }
+
+    func cancelTranscription() {
+        guard let speechSession else { return }
+        Task { await speechSession.cancelTranscribing() }
     }
 
     func pauseTranscription() {
@@ -154,7 +157,7 @@ class TranscriptionManager {
         case .idle:
             startTranscription()
         case .preparing:
-            stopTranscription()
+            cancelTranscription()
         case .transcribing:
             pauseTranscription()
         case .paused:
@@ -182,15 +185,22 @@ class TranscriptionManager {
         transcriptionHistory.removeAll { $0.id == record.id }
     }
 
-    private func finishSession() {
-        if !currentTranscript.isEmpty {
+    private func finishSession(locale: Locale) {
+        let transcript = String(finalizedText.characters)
+        if !transcript.isEmpty {
+            let ranges = finalizedText.runs.compactMap(\.audioTimeRange)
+            let timeRange = if let first = ranges.first, let last = ranges.last {
+                "\(formatTime(first.start)) - \(formatTime(last.end))"
+            } else {
+                ""
+            }
             let record = TranscriptionRecord(
                 id: UUID(),
-                text: currentTranscript,
-                locale: selectedLocale,
+                text: transcript,
+                locale: locale,
                 timestamp: Date(),
                 alternatives: [],
-                timeRange: currentTimeRange
+                timeRange: timeRange
             )
             transcriptionHistory.insert(record, at: 0)
         }

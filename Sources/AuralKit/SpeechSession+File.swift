@@ -105,6 +105,7 @@ public extension SpeechSession {
         }
         let finalResults = try await stream.reduce(into: [SpeechTranscriber.Result](), accumulator)
 
+        try Task.checkCancellation()
         return finalResults
     }
 }
@@ -257,7 +258,7 @@ private extension SpeechSession {
         if #available(iOS 27.0, macOS 27.0, *),
            progressHandler == nil,
            await shouldUseNativeAssetInputProvider {
-            return try await feedAudioFileWithNativeAnalyzer(payload.file, progressHandler: progressHandler)
+            return try await feedAudioFileWithNativeAnalyzer(payload.file, generation: generation)
         }
 #endif
 
@@ -294,7 +295,7 @@ private extension SpeechSession {
 
             let sendableBuffer = SendablePCMBuffer(buffer: bufferCopy)
 
-            try await self.processAudioBuffer(sendableBuffer)
+            try await processAudioBuffer(sendableBuffer, generation: generation)
 
             processedFrames += AVAudioFramePosition(buffer.frameLength)
 
@@ -306,7 +307,7 @@ private extension SpeechSession {
 
         guard !Task.isCancelled else { return false }
 
-        try await self.finishAnalyzerInput()
+        try await finishFileInput(generation: generation)
 
         return !Task.isCancelled && processedFrames >= totalFrames
     }
@@ -335,7 +336,8 @@ extension SpeechSession {
         }
 
         let generation = beginStreamGeneration()
-        newContinuation.onTermination = { [weak self] _ in
+        newContinuation.onTermination = { [weak self] termination in
+            guard case .cancelled = termination else { return }
             Task { @MainActor [weak self] in
                 await self?.handleStreamTermination(generation: generation)
             }
@@ -363,6 +365,14 @@ extension SpeechSession {
             } catch {
                 await finishWithStartupError(error, generation: generation)
             }
+        }
+    }
+
+    func finishFileInput(generation: Int) async throws {
+        try Task.checkCancellation()
+        guard generation == sessionGeneration else { throw CancellationError() }
+        if try await !finishAnalyzerInput() {
+            await finishWithoutInput(generation: generation)
         }
     }
 
