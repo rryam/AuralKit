@@ -36,12 +36,12 @@ struct TranscriptionView: View {
                 TranscriptionControlsView(
                     status: manager.status,
                     error: manager.error,
-                    showStopButton: showStopButton,
                     buttonColor: buttonColor,
                     buttonIcon: buttonIcon,
                     statusMessage: statusMessage,
                     onPrimaryAction: { manager.primaryAction() },
-                    onStopAction: { manager.stopTranscription() },
+                    onFinishAction: { manager.finishTranscription() },
+                    onCancelAction: { manager.cancelTranscription() },
                     animationScale: animationScale
                 )
                 .padding(.horizontal)
@@ -166,15 +166,6 @@ struct TranscriptionView: View {
         }
     }
 
-    private var showStopButton: Bool {
-        switch manager.status {
-        case .idle, .stopping:
-            return false
-        case .preparing, .transcribing, .paused:
-            return true
-        }
-    }
-
     private var statusMessage: String {
         switch manager.status {
         case .idle:
@@ -184,9 +175,9 @@ struct TranscriptionView: View {
         case .transcribing:
             return "Listening..."
         case .paused:
-            return "Paused — tap to resume or stop"
+            return "Paused"
         case .stopping:
-            return "Stopping..."
+            return "Ending session..."
         }
     }
 }

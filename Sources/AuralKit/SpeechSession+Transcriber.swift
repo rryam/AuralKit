@@ -212,6 +212,7 @@ extension SpeechSession {
         guard let format = await SpeechAnalyzer.bestAvailableAudioFormat(compatibleWith: modules) else {
             throw SpeechSessionError.invalidAudioDataType
         }
+        try Task.checkCancellation()
         analyzerFormat = format
 
         if Self.shouldLog(.debug) {
@@ -231,8 +232,10 @@ extension SpeechSession {
         }
 
         try await prepareAnalyzerForStartIfNeeded(in: format)
+        try Task.checkCancellation()
 
         try await analyzer.start(inputSequence: inputSequence)
+        try Task.checkCancellation()
         if Self.shouldLog(.info) {
             Self.logger.info("Analyzer started")
         }
@@ -240,7 +243,9 @@ extension SpeechSession {
         startSpeechDetectorMonitoringIfNeeded()
     }
 
-    func processAudioBuffer(_ buffer: SendablePCMBuffer) async throws {
+    func processAudioBuffer(_ buffer: SendablePCMBuffer, generation: Int) async throws {
+        try Task.checkCancellation()
+        guard generation == sessionGeneration else { throw CancellationError() }
         guard let inputBuilder, let analyzerFormat else {
             throw SpeechSessionError.invalidAudioDataType
         }
@@ -249,6 +254,7 @@ extension SpeechSession {
             from: buffer,
             analyzerFormat: analyzerFormat
         )
+        try Task.checkCancellation()
         inputBuilder.yield(input)
     }
 
@@ -257,7 +263,7 @@ extension SpeechSession {
         try await analyzer?.finalizeAndFinishThroughEndOfInput()
     }
 
-    /// State captured by `detachTranscriberState()` for asynchronous finalization.
+    /// State captured by `detachTranscriberState()` for asynchronous cleanup.
     struct DetachedTranscriberState {
         let inputBuilder: AsyncStream<AnalyzerInput>.Continuation?
         let analyzer: SpeechAnalyzer?
@@ -293,21 +299,9 @@ extension SpeechSession {
         return detached
     }
 
-    /// Finish the detached analyzer input and finalize the detached analyzer.
-    ///
-    /// Operates only on the captured references, never on live session state, so it is safe to
-    /// run even after a newer session has started.
-    func finalizeDetachedTranscriberState(_ detached: DetachedTranscriberState) async {
+    func cleanUpDetachedTranscriberState(_ detached: DetachedTranscriberState, cancelAnalyzer: Bool) async {
         defer { withExtendedLifetime(detached.vocabularyArtifacts) {} }
         detached.inputBuilder?.finish()
-        do {
-            try await detached.analyzer?.finalizeAndFinishThroughEndOfInput()
-        } catch {
-            // Finalization failed, but we still need to clean up resources
-            // Log for debugging but don't propagate since stop() is best-effort cleanup
-        }
-        if Self.shouldLog(.debug) {
-            Self.logger.debug("Transcriber cleanup complete")
-        }
+        if cancelAnalyzer { await detached.analyzer?.cancelAndFinishNow() }
     }
 }

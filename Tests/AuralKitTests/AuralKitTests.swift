@@ -36,11 +36,12 @@ struct SpeechSessionStateTests {
         #expect(session.analyzerConfiguration == configuration)
     }
 
-    @Test("Stop transcribing without session is a no-op")
+    @Test("Finish and Cancel without a session are no-ops")
     @MainActor
-    func stopTranscribingWithoutSessionIsNoOp() async {
+    func endingTranscriptionWithoutSessionIsNoOp() async {
         let session = SpeechSession()
-        await session.stopTranscribing()
+        await session.finishTranscribing()
+        await session.cancelTranscribing()
         #expect(await session.modelDownloadProgress == nil)
         #expect(session.status == .idle)
     }

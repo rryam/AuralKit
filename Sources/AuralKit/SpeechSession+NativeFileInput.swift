@@ -15,24 +15,28 @@ extension SpeechSession {
 
     nonisolated func feedAudioFileWithNativeAnalyzer(
         _ file: AVAudioFile,
-        progressHandler _: (@Sendable (Double) -> Void)?
+        generation: Int
     ) async throws -> Bool {
         guard !Task.isCancelled else { return false }
 
-        guard let analyzer = await MainActor.run(body: { analyzer }) else {
+        guard let analyzer = await MainActor.run(body: { generation == sessionGeneration ? analyzer : nil }) else {
             throw SpeechSessionError.recognitionStreamSetupFailed
         }
 
         try await prepareAnalyzerForStartIfNeeded(in: file.processingFormat)
+        try Task.checkCancellation()
         await MainActor.run {
+            guard !Task.isCancelled, generation == sessionGeneration else { return }
             startSpeechDetectorMonitoringIfNeeded()
         }
+        try Task.checkCancellation()
 
         let lastAudioTime = try await analyzer.analyzeSequence(from: file)
+        try Task.checkCancellation()
         if let lastAudioTime {
             try await analyzer.finalizeAndFinish(through: lastAudioTime)
         } else {
-            try await analyzer.finalizeAndFinishThroughEndOfInput()
+            await analyzer.cancelAndFinishNow()
         }
 
         return !Task.isCancelled

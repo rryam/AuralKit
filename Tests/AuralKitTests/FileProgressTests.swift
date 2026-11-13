@@ -22,7 +22,7 @@ struct FileProgressTests {
         case "stopping":
             session.prepareForStop()
         case "stopped":
-            await session.stopTranscribing()
+            await session.cancelTranscribing()
         case "replacement":
             _ = session.beginStreamGeneration()
         default:
@@ -41,6 +41,6 @@ struct FileProgressTests {
         var received: [Double] = []
         for await value in progress { received.append(value) }
         #expect(received == [0.25])
-        await session.stopTranscribing()
+        await session.cancelTranscribing()
     }
 }

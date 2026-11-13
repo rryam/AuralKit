@@ -26,7 +26,7 @@ struct ScreenCaptureUpdateTests {
             })
             try await started.wait()
             if stopFirst {
-                fixture.track(Task { await runtime.session.stopTranscribing() })
+                fixture.track(Task { await runtime.session.cancelTranscribing() })
             }
             await fixture.track(Task { @MainActor in
                 if stopFirst { #expect(runtime.session.status == .stopping) }
@@ -126,7 +126,11 @@ struct ScreenCaptureUpdateTests {
             try await updating.wait()
             #expect(stream.capturing && stream.starts == 1 && stream.stops == 0)
             let control = fixture.track(Task {
-                if stop { await runtime.session.stopTranscribing() } else { await runtime.session.pauseTranscribing() }
+                if stop {
+                    await runtime.session.cancelTranscribing()
+                } else {
+                    await runtime.session.pauseTranscribing()
+                }
             })
             try await waitForCaptureState { runtime.owner.desiredState == (stop ? .stopped : .paused) }
             let later = fixture.track(runtime.provider.updateStream(stream) { updates += 1 })

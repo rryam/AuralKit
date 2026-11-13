@@ -126,7 +126,7 @@ struct CustomVocabularyOwnershipTests {
         try await owner!.configureCustomVocabulary(nil)
         owner = nil
         try assertFiles(in: directory)
-        await SpeechSession().finalizeDetachedTranscriberState(try #require(detached))
+        await SpeechSession().cleanUpDetachedTranscriberState(try #require(detached), cancelAnalyzer: true)
         try assertFiles(in: directory)
         detached = nil
         #expect(!FileManager.default.fileExists(atPath: directory.path))

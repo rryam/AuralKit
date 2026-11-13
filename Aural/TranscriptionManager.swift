@@ -14,7 +14,7 @@ class TranscriptionManager {
     var selectedPreset: DemoTranscriberPreset = .manual {
         didSet {
             if oldValue != selectedPreset, status != .idle {
-                stopTranscription()
+                cancelTranscription()
             }
         }
     }
@@ -122,12 +122,14 @@ class TranscriptionManager {
         return String(format: "%d:%02d.%02d", minutes, remainingSeconds, milliseconds)
     }
 
-    func stopTranscription() {
-        guard status != .idle, status != .stopping else { return }
-        Task { @MainActor in
-            await self.speechSession?.stopTranscribing()
-        }
-        stopAuxiliaryTasks()
+    func finishTranscription() {
+        guard let speechSession else { return }
+        Task { await speechSession.finishTranscribing() }
+    }
+
+    func cancelTranscription() {
+        guard let speechSession else { return }
+        Task { await speechSession.cancelTranscribing() }
     }
 
     func pauseTranscription() {
@@ -154,7 +156,7 @@ class TranscriptionManager {
         case .idle:
             startTranscription()
         case .preparing:
-            stopTranscription()
+            cancelTranscription()
         case .transcribing:
             pauseTranscription()
         case .paused:
@@ -183,10 +185,11 @@ class TranscriptionManager {
     }
 
     private func finishSession() {
-        if !currentTranscript.isEmpty {
+        let transcript = String(finalizedText.characters)
+        if !transcript.isEmpty {
             let record = TranscriptionRecord(
                 id: UUID(),
-                text: currentTranscript,
+                text: transcript,
                 locale: selectedLocale,
                 timestamp: Date(),
                 alternatives: [],

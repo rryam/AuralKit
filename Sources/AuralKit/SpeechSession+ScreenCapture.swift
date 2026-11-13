@@ -38,9 +38,7 @@ extension SpeechSession {
         } catch {
             let canFinish = status == .paused || (captureFailure != nil && status == .stopping)
             guard generation == sessionGeneration, canFinish, streamingMode == .screenCapture else { throw error }
-            prepareForStop()
-            await cleanup(cancelRecognizer: true, generation: generation)
-            await finishStream(error: error, generation: generation)
+            await endTranscription(error: error, generation: generation)
             throw error
         }
         if let terminalFailure { throw terminalFailure }
@@ -89,7 +87,8 @@ public extension SpeechSession {
         }
 
         let generation = beginStreamGeneration()
-        newContinuation.onTermination = { [weak self] _ in
+        newContinuation.onTermination = { [weak self] termination in
+            guard case .cancelled = termination else { return }
             Task { @MainActor [weak self] in
                 await self?.handleStreamTermination(generation: generation)
             }
@@ -152,6 +151,7 @@ extension SpeechSession {
             )
             try await setUpScreenCaptureStreaming(options: options, generation: generation)
             try Task.checkCancellation()
+            guard status == .preparing else { return }
 
             streamingMode = .screenCapture
             setStatus(.transcribing)
@@ -181,7 +181,11 @@ extension SpeechSession {
             useNativeConversion: inputProviderPreference == .automatic,
             onTermination: { [weak self] error in
                 Task { @MainActor [weak self] in
-                    await self?.finishFromRecognizerTask(error: error, generation: generation)
+                    if let error {
+                        await self?.endTranscription(error: error, generation: generation)
+                    } else {
+                        await self?.finishTranscribing(generation: generation, sourceEnded: true)
+                    }
                 }
             }
         )

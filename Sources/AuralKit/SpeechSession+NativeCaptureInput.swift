@@ -83,10 +83,11 @@ extension SpeechSession {
             defer { withExtendedLifetime(vocabularyArtifacts) {} }
             do {
                 let lastAudioTime = try await analyzer.analyzeSequence(analyzerInputs)
+                try Task.checkCancellation()
                 if let lastAudioTime {
                     try await analyzer.finalizeAndFinish(through: lastAudioTime)
                 } else {
-                    try await analyzer.finalizeAndFinishThroughEndOfInput()
+                    await analyzer.cancelAndFinishNow()
                 }
             } catch is CancellationError {
                 // Cancellation is expected during explicit cleanup.
@@ -133,7 +134,7 @@ extension SpeechSession {
     func finishFromNativeCaptureAnalysis(_ error: Error, generation: Int) async {
         guard generation == sessionGeneration else { return }
         nativeCaptureAnalysisTask = nil
-        await finishFromRecognizerTask(error: error, generation: generation)
+        await endTranscription(error: error, generation: generation)
     }
 }
 #endif

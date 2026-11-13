@@ -86,10 +86,7 @@ extension SpeechSession {
     /// Runs only when the terminating stream is still the current one; stale handlers
     /// (from streams that were already replaced or finished) are ignored.
     func handleStreamTermination(generation: Int) async {
-        guard generation == sessionGeneration else { return }
-        prepareForStop()
-        await cleanup(cancelRecognizer: true, generation: generation)
-        await finishStream(error: nil, generation: generation)
+        await endTranscription(error: CancellationError(), generation: generation)
     }
 
     var isPausableStreamingMode: Bool {
@@ -108,7 +105,7 @@ extension SpeechSession {
             try Task.checkCancellation()
             try await ensurePermissions()
             try Task.checkCancellation()
-            try await setupAudioSession()
+            try setupAudioSession()
             try Task.checkCancellation()
 
             let shouldUseNativeCapture = shouldUseNativeCaptureInputProvider
@@ -161,7 +158,7 @@ extension SpeechSession {
             try Task.checkCancellation()
             try await ensurePermissions()
             try Task.checkCancellation()
-            try await setupAudioSession()
+            try setupAudioSession()
             try Task.checkCancellation()
 
             let shouldUseNativeCapture = shouldUseNativeCaptureInputProvider
@@ -205,63 +202,98 @@ extension SpeechSession {
     }
 
     func finishFailedPipelineSetup(_ error: Error, generation: Int) async {
-        guard generation == sessionGeneration else { return }
+        guard generation == sessionGeneration, terminationTask == nil else { return }
         pipelineTask = nil
-        if error is CancellationError {
-            await finishCancelledPipelineSetup(generation: generation)
-        } else {
-            await finishWithStartupError(error, generation: generation)
-        }
-    }
-
-    /// Unwind a pipeline whose setup task was cancelled by `cleanup` (stop or stream termination).
-    ///
-    /// The canceller already ran `cleanup`, but this task may have created additional state
-    /// (transcriber, analyzer, audio taps) after that cleanup finished, so run it once more.
-    /// `finishStream` is a no-op when the canceller already finished the stream, and both steps
-    /// are skipped when a newer stream generation owns the session state.
-    func finishCancelledPipelineSetup(generation: Int) async {
-        guard generation == sessionGeneration else { return }
-        if Self.shouldLog(.debug) {
-            Self.logger.debug("Pipeline setup cancelled; unwinding")
-        }
-        await cleanup(cancelRecognizer: true, generation: generation)
-        guard generation == sessionGeneration else { return }
-        await finishStream(error: nil, generation: generation)
+        await finishWithStartupError(error, generation: generation)
     }
 
     func finishWithStartupError(_ error: Error, generation: Int) async {
-        guard generation == sessionGeneration else { return }
-        // A cancelled setup task means another teardown already owns the stream; unwind
-        // quietly instead of surfacing a spurious error to a stream that was stopped on purpose.
-        if Task.isCancelled {
-            await finishCancelledPipelineSetup(generation: generation)
-            return
-        }
-        if Self.shouldLog(.error) {
-            Self.logger.error("Finishing due to startup error: \(error.localizedDescription, privacy: .public)")
-        }
-        prepareForStop()
-        await cleanup(cancelRecognizer: true, generation: generation)
-        await finishStream(error: error, generation: generation)
+        guard generation == sessionGeneration, terminationTask == nil else { return }
+        await endTranscription(error: Task.isCancelled ? CancellationError() : error, generation: generation)
     }
 
     func finishFromRecognizerTask(error: Error?, generation: Int) async {
+        await endTranscription(error: error, generation: generation, cancelRecognizer: error != nil)
+    }
+
+    func finishTranscribing(generation: Int, sourceEnded: Bool = false) async {
         guard generation == sessionGeneration else { return }
-        if let error {
-            if Self.shouldLog(.error) {
-                Self.logger.error(
-                    "Finishing from recognizer with error: \(error.localizedDescription, privacy: .public)"
-                )
-            }
+        if let terminationTask {
+            await terminationTask.value
+            return
+        }
+        if let finishTask {
+            await finishTask.value
+            return
+        }
+        guard let recognizerTask, sourceEnded || status != .preparing else {
+            await endTranscription(error: nil, generation: generation)
+            return
+        }
+        if streamingMode == .filePlayback {
+            await recognizerTask.value
+            return
+        }
+
+        prepareForStop()
+        let task = Task {
+            await finishLiveTranscription(results: recognizerTask, generation: generation)
+        }
+        finishTask = task
+        await task.value
+    }
+
+    private func finishLiveTranscription(results: Task<Void, Never>, generation: Int) async {
+        guard generation == sessionGeneration else { return }
+        if let terminationTask {
+            await terminationTask.value
+            return
+        }
+        guard continuation != nil else { return }
+        stopAudioStreaming()
+        if let nativeCaptureAnalysisTask {
+            // The provider's sequence reaches EOF when its audio data output is deallocated.
+            nativeCaptureSession = nil
+            await nativeCaptureAnalysisTask.value
         } else {
-            if Self.shouldLog(.notice) {
-                Self.logger.notice("Finishing from recognizer without error")
+            await stopScreenCaptureStreamingIfNeeded()
+            guard generation == sessionGeneration else { return }
+            if let terminationTask {
+                await terminationTask.value
+                return
+            }
+            guard continuation != nil else { return }
+            do {
+                try await finishAnalyzerInput()
+            } catch {
+                await endTranscription(error: error, generation: generation)
+                return
             }
         }
+
+        await results.value
+    }
+
+    func endTranscription(error: Error?, generation: Int, cancelRecognizer: Bool = true) async {
+        guard generation == sessionGeneration else { return }
+        if let terminationTask {
+            await terminationTask.value
+            return
+        }
+        guard continuation != nil || pipelineTask != nil || status != .idle || streamingMode != .inactive else {
+            return
+        }
         prepareForStop()
-        await cleanup(cancelRecognizer: false, generation: generation)
-        await finishStream(error: error, generation: generation)
+        pipelineTask?.cancel()
+        let task = Task {
+            await cleanup(cancelRecognizer: cancelRecognizer, generation: generation)
+            guard generation == sessionGeneration else { return }
+            finishTask = nil
+            terminationTask = nil
+            finishStream(error: error, generation: generation)
+        }
+        terminationTask = task
+        await task.value
     }
 
     /// Tear down the active pipeline.
@@ -305,8 +337,8 @@ extension SpeechSession {
         shouldResumeAfterInterruption = false
 #endif
         let detached = detachTranscriberState()
+        await cleanUpDetachedTranscriberState(detached, cancelAnalyzer: cancelRecognizer)
         await stopScreenCaptureStreamingIfNeeded()
-        await finalizeDetachedTranscriberState(detached)
 
         guard generation == sessionGeneration else { return }
         await modelManager.releaseLocales()
@@ -322,7 +354,7 @@ extension SpeechSession {
     ///
     /// Generation-guarded so a teardown belonging to an older stream can never finish (or
     /// error out) the stream of a session that has since started.
-    func finishStream(error: Error?, generation: Int) async {
+    func finishStream(error: Error?, generation: Int) {
         guard generation == sessionGeneration else { return }
         guard let continuation else { return }
         self.continuation = nil
@@ -361,18 +393,16 @@ extension SpeechSession {
 
     // MARK: - Helper Methods
 
-    func setupAudioSession() async throws {
+    func setupAudioSession() throws {
 #if os(iOS)
-        try await MainActor.run {
-            let audioSession = AVAudioSession.sharedInstance()
-            try audioSession.setCategory(
-                audioConfig.category,
-                mode: audioConfig.mode,
-                options: audioConfig.options
-            )
-            try audioSession.setActive(true)
-            isAudioSessionActive = true
-        }
+        let audioSession = AVAudioSession.sharedInstance()
+        try audioSession.setCategory(
+            audioConfig.category,
+            mode: audioConfig.mode,
+            options: audioConfig.options
+        )
+        try audioSession.setActive(true)
+        isAudioSessionActive = true
 #endif
 #if os(iOS) || os(macOS)
         publishCurrentAudioInputInfo()
@@ -441,6 +471,7 @@ extension SpeechSession {
 
             do {
                 for try await result in results {
+                    guard generation == sessionGeneration, terminationTask == nil else { return }
                     streamContinuation.yield(result)
                 }
                 if Self.shouldLog(.notice) {
@@ -451,6 +482,7 @@ extension SpeechSession {
                 if Self.shouldLog(.debug) {
                     Self.logger.debug("\(label, privacy: .public) cancelled")
                 }
+                await self.finishFromRecognizerTask(error: CancellationError(), generation: generation)
             } catch {
                 if Self.shouldLog(.error) {
                     Self.logger.error(

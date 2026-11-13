@@ -120,12 +120,13 @@ struct TranscriptionTextView: View {
 struct TranscriptionControlsView: View {
     let status: SpeechSession.Status
     let error: String?
-    let showStopButton: Bool
     let buttonColor: Color
     let buttonIcon: String
     let statusMessage: String
     let onPrimaryAction: () -> Void
-    let onStopAction: () -> Void
+    let onFinishAction: () -> Void
+    let onCancelAction: () -> Void
+    var isPreparing = false
     var animationScale: CGFloat = 1.0
 
     var body: some View {
@@ -153,12 +154,17 @@ struct TranscriptionControlsView: View {
             }
             .buttonStyle(.glass)
             .buttonBorderShape(.circle)
-            .disabled(error != nil || status == .stopping)
+            .disabled(error != nil || status == .stopping || isPreparing)
 
-            if showStopButton {
-                Button("Stop", action: onStopAction)
-                    .buttonStyle(.borderedProminent)
-                    .tint(.gray)
+            if status != .idle || isPreparing {
+                HStack {
+                    if status == .transcribing || status == .paused {
+                        Button("Finish", action: onFinishAction)
+                            .buttonStyle(.borderedProminent)
+                    }
+                    Button("Cancel", action: onCancelAction)
+                        .buttonStyle(.bordered)
+                }
             }
 
             Text(statusMessage)

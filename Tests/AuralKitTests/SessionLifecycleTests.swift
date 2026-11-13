@@ -113,12 +113,12 @@ struct SpeechSessionLifecycleTests {
         let (_, continuation) = AsyncThrowingStream<SpeechTranscriber.Result, Error>.makeStream()
         session.continuation = .speech(continuation)
 
-        await session.finishStream(error: SpeechSessionError.invalidAudioDataType, generation: staleGeneration)
+        session.finishStream(error: SpeechSessionError.invalidAudioDataType, generation: staleGeneration)
 
         #expect(session.continuation != nil)
 
         // The current generation still owns the stream and can finish it.
-        await session.finishStream(error: nil, generation: session.sessionGeneration)
+        session.finishStream(error: nil, generation: session.sessionGeneration)
         #expect(session.continuation == nil)
     }
 
@@ -138,8 +138,30 @@ struct SpeechSessionLifecycleTests {
         )
         #expect(session.pipelineTask == successor)
 
-        await session.stopTranscribing()
+        await session.cancelTranscribing()
         await successor.value
+    }
+
+    @Test("Finish closes a preparing stream and Cancel reports cancellation", arguments: [false, true])
+    @MainActor
+    func endPreparingTranscription(cancel: Bool) async throws {
+        let session = SpeechSession()
+        let stream = session.startTranscribing()
+
+        if cancel {
+            await session.cancelTranscribing()
+            await #expect(throws: CancellationError.self) {
+                for try await _ in stream {}
+            }
+        } else {
+            await session.finishTranscribing()
+            var iterator = stream.makeAsyncIterator()
+            let result = try await iterator.next()
+            #expect(result == nil)
+        }
+
+        #expect(session.status == .idle)
+        #expect(session.continuation == nil)
     }
 
     /// Pausing is only meaningful for live capture; during file transcription it must be

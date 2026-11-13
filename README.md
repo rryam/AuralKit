@@ -80,9 +80,9 @@ let streamTask = Task {
     }
 }
 
-// Later, when you want to stop capturing audio
+// Later, when you want to finish capturing audio
 Task {
-    await session.stopTranscribing()
+    await session.finishTranscribing()
     await streamTask.value
 }
 ```
@@ -140,12 +140,23 @@ let streamTask = Task {
     }
 }
 
-// Stop when needed
+// Finish capture and wait for the final results
 Task {
-    await session.stopTranscribing()
+    await session.finishTranscribing()
     await streamTask.value
 }
 ```
+
+### Migrating from AuralKit 2.x
+
+Replace `stopTranscribing()` with `finishTranscribing()` when saving a live transcript. Keep
+reading the result stream until it ends and use `isFinal` to decide what to save. Finish waits
+for an active file transcription to reach the end of the file. If setup is still in progress,
+Finish closes the stream without starting capture.
+
+Use `cancelTranscribing()` to abandon a run. The stream ends with `CancellationError`, including
+when using the one-shot file API. The stream may still contain results already yielded before
+cancellation. Clear any displayed partial text and handle cancellation separately from errors.
 
 ## Demo App
 
@@ -453,8 +464,11 @@ public final class SpeechSession {
     /// Start transcribing - returns stream of SpeechTranscriber.Result
     public func startTranscribing() -> AsyncThrowingStream<SpeechTranscriber.Result, Error>
 
-    /// Stop transcribing
-    public func stopTranscribing() async
+    /// End live capture and drain final results
+    public func finishTranscribing() async
+
+    /// Abort transcription with CancellationError
+    public func cancelTranscribing() async
 }
 ```
 

@@ -34,7 +34,7 @@ final class CaptureSessionFixture {
 
     func close(_ fixture: CaptureFixture) async {
         fixture.releaseAll()
-        await session.stopTranscribing()
+        await session.cancelTranscribing()
     }
 }
 
@@ -91,6 +91,62 @@ struct ScreenCaptureTransitionTests {
         }
     }
 
+    @Test("Finish drains screen input unless Cancel supersedes it", arguments: [false, true])
+    @MainActor
+    func finishDrainsScreenSource(cancel: Bool) async throws {
+        guard #available(iOS 27.0, macOS 26.0, *) else { return }
+        try await withCaptureFixture { fixture in
+            let runtime = try CaptureSessionFixture(fixture)
+            let source = ControlledCaptureStream()
+            await fixture.track(runtime.provider.selectStream { source }).value
+
+            let stopEntered = fixture.gate(), stopRelease = fixture.gate()
+            source.stopEntered = stopEntered
+            source.stopRelease = stopRelease
+            let (inputs, inputBuilder) = AsyncStream<AnalyzerInput>.makeStream()
+            runtime.session.inputBuilder = inputBuilder
+            let (results, resultContinuation) = AsyncThrowingStream<SpeechTranscriber.Result, Error>.makeStream()
+            runtime.session.continuation = .speech(resultContinuation)
+            let generation = runtime.session.sessionGeneration
+            let resultsTask = Task {
+                for await _ in inputs {}
+                await runtime.session.finishFromRecognizerTask(error: nil, generation: generation)
+            }
+            defer { resultsTask.cancel() }
+            runtime.session.recognizerTask = resultsTask
+            let finish = fixture.track(Task { await runtime.session.finishTranscribing() })
+            try await stopEntered.wait()
+            #expect(runtime.session.status == .stopping)
+            let format = try #require(AVAudioFormat(standardFormatWithSampleRate: 16_000, channels: 1))
+            let pcm = try #require(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 1))
+            pcm.frameLength = 1
+            let input = AnalyzerInput(buffer: pcm)
+            if case .terminated = inputBuilder.yield(input) {
+                Issue.record("The input stream closed before the screen source stopped")
+            }
+            if cancel {
+                let cancelTask = fixture.track(Task { await runtime.session.cancelTranscribing() })
+                try await waitForCaptureState { runtime.session.inputBuilder == nil }
+                switch inputBuilder.yield(input) {
+                case .terminated: break
+                default: Issue.record("Cancel left the input stream open")
+                }
+                stopRelease.open()
+                await cancelTask.value
+                await #expect(throws: CancellationError.self) {
+                    for try await _ in results {}
+                }
+            } else {
+                stopRelease.open()
+                var iterator = results.makeAsyncIterator()
+                let result = try await iterator.next()
+                #expect(result == nil)
+            }
+            await finish.value
+            #expect(runtime.session.status == .idle)
+        }
+    }
+
     @Test("Concurrent public stops join a replacement start and its compensating stop")
     @MainActor
     func stopDuringReplacementStart() async throws {
@@ -108,13 +164,13 @@ struct ScreenCaptureTransitionTests {
             try await entered.wait()
             var firstReturned = false, secondReturned = false
             let first = fixture.track(Task {
-                await runtime.session.stopTranscribing(); firstReturned = true
+                await runtime.session.cancelTranscribing(); firstReturned = true
             })
             try await runtime.dismissed.wait()
             let secondEntered = fixture.gate()
             let second = fixture.track(Task {
                 secondEntered.open()
-                await runtime.session.stopTranscribing(); secondReturned = true
+                await runtime.session.cancelTranscribing(); secondReturned = true
             })
             try await secondEntered.wait()
             #expect(!firstReturned && !secondReturned)
