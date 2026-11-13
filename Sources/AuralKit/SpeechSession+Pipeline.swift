@@ -279,8 +279,14 @@ extension SpeechSession {
         await results.value
     }
 
-    func endTranscription(error: Error?, generation: Int, cancelRecognizer: Bool = true) async {
+    func endTranscription(
+        error: Error?,
+        generation: Int,
+        cancelRecognizer: Bool = true,
+        requestedByCaller: Bool = false
+    ) async {
         guard generation == sessionGeneration else { return }
+        if requestedByCaller, continuation != nil { cancellationRequested = true }
         if let terminationTask {
             await terminationTask.value
             return
@@ -294,9 +300,11 @@ extension SpeechSession {
         let task = Task {
             await cleanup(cancelRecognizer: cancelRecognizer, screenStop: screenStop, generation: generation)
             guard generation == sessionGeneration else { return }
+            let terminalError = cancellationRequested ? CancellationError() : error
+            cancellationRequested = false
             finishTask = nil
             terminationTask = nil
-            finishStream(error: error, generation: generation)
+            finishStream(error: terminalError, generation: generation)
         }
         terminationTask = task
         await task.value

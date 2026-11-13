@@ -144,6 +144,39 @@ struct ScreenCaptureTransitionTests {
         }
     }
 
+    @Test("Cancel wins while the successful screen completion still owns cleanup")
+    @MainActor
+    func cancelDuringTerminalScreenCleanup() async throws {
+        guard #available(iOS 27.0, macOS 26.0, *) else { return }
+        try await withCaptureFixture { fixture in
+            let runtime = try CaptureSessionFixture(fixture)
+            let source = ControlledCaptureStream()
+            await fixture.track(runtime.provider.selectStream { source }).value
+            let stopEntered = fixture.gate(), stopRelease = fixture.gate()
+            source.stopEntered = stopEntered
+            source.stopRelease = stopRelease
+
+            let (results, continuation) = AsyncThrowingStream<SpeechTranscriber.Result, Error>.makeStream()
+            runtime.session.continuation = .speech(continuation)
+            let generation = runtime.session.sessionGeneration
+            let completed = fixture.track(Task {
+                await runtime.session.finishFromRecognizerTask(error: nil, generation: generation)
+            })
+            try await stopEntered.wait()
+            let cancel = fixture.track(Task { await runtime.session.cancelTranscribing() })
+            try await waitForCaptureState { runtime.session.cancellationRequested }
+            stopRelease.open()
+            await cancel.value
+            await completed.value
+
+            await #expect(throws: CancellationError.self) {
+                for try await _ in results {}
+            }
+            #expect(source.stops == 1)
+            #expect(runtime.session.status == .idle)
+        }
+    }
+
     private func makeAnalyzerInput() throws -> AnalyzerInput {
         let format = try #require(AVAudioFormat(
             commonFormat: .pcmFormatInt16, sampleRate: 16_000, channels: 1, interleaved: true

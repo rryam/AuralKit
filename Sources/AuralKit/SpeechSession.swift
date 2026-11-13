@@ -101,6 +101,7 @@ public final class SpeechSession {
     var pipelineTask: Task<Void, Never>?
     var finishTask: Task<Void, Never>?
     var terminationTask: Task<Void, Never>?
+    var cancellationRequested = false
     var fileIngestionTask: Task<Void, Never>?
     var streamingMode: StreamingMode = .inactive
     /// Incremented for every accepted start so stale termination handlers can be ignored.
@@ -363,7 +364,7 @@ public final class SpeechSession {
     ///
     /// The result stream ends with `CancellationError`. Results already yielded may still be read.
     public func cancelTranscribing() async {
-        await endTranscription(error: CancellationError(), generation: sessionGeneration)
+        await endTranscription(error: CancellationError(), generation: sessionGeneration, requestedByCaller: true)
     }
 
     /// Pause capture without tearing down the analyzer pipeline.
