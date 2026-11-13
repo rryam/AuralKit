@@ -52,7 +52,7 @@ extension SpeechSession {
                 Self.logger.notice("Requesting speech recognition permission\(suffix)")
             }
             let granted = await withCheckedContinuation { continuation in
-                SFSpeechRecognizer.requestAuthorization { status in
+                SFSpeechRecognizer.requestAuthorization { @Sendable status in
                     continuation.resume(returning: status == .authorized)
                 }
             }
@@ -235,7 +235,7 @@ extension SpeechSession {
             await endTranscription(error: nil, generation: generation)
             return
         }
-        if streamingMode == .filePlayback {
+        if streamingMode == .filePlayback || streamingMode == .mediaPlayback {
             await recognizerTask.value
             return
         }

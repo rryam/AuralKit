@@ -28,22 +28,7 @@ extension SpeechSession {
             throw SpeechSessionError.invalidAudioDataType
         }
 
-        audioEngine.inputNode.removeTap(onBus: 0)
-
-        let inputFormat = audioEngine.inputNode.outputFormat(forBus: 0)
-
-        if Self.shouldLog(.debug) {
-            Self.logger.debug(
-                "Installing audio tap with buffer size \(Self.microphoneTapBufferSize, privacy: .public) frames"
-            )
-        }
-
-        audioEngine.inputNode.installTap(
-            onBus: 0,
-            bufferSize: Self.microphoneTapBufferSize,
-            format: inputFormat,
-            block: makeAudioTapHandler(inputBuilder: inputBuilder, analyzerFormat: analyzerFormat)
-        )
+        try installMicrophoneTap(inputBuilder: inputBuilder, analyzerFormat: analyzerFormat)
 
         audioEngine.prepare()
         try audioEngine.start()
@@ -51,6 +36,42 @@ extension SpeechSession {
         if Self.shouldLog(.debug) {
             Self.logger.debug("Audio streaming started")
         }
+    }
+
+    private func installMicrophoneTap(
+        inputBuilder: AsyncStream<AnalyzerInput>.Continuation,
+        analyzerFormat: AVAudioFormat
+    ) throws {
+        let inputNode = audioEngine.inputNode
+        inputNode.removeTap(onBus: 0)
+        let inputFormat = inputNode.outputFormat(forBus: 0)
+
+#if swift(>=6.4)
+        if #available(iOS 27.0, macOS 27.0, *) {
+            guard inputFormat.sampleRate > 0, inputFormat.channelCount > 0 else {
+                throw SpeechSessionError.invalidAudioDataType
+            }
+
+            // Use the smallest supported tap duration of 100 ms.
+            let bufferSize = AVAudioFrameCount((inputFormat.sampleRate / 10).rounded(.up))
+            let processBuffer = makeAudioTapHandler(
+                inputBuilder: inputBuilder,
+                analyzerFormat: analyzerFormat,
+                ownsTapBuffer: true
+            )
+            try inputNode.installAudioTap(onBus: 0, bufferSize: bufferSize, format: inputFormat) { buffer, _ in
+                guard buffer.frameLength > 0 else { return }
+                processBuffer(AVAudioPCMBuffer(copying: buffer))
+            }
+            return
+        }
+#endif
+
+        let processBuffer = makeAudioTapHandler(inputBuilder: inputBuilder, analyzerFormat: analyzerFormat)
+        let tap: @Sendable (AVAudioPCMBuffer, AVAudioTime) -> Void = { buffer, _ in
+            processBuffer(buffer)
+        }
+        inputNode.installTap(onBus: 0, bufferSize: Self.microphoneTapBufferSize, format: inputFormat, block: tap)
     }
 
     func stopAudioStreaming() {
@@ -116,7 +137,7 @@ extension SpeechSession {
 #endif
     }
 
-    /// Build a tap block that converts and forwards buffers synchronously on the tap thread.
+    /// Convert and forward buffers synchronously on the tap thread.
     ///
     /// Converting inline (rather than hopping through per-buffer tasks) guarantees analyzer
     /// input arrives in capture order and keeps working across cleanup: yields into a finished
@@ -124,15 +145,16 @@ extension SpeechSession {
     /// device change (which reinstalls the tap with a new format) never reuses a stale converter.
     private func makeAudioTapHandler(
         inputBuilder: AsyncStream<AnalyzerInput>.Continuation,
-        analyzerFormat: AVAudioFormat
-    ) -> AVAudioNodeTapBlock {
+        analyzerFormat: AVAudioFormat,
+        ownsTapBuffer: Bool = false
+    ) -> @Sendable (AVAudioPCMBuffer) -> Void {
         let converter = BufferConverter()
-        return { buffer, _ in
+        return { buffer in
             do {
                 let converted = try converter.convertBuffer(buffer, to: analyzerFormat)
                 let input: AVAudioPCMBuffer
-                if converted === buffer {
-                    // Passthrough: the engine reuses the tap buffer, so hand the analyzer a copy.
+                if converted === buffer, !ownsTapBuffer {
+                    // The older tap reuses its buffer, so give the analyzer a copy.
                     guard let bufferCopy = buffer.copy() as? AVAudioPCMBuffer else {
                         Task { @MainActor in
                             if Self.shouldLog(.error) {
