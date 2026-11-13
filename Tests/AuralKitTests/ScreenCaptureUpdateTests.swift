@@ -11,13 +11,19 @@ struct ScreenCaptureUpdateTests {
     func terminalErrorDuringResume(stopFirst: Bool) async throws {
         guard #available(iOS 27.0, macOS 26.0, *) else { return }
         try await withCaptureFixture { fixture in
-            let runtime = try CaptureSessionFixture(fixture)
+            let teardown = fixture.gate(), resumed = fixture.gate()
+            let runtime = try CaptureSessionFixture(fixture, terminationRelease: teardown)
+            let (_, continuation) = AsyncThrowingStream<SpeechTranscriber.Result, Error>.makeStream()
+            runtime.session.continuation = .speech(continuation)
             let stream = ControlledCaptureStream()
             await fixture.track(runtime.provider.selectStream { stream }).value
             await runtime.session.pauseTranscribing()
             let started = fixture.gate(), release = fixture.gate()
             stream.startEntered = started; stream.startRelease = release
-            let resume = fixture.track(Task { try await runtime.session.resumeTranscribing() })
+            let resume = fixture.track(Task {
+                defer { resumed.open() }
+                try await runtime.session.resumeTranscribing()
+            })
             try await started.wait()
             if stopFirst {
                 fixture.track(Task { await runtime.session.stopTranscribing() })
@@ -27,13 +33,20 @@ struct ScreenCaptureUpdateTests {
                 stream.terminated = true
                 runtime.provider.streamDidStop(stream, error: CaptureFixtureError.startFailed)
             }).value
-            try await runtime.dismissed.wait()
             release.open()
-            try await waitForCaptureState { runtime.session.status == .idle }
+            if !stopFirst {
+                await #expect(throws: TestTimeoutError.self) {
+                    try await awaitResult(timeout: 0.05) { try await resumed.wait() }
+                }
+                #expect(runtime.session.continuation != nil)
+            }
+            teardown.open()
             if stopFirst {
                 try await resume.value
+                try await waitForCaptureState { runtime.session.status == .idle }
             } else {
                 await #expect(throws: SpeechSessionError.self) { try await resume.value }
+                #expect(runtime.session.status == .idle && runtime.session.continuation == nil)
             }
             #expect(!runtime.owner.isRunning && stream.stops == 1)
         }

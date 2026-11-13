@@ -12,7 +12,7 @@ final class CaptureSessionFixture {
     let provider: ScreenCaptureAudioInputProvider
     let dismissed: CaptureGate
 
-    init(_ fixture: CaptureFixture) throws {
+    init(_ fixture: CaptureFixture, terminationRelease: CaptureGate? = nil) throws {
         dismissed = fixture.gate()
         let (_, inputs) = AsyncStream<AnalyzerInput>.makeStream()
         let format = try #require(AVAudioFormat(standardFormatWithSampleRate: 16_000, channels: 1))
@@ -21,6 +21,7 @@ final class CaptureSessionFixture {
             options: .init(), targetFormat: format, inputContinuation: inputs,
             onTermination: { [session] error in
                 Task { @MainActor in
+                    try? await terminationRelease?.wait()
                     await session.finishFromRecognizerTask(error: error, generation: generation)
                 }
             }, transitions: owner,
