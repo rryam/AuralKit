@@ -140,14 +140,12 @@ extension SpeechSession {
                 Self.logger.info("Pipeline started (mode: live microphone)")
             }
         } catch is CancellationError {
-            pipelineTask = nil
-            await finishCancelledPipelineSetup(generation: generation)
+            await finishFailedPipelineSetup(CancellationError(), generation: generation)
         } catch {
             if Self.shouldLog(.error) {
                 Self.logger.error("Pipeline setup failed: \(error.localizedDescription, privacy: .public)")
             }
-            pipelineTask = nil
-            await finishWithStartupError(error, generation: generation)
+            await finishFailedPipelineSetup(error, generation: generation)
         }
     }
 
@@ -195,13 +193,21 @@ extension SpeechSession {
                 Self.logger.info("Dictation pipeline started (mode: live microphone)")
             }
         } catch is CancellationError {
-            pipelineTask = nil
-            await finishCancelledPipelineSetup(generation: generation)
+            await finishFailedPipelineSetup(CancellationError(), generation: generation)
         } catch {
             if Self.shouldLog(.error) {
                 Self.logger.error("Dictation pipeline setup failed: \(error.localizedDescription, privacy: .public)")
             }
-            pipelineTask = nil
+            await finishFailedPipelineSetup(error, generation: generation)
+        }
+    }
+
+    func finishFailedPipelineSetup(_ error: Error, generation: Int) async {
+        guard generation == sessionGeneration else { return }
+        pipelineTask = nil
+        if error is CancellationError {
+            await finishCancelledPipelineSetup(generation: generation)
+        } else {
             await finishWithStartupError(error, generation: generation)
         }
     }

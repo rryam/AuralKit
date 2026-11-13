@@ -171,14 +171,12 @@ private extension SpeechSession {
                 }
             }
         } catch is CancellationError {
-            pipelineTask = nil
-            await finishCancelledPipelineSetup(generation: generation)
+            await finishFailedPipelineSetup(CancellationError(), generation: generation)
         } catch {
             if Self.shouldLog(.error) {
                 Self.logger.error("File transcription pipeline failed: \(error.localizedDescription, privacy: .public)")
             }
-            pipelineTask = nil
-            await finishWithStartupError(error, generation: generation)
+            await finishFailedPipelineSetup(error, generation: generation)
         }
     }
 
