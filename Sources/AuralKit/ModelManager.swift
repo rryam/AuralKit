@@ -10,8 +10,23 @@ actor ModelManager {
 
     private(set) var currentDownloadProgress: Progress?
 
-    // Track locales reserved by this ModelManager instance to avoid releasing others' reservations
-    private var reservedLocales: Set<String> = []
+    private let reservations: SpeechAssetReservations
+    private let assetDownloader: (@Sendable ([any SpeechModule]) async throws -> Void)?
+    private let installationRequest: @Sendable ([any SpeechModule]) async throws -> AssetInstallationRequest?
+    private var leases: Set<SpeechAssetReservations.Lease> = []
+    private var generation = 0
+
+    init(
+        reservations: SpeechAssetReservations = .shared,
+        assetDownloader: (@Sendable ([any SpeechModule]) async throws -> Void)? = nil,
+        installationRequest: @escaping @Sendable ([any SpeechModule]) async throws -> AssetInstallationRequest? = {
+            try await AssetInventory.assetInstallationRequest(supporting: $0)
+        }
+    ) {
+        self.reservations = reservations
+        self.assetDownloader = assetDownloader
+        self.installationRequest = installationRequest
+    }
 
     /// Ensure the speech model for the given locale is available
     func ensureModel(module: any LocaleDependentSpeechModule, locale: Locale) async throws {
@@ -35,7 +50,9 @@ actor ModelManager {
             return
         }
 
-        try await downloadAssetsIfNeeded(for: [module])
+        try await prepareAssets(for: [module]) { manager, generation in
+            try await manager.downloadAssetsIfNeeded(for: [module], generation: generation)
+        }
     }
 
     private func ensureLocaleAssets<Module: LocaleDependentSpeechModule>(
@@ -44,19 +61,19 @@ actor ModelManager {
         supportedLocales: @escaping @Sendable () async -> [Locale],
         installedLocales: @escaping @Sendable () async -> [Locale]
     ) async throws {
-        guard await localeMatches(provider: supportedLocales, locale: locale) else {
-            throw SpeechSessionError.unsupportedLocale(locale)
+        try await prepareAssets(for: [module]) { manager, generation in
+            guard await manager.localeMatches(provider: supportedLocales, locale: locale) else {
+                throw SpeechSessionError.unsupportedLocale(locale)
+            }
+            if await manager.localeMatches(provider: installedLocales, locale: locale) {
+                manager.logger.notice("Locale \(locale.identifier(.bcp47)) already installed")
+                try manager.requireCurrent(generation)
+                manager.currentDownloadProgress = nil
+            } else {
+                manager.logger.info("Ensuring model download for locale \(locale.identifier(.bcp47))")
+                try await manager.downloadAssetsIfNeeded(for: [module], generation: generation)
+            }
         }
-
-        if await localeMatches(provider: installedLocales, locale: locale) {
-            logger.notice("Locale \(locale.identifier(.bcp47)) already installed")
-            currentDownloadProgress = nil
-        } else {
-            logger.info("Ensuring model download for locale \(locale.identifier(.bcp47))")
-            try await downloadAssetsIfNeeded(for: [module])
-        }
-
-        try await reserveLocaleIfNeeded(locale)
     }
 
     private func localeMatches(
@@ -68,40 +85,30 @@ actor ModelManager {
         return locales.contains { $0.identifier(.bcp47) == target }
     }
 
-    private func reserveLocaleIfNeeded(_ locale: Locale) async throws {
-        let existingReservations = await AssetInventory.reservedLocales
-        let target = locale.identifier(.bcp47)
-        if existingReservations.contains(where: { $0.identifier(.bcp47) == target }) {
-            logger.debug("Locale \(target) already reserved")
-            // Don't track it - it was reserved by another session
-            return
-        }
-
-        do {
-            try await AssetInventory.reserve(locale: locale)
-            logger.info("Reserved locale \(target)")
-            reservedLocales.insert(target)
-        } catch {
-            logger.error("Failed to reserve locale \(target): \(error.localizedDescription, privacy: .public)")
-            throw SpeechSessionError.modelReservationFailed(locale, error)
-        }
-    }
-
     func ensureAssets(for modules: [any SpeechModule]) async throws {
         guard !modules.isEmpty else { return }
-        try await downloadAssetsIfNeeded(for: modules)
+        try await prepareAssets(for: modules) { manager, generation in
+            try await manager.downloadAssetsIfNeeded(for: modules, generation: generation)
+        }
     }
 
-    private func downloadAssetsIfNeeded(for modules: [any SpeechModule]) async throws {
-        if let downloader = try await AssetInventory.assetInstallationRequest(supporting: modules) {
+    private func downloadAssetsIfNeeded(for modules: [any SpeechModule], generation: Int) async throws {
+        try requireCurrent(generation)
+        if let assetDownloader {
+            try await assetDownloader(modules)
+            return
+        }
+        let request = try await reservations.withInventoryAccess {
+            try await self.requestInstallation(for: modules, generation: generation)
+        }
+        if let downloader = request {
+            try requireCurrent(generation)
             currentDownloadProgress = downloader.progress
             logger.info("Starting asset download for \(modules.count) module(s)")
             do {
                 try await downloader.downloadAndInstall()
-                currentDownloadProgress = nil
-                logger.notice("Asset download completed successfully")
             } catch {
-                currentDownloadProgress = nil
+                if self.generation == generation { currentDownloadProgress = nil }
                 logger.error("Asset download failed: \(error.localizedDescription, privacy: .public)")
 
                 // Check for network connectivity errors
@@ -113,27 +120,66 @@ actor ModelManager {
 
                 throw SpeechSessionError.modelDownloadFailed(nsError)
             }
+            try requireCurrent(generation)
+            currentDownloadProgress = nil
+            logger.notice("Asset download completed successfully")
         } else {
+            try requireCurrent(generation)
             currentDownloadProgress = nil
             logger.debug("No asset download required for modules")
         }
     }
 
-    /// Release reserved locales so other clients can access them
-    /// Only releases locales that were reserved by this ModelManager instance
+    private func requestInstallation(
+        for modules: [any SpeechModule], generation: Int
+    ) async throws -> AssetInstallationRequest? {
+        try requireCurrent(generation)
+        return try await installationRequest(modules)
+    }
+
+    /// Retire pending preparation without waiting for a native download to finish.
     func releaseLocales() async {
-        let allReserved = await AssetInventory.reservedLocales
-        // Only release locales tracked by this instance
-        var releasedCount = 0
-        for locale in allReserved {
-            let target = locale.identifier(.bcp47)
-            if reservedLocales.contains(target) {
-                await AssetInventory.release(reservedLocale: locale)
-                reservedLocales.remove(target)
-                releasedCount += 1
-            }
-        }
+        generation &+= 1
+        let pending = leases
+        leases.removeAll()
         currentDownloadProgress = nil
-        logger.debug("Released \(releasedCount) reserved locale(s)")
+        for lease in pending { await reservations.release(lease) }
+    }
+
+    private func prepareAssets(
+        for modules: [any SpeechModule],
+        install: @Sendable (isolated ModelManager, Int) async throws -> Void
+    ) async throws {
+        let generation = self.generation
+        try requireCurrent(generation)
+        // Preserve first-install behavior: downloading may create native reservations.
+        // Those reservations remain borrowed; only explicit acquisitions are owned here.
+        try await install(self, generation)
+        try requireCurrent(generation)
+        var acquired: [SpeechAssetReservations.Lease] = []
+        do {
+            let locales = modules.compactMap { $0 as? any LocaleDependentSpeechModule }
+                .flatMap { $0.selectedLocales }
+            var requested = Set<String>()
+            for locale in locales where requested.insert(locale.identifier(.bcp47)).inserted {
+                do {
+                    acquired.append(try await reservations.acquire(locale))
+                } catch is CancellationError {
+                    throw CancellationError()
+                } catch {
+                    throw SpeechSessionError.modelReservationFailed(locale, error)
+                }
+                try requireCurrent(generation)
+            }
+            leases.formUnion(acquired)
+        } catch {
+            for lease in acquired { await reservations.release(lease) }
+            throw error
+        }
+    }
+
+    private func requireCurrent(_ generation: Int) throws {
+        try Task.checkCancellation()
+        guard self.generation == generation else { throw CancellationError() }
     }
 }
