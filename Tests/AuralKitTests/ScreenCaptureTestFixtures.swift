@@ -63,24 +63,27 @@ final class ControlledCaptureStream: ScreenCaptureStream {
     var starts = 0
     var stops = 0
     var capturing = false
+    var terminated = false
     var startEntered: CaptureGate?
     var startRelease: CaptureGate?
     var stopEntered: CaptureGate?
     var stopRelease: CaptureGate?
     var startError: Error?
     var stopError: Error?
+    var onStop: (@MainActor () -> Void)?
 
     func startCapture() async throws {
         starts += 1
         startEntered?.open()
         try await startRelease?.wait()
         if let startError { throw startError }
-        capturing = true
+        capturing = !terminated
     }
     func stopCapture() async throws {
         stops += 1
         stopEntered?.open()
         try await stopRelease?.wait()
+        onStop?()
         if let stopError { throw stopError }
         capturing = false
     }

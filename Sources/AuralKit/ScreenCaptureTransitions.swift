@@ -17,6 +17,8 @@ final class ScreenCaptureTransitions {
     private(set) var stream: (any ScreenCaptureStream)?
     private(set) var isRunning = false
     private var revision = UUID()
+    private var streamRevision: UUID?
+    private var terminatedStream: ObjectIdentifier?
     private var controlRevision = UUID()
     private var tail: Task<Void, Error>?
 
@@ -31,6 +33,8 @@ final class ScreenCaptureTransitions {
                 try await self.stopCurrent()
                 guard self.desiredState != .stopped, self.revision == admitted else { return }
                 self.stream = try makeStream()
+                self.streamRevision = admitted
+                self.terminatedStream = nil
                 try await self.startCurrent(revision: admitted)
             } catch {
                 // A stale picker operation must not report failure against its successor.
@@ -38,6 +42,33 @@ final class ScreenCaptureTransitions {
                 throw error
             }
         }
+    }
+
+    func update(
+        _ expectedStream: any ScreenCaptureStream,
+        operation: @escaping @MainActor () async throws -> Void
+    ) -> Task<Void, Error> {
+        let admitted = revision
+        return enqueue {
+            guard self.desiredState != .stopped, self.revision == admitted,
+                  self.stream === expectedStream else { return }
+            do {
+                try await operation()
+            } catch {
+                guard self.desiredState != .stopped, self.revision == admitted else { return }
+                throw error
+            }
+        }
+    }
+
+    func didStop(_ expectedStream: any ScreenCaptureStream) -> Bool {
+        guard stream === expectedStream else { return false }
+        terminatedStream = ObjectIdentifier(expectedStream)
+        isRunning = false
+        guard desiredState != .stopped, streamRevision == revision else { return false }
+        controlRevision = UUID()
+        desiredState = .stopped
+        return true
     }
 
     func pause() -> Task<Void, Error> {
@@ -103,13 +134,18 @@ final class ScreenCaptureTransitions {
 
     private func stopCurrent() async throws {
         guard isRunning, let stream else { return }
-        try await stream.stopCapture()
+        do {
+            try await stream.stopCapture()
+        } catch {
+            guard terminatedStream == ObjectIdentifier(stream) else { throw error }
+        }
         isRunning = false
     }
 
     private func startCurrent(revision admitted: UUID) async throws {
         guard desiredState == .running, revision == admitted, !isRunning, let stream else { return }
         try await stream.startCapture()
+        guard terminatedStream != ObjectIdentifier(stream) else { return }
         // Nothing else can perform capture calls until this operation exits. Intent can
         // still change during start; compensate before allowing a queued operation to run.
         isRunning = true

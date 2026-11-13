@@ -6,7 +6,7 @@ import Testing
 
 @available(iOS 27.0, macOS 26.0, *)
 @MainActor
-private final class CaptureSessionFixture {
+final class CaptureSessionFixture {
     let session = SpeechSession()
     let owner = ScreenCaptureTransitions()
     let provider: ScreenCaptureAudioInputProvider
@@ -16,9 +16,14 @@ private final class CaptureSessionFixture {
         dismissed = fixture.gate()
         let (_, inputs) = AsyncStream<AnalyzerInput>.makeStream()
         let format = try #require(AVAudioFormat(standardFormatWithSampleRate: 16_000, channels: 1))
+        let generation = session.sessionGeneration
         provider = ScreenCaptureAudioInputProvider(
             options: .init(), targetFormat: format, inputContinuation: inputs,
-            onFailure: { error in Issue.record(error) }, transitions: owner,
+            onTermination: { [session] error in
+                Task { @MainActor in
+                    await session.finishFromRecognizerTask(error: error, generation: generation)
+                }
+            }, transitions: owner,
             dismissPicker: { [dismissed] _ in dismissed.open() }
         )
         session.screenCaptureInputProvider = provider

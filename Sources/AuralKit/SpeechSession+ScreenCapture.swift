@@ -178,7 +178,7 @@ extension SpeechSession {
             options: options,
             targetFormat: analyzerFormat,
             inputContinuation: inputBuilder,
-            onFailure: { [weak self] error in
+            onTermination: { [weak self] error in
                 Task { @MainActor [weak self] in
                     await self?.finishFromRecognizerTask(error: error, generation: generation)
                 }
@@ -221,16 +221,13 @@ extension SpeechSession {
 @MainActor
 private final class NativeScreenCaptureStream: ScreenCaptureStream {
     let stream: SCStream
-    let willStop: @MainActor (SCStream) -> Void
 
-    init(stream: SCStream, willStop: @escaping @MainActor (SCStream) -> Void) {
+    init(stream: SCStream) {
         self.stream = stream
-        self.willStop = willStop
     }
 
     func startCapture() async throws { try await stream.startCapture() }
     func stopCapture() async throws {
-        willStop(stream)
         try await stream.stopCapture()
     }
 }
@@ -242,7 +239,7 @@ final class ScreenCaptureAudioInputProvider: NSObject, SCStreamOutput, SCStreamD
     private let options: SpeechSession.ScreenCaptureTranscriptionOptions
     private let targetFormat: AVAudioFormat
     private let inputContinuation: AsyncStream<AnalyzerInput>.Continuation
-    private let onFailure: @Sendable (Error) -> Void
+    private let onTermination: @Sendable (Error?) -> Void
     private let sampleQueue = DispatchQueue(label: "com.auralkit.screencapture.audio", qos: .userInitiated)
     // Only touched on `sampleQueue`, which serializes access.
     private let bufferConverter = BufferConverter()
@@ -252,14 +249,13 @@ final class ScreenCaptureAudioInputProvider: NSObject, SCStreamOutput, SCStreamD
     private var selectionContinuation: CheckedContinuation<Void, Error>?
     private var stopped = false
     private var pickerUpdateID: UUID?
-    private var intentionallyStoppingStreams = Set<ObjectIdentifier>()
 
     @MainActor
     init(
         options: SpeechSession.ScreenCaptureTranscriptionOptions,
         targetFormat: AVAudioFormat,
         inputContinuation: AsyncStream<AnalyzerInput>.Continuation,
-        onFailure: @escaping @Sendable (Error) -> Void,
+        onTermination: @escaping @Sendable (Error?) -> Void,
         transitions: ScreenCaptureTransitions = ScreenCaptureTransitions(),
         dismissPicker: @escaping @MainActor (any SCContentSharingPickerObserver) -> Void = { observer in
             let picker = SCContentSharingPicker.shared
@@ -270,7 +266,7 @@ final class ScreenCaptureAudioInputProvider: NSObject, SCStreamOutput, SCStreamD
         self.options = options
         self.targetFormat = targetFormat
         self.inputContinuation = inputContinuation
-        self.onFailure = onFailure
+        self.onTermination = onTermination
         self.transitions = transitions
         self.dismissPicker = dismissPicker
         super.init()
@@ -298,7 +294,7 @@ final class ScreenCaptureAudioInputProvider: NSObject, SCStreamOutput, SCStreamD
     func pause() async -> Bool {
         do {
             try await transitions.pause().value
-            return true
+            return transitions.desiredState == .paused
         } catch {
             return false
         }
@@ -327,7 +323,12 @@ final class ScreenCaptureAudioInputProvider: NSObject, SCStreamOutput, SCStreamD
         Task { @MainActor [weak self] in
             guard let self, !self.stopped else { return }
             if let updatedStream {
-                guard (self.transitions.stream as? NativeScreenCaptureStream)?.stream === updatedStream else { return }
+                guard let current = self.transitions.stream as? NativeScreenCaptureStream,
+                      current.stream === updatedStream else { return }
+#if os(macOS) || targetEnvironment(macCatalyst)
+                self.updateStream(current) { try await updatedStream.updateContentFilter(selectedFilter) }
+                return
+#endif
             }
             self.selectStream { [self] in
                 let configuration = SCStreamConfiguration()
@@ -339,9 +340,7 @@ final class ScreenCaptureAudioInputProvider: NSObject, SCStreamOutput, SCStreamD
                 configuration.height = 2
                 let capture = SCStream(filter: selectedFilter, configuration: configuration, delegate: self)
                 try capture.addStreamOutput(self, type: .audio, sampleHandlerQueue: sampleQueue)
-                return NativeScreenCaptureStream(stream: capture) { [weak self] stream in
-                    self?.markStreamForIntentionalStop(stream)
-                }
+                return NativeScreenCaptureStream(stream: capture)
             }
         }
     }
@@ -357,16 +356,16 @@ final class ScreenCaptureAudioInputProvider: NSObject, SCStreamOutput, SCStreamD
             guard let self else { return }
             let wrappedError = SpeechSessionError.screenCaptureFailed(error)
             if !self.resumeSelection(throwing: wrappedError) {
-                self.onFailure(wrappedError)
+                self.onTermination(wrappedError)
             }
         }
     }
 
     func stream(_ stream: SCStream, didStopWithError error: any Error) {
         Task { @MainActor [weak self] in
-            guard let self, !self.stopped, !self.consumeIntentionalStop(for: stream),
-                  (self.transitions.stream as? NativeScreenCaptureStream)?.stream === stream else { return }
-            self.onFailure(SpeechSessionError.screenCaptureFailed(error))
+            guard let self, let current = self.transitions.stream as? NativeScreenCaptureStream,
+                  current.stream === stream else { return }
+            self.streamDidStop(current, error: error)
         }
     }
 
@@ -382,14 +381,14 @@ final class ScreenCaptureAudioInputProvider: NSObject, SCStreamOutput, SCStreamD
                 ) else { return }
 
                 guard let bufferCopy = sourceBuffer.copy() as? AVAudioPCMBuffer else {
-                    onFailure(SpeechSessionError.conversionBufferCreationFailed)
+                    onTermination(SpeechSessionError.conversionBufferCreationFailed)
                     return
                 }
 
                 processAudioBuffer(bufferCopy)
             }
         } catch {
-            onFailure(SpeechSessionError.screenCaptureFailed(error))
+            onTermination(SpeechSessionError.screenCaptureFailed(error))
         }
     }
 
@@ -397,7 +396,21 @@ final class ScreenCaptureAudioInputProvider: NSObject, SCStreamOutput, SCStreamD
     @MainActor
     func selectStream(makeStream: @escaping @MainActor () throws -> any ScreenCaptureStream) -> Task<Void, Never> {
         guard !stopped else { return Task {} }
-        let operation = transitions.replace(makeStream: makeStream)
+        return observeSelection(transitions.replace(makeStream: makeStream))
+    }
+
+    @discardableResult
+    @MainActor
+    func updateStream(
+        _ stream: any ScreenCaptureStream,
+        operation: @escaping @MainActor () async throws -> Void
+    ) -> Task<Void, Never> {
+        guard !stopped else { return Task {} }
+        return observeSelection(transitions.update(stream, operation: operation))
+    }
+
+    @MainActor
+    private func observeSelection(_ operation: Task<Void, Error>) -> Task<Void, Never> {
         let id = UUID()
         pickerUpdateID = id
         return Task { @MainActor in
@@ -408,7 +421,7 @@ final class ScreenCaptureAudioInputProvider: NSObject, SCStreamOutput, SCStreamD
             } catch {
                 guard !self.stopped, self.pickerUpdateID == id else { return }
                 if !self.resumeSelection(throwing: error) {
-                    self.onFailure(SpeechSessionError.screenCaptureFailed(error))
+                    self.onTermination(SpeechSessionError.screenCaptureFailed(error))
                 }
             }
         }
@@ -445,18 +458,19 @@ final class ScreenCaptureAudioInputProvider: NSObject, SCStreamOutput, SCStreamD
             let converted = try bufferConverter.convertBuffer(buffer, to: targetFormat)
             inputContinuation.yield(AnalyzerInput(buffer: converted))
         } catch {
-            onFailure(error)
+            onTermination(error)
         }
     }
 
     @MainActor
-    private func markStreamForIntentionalStop(_ stream: SCStream) {
-        intentionallyStoppingStreams.insert(ObjectIdentifier(stream))
-    }
-
-    @MainActor
-    private func consumeIntentionalStop(for stream: SCStream) -> Bool {
-        intentionallyStoppingStreams.remove(ObjectIdentifier(stream)) != nil
+    func streamDidStop(_ stream: any ScreenCaptureStream, error: Error) {
+        let isCurrent = transitions.didStop(stream)
+        guard !stopped, isCurrent else { return }
+        stopped = true
+        let nativeError = error as NSError
+        let userStopped = nativeError.domain == SCStreamError.errorDomain
+            && nativeError.code == SCStreamError.Code.userStopped.rawValue
+        onTermination(userStopped ? nil : SpeechSessionError.screenCaptureFailed(error))
     }
 }
 #else
