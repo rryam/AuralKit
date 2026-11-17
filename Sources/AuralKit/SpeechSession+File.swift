@@ -248,7 +248,7 @@ extension SpeechSession {
     }
 }
 
-private extension SpeechSession {
+extension SpeechSession {
     nonisolated func feedAudioFile(
         _ payload: (file: AVAudioFile, totalFrames: AVAudioFramePosition),
         progressHandler: (@Sendable (Double) -> Void)?,
@@ -286,7 +286,7 @@ private extension SpeechSession {
             }
 
             if buffer.frameLength == 0 {
-                break
+                throw SpeechSessionError.audioFileReadFailed(CocoaError(.fileReadCorruptFile))
             }
 
             guard let bufferCopy = buffer.copy() as? AVAudioPCMBuffer else {
@@ -312,6 +312,9 @@ private extension SpeechSession {
         return !Task.isCancelled && processedFrames >= totalFrames
     }
 
+}
+
+private extension SpeechSession {
     func shouldUseNativeFileAnalyzer(progressHandler: (@Sendable (Double) -> Void)?) -> Bool {
 #if swift(>=6.4)
         if #available(iOS 27.0, macOS 27.0, *) {
@@ -360,8 +363,15 @@ extension SpeechSession {
             guard let self else { return }
             do {
                 try await ingest(self)
+                try Task.checkCancellation()
+                guard generation == sessionGeneration, continuation != nil else { return }
+                fileIngestionCompleted = true
+                if fileResultsCompleted {
+                    await endTranscription(error: nil, generation: generation, cancelRecognizer: false)
+                }
             } catch is CancellationError {
-                // Cleanup cancelled the ingestion task.
+                // Only an existing terminal owner may suppress child cancellation.
+                await finishWithStartupError(CancellationError(), generation: generation)
             } catch {
                 await finishWithStartupError(error, generation: generation)
             }

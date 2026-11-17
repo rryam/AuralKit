@@ -78,6 +78,8 @@ extension SpeechSession {
     /// session moved on to another stream) cannot tear down state it no longer owns.
     func beginStreamGeneration() -> Int {
         sessionGeneration &+= 1
+        fileIngestionCompleted = false
+        fileResultsCompleted = false
         return sessionGeneration
     }
 
@@ -214,6 +216,11 @@ extension SpeechSession {
     }
 
     func finishFromRecognizerTask(error: Error?, generation: Int) async {
+        guard generation == sessionGeneration else { return }
+        if error == nil, streamingMode == .filePlayback || streamingMode == .mediaPlayback {
+            fileResultsCompleted = true
+            guard fileIngestionCompleted else { return }
+        }
         await endTranscription(error: error, generation: generation, cancelRecognizer: error != nil)
     }
 
@@ -236,6 +243,9 @@ extension SpeechSession {
             return
         }
         if streamingMode == .filePlayback || streamingMode == .mediaPlayback {
+            await pipelineTask?.value
+            guard generation == sessionGeneration else { return }
+            await fileIngestionTask?.value
             await recognizerTask.value
             return
         }
@@ -504,6 +514,7 @@ extension SpeechSession {
                     guard generation == sessionGeneration, terminationTask == nil else { return }
                     streamContinuation.yield(result)
                 }
+                try Task.checkCancellation()
                 if Self.shouldLog(.notice) {
                     Self.logger.notice("\(label, privacy: .public) completed without error")
                 }
