@@ -97,7 +97,6 @@ public final class SpeechSession {
     /// Reflects the speech detector's most recent state; defaults to `true` when monitoring is inactive.
     public internal(set) var isSpeechDetected: Bool = true
 
-    // Stream state management
     var continuation: TranscriptionContinuation?
     var recognizerTask: Task<Void, Never>?
     var pipelineTask: Task<Void, Never>?
@@ -105,6 +104,7 @@ public final class SpeechSession {
     var terminationTask: Task<Void, Never>?
     var cancellationRequested = false
     var fileIngestionTask: Task<Void, Never>?
+    var fileIngestionCompleted = false, fileResultsCompleted = false
     var streamingMode: StreamingMode = .inactive
     /// Incremented for every accepted start so stale termination handlers can be ignored.
     var sessionGeneration: Int = 0
